@@ -169,6 +169,10 @@ shared server never uses its own.
 
 ## For zeus (to fill in)
 
+Confirmed: `qsub` works from n170 (so ARC can submit its ESS jobs from the runner node). The
+group's facts are in `knowledge/hpc/servers/zeus.md`. Still open: the path of `qsub` on n170
+(`command -v qsub`; ARC assumes `/usr/local/bin/qsub`).
+
 `servers.yaml` needs, from `rag-drg servers discover-pbs` and the group: the partitions `alon_q`
 (max walltime 3600 h, multi-node), `mafat_new_q`, `zeus_long_q`, `zeus_short_q`, `zeus_comb_q`,
 `alon_comb_q` with their per-node cores/memory and `access:`; `arc.ess_queues` in the order ARC
