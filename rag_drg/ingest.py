@@ -318,7 +318,8 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
         for c in chunks:
             c.source = src.name
             c.domain = domain.lower() if isinstance(domain, str) else domain
-            c.software = software.lower() if isinstance(software, str) else software
+            # A chunker may already know the program per chunk (e.g. one errors.yaml entry each).
+            c.software = c.software or (software.lower() if isinstance(software, str) else software)
             c.version = version
             # Manual sections the chunker recognised as method background become "theory",
             # so keyword questions and theory questions can be filtered apart.
