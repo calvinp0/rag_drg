@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "rag-drg": {
+      "command": "rag-drg",
+      "args": ["serve"]
+    }
+  }
+}

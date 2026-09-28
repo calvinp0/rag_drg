@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e '.[mcp,dev]'
+      - name: Lint knowledge cards and lessons
+        run: rag-drg lint
+      - name: Unit tests
+        run: pytest -q
+      - name: Index the curated knowledge (smoke test)
+        run: |
+          rag-drg ingest --source curated --source lessons --no-embed
+          rag-drg search "ORCA maxcore" --k 1
