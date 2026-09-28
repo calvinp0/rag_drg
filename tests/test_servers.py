@@ -252,7 +252,8 @@ def test_check_resources(example, project):
     errors = [r["message"] for r in res if r["severity"] == "error"]
     assert len(errors) == 4
     warn = srv.check_resources(example, "gpu", 8, 64, "1:00:00")
-    assert [r["severity"] for r in warn] == ["warning"]
+    assert [r["severity"] for r in warn] == ["info", "warning"]  # restricted queue, identity unknown
+    assert srv.check_resources(example, "gpu", 8, 64, "1:00:00", gpus=1, user="alice") == []
     assert srv.check_resources(example, None, 8, 250, "1:00:00")[0]["severity"] == "warning"  # > 95% of node
     by_name = srv.check_resources("example", "cpu", 8, 32, "1:00:00", software="gaussian-16-gpu", cfg=project)
     assert any("may only run on" in r["message"] for r in by_name)
@@ -384,7 +385,8 @@ def _ctx(cfg, readonly=False):
 def test_mcp_tools(project, example):
     mcp = FakeMCP()
     srv.register_mcp(mcp, _ctx(project))
-    assert set(mcp.tools) == {"list_servers", "server_info", "render_submit_script", "check_resources"}
+    assert set(mcp.tools) == {"list_servers", "server_info", "render_submit_script", "check_resources",
+                              "queue_access"}
     assert "example" in mcp.tools["list_servers"]()
     assert "## Partitions / queues" in mcp.tools["server_info"]("example")
     out = mcp.tools["render_submit_script"]("example", "gaussian-16", "a.gjf", cores=4, mem_gb=16)

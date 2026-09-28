@@ -5,11 +5,14 @@ Spec: docs/servers-spec.md; usage: docs/servers.md.
     rag-drg servers [--file F] list | show NAME | render-cards [--out DIR] | arc-settings [NAME ...]
     rag-drg servers submit SERVER SOFTWARE INPUT [--cores N --mem GB --time T --partition P --gpus G -o FILE]
     rag-drg servers check SERVER [PARTITION] --cores N --mem GB --time T [--gpus G --software KEY]
-    rag-drg servers query SERVER {jobs,job,history,partitions,quota,fairshare} [JOB_ID]
+    rag-drg servers query SERVER {jobs,job,history,partitions,quota,fairshare,queue_access} [JOB_ID]
+    rag-drg servers access SERVER [--user U --groups G1,G2] [--live]
+    rag-drg servers discover-pbs --from-file qstat_Qf.txt [--pbsnodes pbsnodes.txt]
 
 Python API (also used by other plugins, e.g. an input checker)::
 
     from rag_drg.tools.servers import load_servers, check_resources, render_submit_script, cluster_query
+    from rag_drg.tools.servers import queue_access, client_identity, CLIENT_IDENTITY, client_identity_scope
 """
 
 from __future__ import annotations
@@ -19,10 +22,23 @@ import json
 import sys
 from pathlib import Path
 
+from ._servers.access import (
+    CLIENT_IDENTITY,
+    access_problem,
+    access_table,
+    identity_for,
+    client_identity,
+    client_identity_scope,
+    local_identity,
+    local_identity_allowed,
+    queue_access,
+)
 from ._servers.cluster import cluster_commands_enabled
 from ._servers.cluster import cluster_query as _cluster_query
+from ._servers.live_access import discover_pbs, live_queue_access
 from ._servers.model import (
     QUERY_KINDS,
+    Access,
     Partition,
     Scratch,
     Server,
@@ -33,10 +49,13 @@ from ._servers.model import (
     load_servers,
     servers_path,
 )
-from ._servers.render import arc_settings, generated_dir, render_card, render_cards
+from ._servers.render import access_text, arc_settings, generated_dir, render_card, render_cards
 from ._servers.submit import SubmitError, check_resources, render_submit_script
 
 __all__ = [
+    "Access", "CLIENT_IDENTITY", "access_problem", "client_identity", "client_identity_scope", "discover_pbs",
+    "identity_for",
+    "live_queue_access", "local_identity", "local_identity_allowed", "queue_access",
     "Partition", "Scratch", "Server", "ServersConfigError", "SoftwareInstall", "Storage", "SubmitError",
     "arc_settings", "check_file", "check_resources", "cluster_query", "load_servers", "render_card",
     "render_cards", "render_submit_script",
@@ -59,7 +78,11 @@ def _summary(servers: dict[str, Server]) -> list[dict]:
             "description": s.description,
             "partitions": {p.name: {"max_walltime": p.max_walltime, "cores_per_node": p.cores_per_node,
                                     "mem_per_node_gb": p.mem_per_node_gb, "gpus_per_node": p.gpus_per_node,
-                                    "default": p.default} for p in s.partitions.values()},
+                                    "default": p.default,
+                                    "access": None if p.access is None else {
+                                        "users": p.access.users, "groups": p.access.groups,
+                                        "notes": p.access.notes}}
+                           for p in s.partitions.values()},
             "software": {k: f"{sw.ess} {sw.version or ''}".strip() for k, sw in s.software.items()},
         }
         for s in servers.values()
@@ -78,8 +101,66 @@ def _list_text(servers: dict[str, Server]) -> str:
         lines.append(f"{s.name}: {s.scheduler} @ {s.host or 'local'}"
                      + (f" - {s.description.strip()}" if s.description else ""))
         lines.append(f"  partitions: {parts}")
+        for p in s.partitions.values():
+            if p.access is not None:
+                lines.append(f"  restricted: {p.name} -> only {access_text(p)}"
+                             + (f" ({p.access.notes.strip()})" if p.access.notes else ""))
         lines.append(f"  software: {', '.join(s.software) or '(none)'}")
     return "\n".join(lines)
+
+
+def _identity_line(user, groups, source) -> str:
+    src = {"explicit": "given", "context": "set by the server for this request",
+           "env": "from RAG_DRG_CLIENT_USER/RAG_DRG_CLIENT_GROUPS", "local": "this process",
+           None: "unknown"}[source]
+    return (f"identity ({src}): user {user or '?'}, groups "
+            f"{', '.join(groups) if groups is not None else '?'}")
+
+
+def _client_access_rows(server: Server, partition: str | None, explicit) -> tuple[list[dict], str]:
+    """queue_access rows for the requesting client + an identity line. A denial judged from this
+    machine's identity for a remote cluster is reported as unknown (allowed=None)."""
+    user, groups, source, authoritative = identity_for(server, explicit)
+    rows = access_table(server, user, groups) if partition is None else [queue_access(server, partition, user, groups)]
+    line = _identity_line(user, groups, source)
+    if source is not None and not authoritative:
+        line += f" - not necessarily your account on {server.name} (this machine is not the cluster)"
+        for r in rows:
+            if r["allowed"] is False:
+                r["allowed"] = None
+                r["reason"] += " (judged from this machine's identity; check with --live or pass --user/--groups)"
+    return rows, line
+
+
+def _access_text(server: Server, explicit) -> str:
+    word = {True: "yes", False: "NO", None: "unknown"}
+    rows, line = _client_access_rows(server, None, explicit)
+    lines = [f"{server.name}: {line}"]
+    for r in rows:
+        lines.append(f"  {r['partition']}: {word[r['allowed']]} - {r['reason']}")
+    return "\n".join(lines)
+
+
+def _client_check(server: Server, partition, cores, mem_gb, walltime, gpus, software, explicit) -> list[dict]:
+    """check_resources for the requesting client (access judged by access_problem)."""
+    problems = check_resources(server, partition, cores, mem_gb, walltime, gpus, software=software,
+                               check_access=False)
+    ap = access_problem(server, partition, explicit)
+    return ([ap] if ap else []) + problems
+
+
+def _submit_identity(server: Server, explicit) -> tuple[str | None, list[str] | None]:
+    user, groups, _source, authoritative = identity_for(server, explicit)
+    return (user, groups) if authoritative else (None, None)
+
+
+def _explicit_identity(user, groups):
+    """(user, groups) if the caller gave either, else None (= resolve with client_identity)."""
+    if user is None and groups is None:
+        return None
+    if isinstance(groups, str):
+        groups = [g for g in groups.split(",") if g.strip()]
+    return (user, groups)
 
 
 def _format_problems(problems: list[dict]) -> str:
@@ -114,6 +195,8 @@ def register_cli(subparsers):
     q.add_argument("--time", dest="walltime", help="HH:MM:SS or D-HH:MM:SS")
     q.add_argument("--partition")
     q.add_argument("--gpus", type=int, default=0)
+    q.add_argument("--user", help="check queue access for this Unix user")
+    q.add_argument("--groups", help="comma-separated Unix groups of that user")
     q.add_argument("-o", "--output", help="write the script to this file instead of stdout")
 
     q = ssub.add_parser("check", help="check a resource request against partition limits")
@@ -124,6 +207,19 @@ def register_cli(subparsers):
     q.add_argument("--time", dest="walltime", required=True)
     q.add_argument("--gpus", type=int, default=0)
     q.add_argument("--software")
+    q.add_argument("--user", help="Unix user to check queue access for (default: see `servers access`)")
+    q.add_argument("--groups", help="comma-separated Unix groups of that user")
+
+    q = ssub.add_parser("access", help="which partitions/queues may I use? (servers.yaml access rules)")
+    q.add_argument("server")
+    q.add_argument("--user", help="user name (default: RAG_DRG_CLIENT_USER, else this process's user)")
+    q.add_argument("--groups", help="comma-separated groups (default: RAG_DRG_CLIENT_GROUPS, else this process's)")
+    q.add_argument("--live", action="store_true",
+                   help="also ask the scheduler (qstat -Qf / scontrol) as you over SSH; needs cluster_commands")
+
+    q = ssub.add_parser("discover-pbs", help="DRAFT a partitions: block from saved `qstat -Qf` [+ pbsnodes] output")
+    q.add_argument("--from-file", required=True, dest="qstat_file", help="file with `qstat -Qf` output")
+    q.add_argument("--pbsnodes", help="file with `pbsnodes -a` or `pbsnodes -aSj` output")
 
     q = ssub.add_parser("query", help="read-only live query (needs cluster_commands.enabled in conf.d/servers.yaml)")
     q.add_argument("server")
@@ -136,6 +232,15 @@ def register_cli(subparsers):
 def _cli(args: argparse.Namespace, cfg) -> int:
     path = Path(args.file) if args.file else servers_path(cfg)
     cmd = args.servers_cmd
+    if cmd == "discover-pbs":
+        try:
+            qf = Path(args.qstat_file).read_text()
+            nodes = Path(args.pbsnodes).read_text() if args.pbsnodes else None
+        except OSError as e:
+            print(e, file=sys.stderr)
+            return 1
+        print(discover_pbs(qf, nodes), end="")
+        return 0
     if cmd == "validate":
         problems = check_file(path) if path.is_file() else []
         print("\n".join(problems) if problems else f"{path.name}: ok" if path.is_file() else f"no {path}")
@@ -180,9 +285,10 @@ def _cli(args: argparse.Namespace, cfg) -> int:
         if not s:
             return 1
         try:
+            user, groups = _submit_identity(s, _explicit_identity(args.user, args.groups))
             script, notes = render_submit_script(
                 s, args.software, args.input, job_name=args.job_name, cores=args.cores, mem_gb=args.mem_gb,
-                walltime=args.walltime, partition=args.partition, gpus=args.gpus,
+                walltime=args.walltime, partition=args.partition, gpus=args.gpus, user=user, groups=groups,
             )
         except SubmitError as e:
             print(_format_problems(e.problems), file=sys.stderr)
@@ -199,10 +305,28 @@ def _cli(args: argparse.Namespace, cfg) -> int:
         s = get(args.server)
         if not s:
             return 1
-        problems = check_resources(s, args.partition, args.cores, args.mem_gb, args.walltime, args.gpus,
-                                   software=args.software)
+        problems = _client_check(s, args.partition, args.cores, args.mem_gb, args.walltime, args.gpus,
+                                 args.software, _explicit_identity(args.user, args.groups))
         print(_format_problems(problems))
         return 1 if any(p["severity"] == "error" for p in problems) else 0
+    if cmd == "access":
+        s = get(args.server)
+        if not s:
+            return 1
+        print(_access_text(s, _explicit_identity(args.user, args.groups)))
+        if not args.live:
+            return 0
+        if not cluster_commands_enabled(cfg):
+            print("--live needs live cluster commands; set `cluster_commands: {enabled: true}` in "
+                  "conf.d/ (see docs/servers.md).", file=sys.stderr)
+            return 1
+        print()
+        try:
+            print(cluster_query(s, "queue_access"))
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            return 1
+        return 0
     if cmd == "query":
         if not cluster_commands_enabled(cfg):
             print("Live cluster commands are disabled; set `cluster_commands: {enabled: true}` in "
@@ -232,7 +356,8 @@ def register_mcp(mcp, ctx) -> None:
     def list_servers() -> str:
         """List the group's clusters from servers.yaml: scheduler, login host, partitions
         (max walltime, cores/node, memory/node, GPUs; * = default) and installed software keys.
-        Call this before writing a submit script or choosing where to run a calculation."""
+        Restricted queues (queue ACLs) are listed with who may use them; check a person with
+        queue_access(). Call this before writing a submit script or choosing where to run a calculation."""
         try:
             servers = _load()
         except ServersConfigError as e:
@@ -269,6 +394,8 @@ def register_mcp(mcp, ctx) -> None:
         walltime: str | None = None,
         partition: str | None = None,
         gpus: int = 0,
+        user: str | None = None,
+        groups: list[str] | None = None,
     ) -> str:
         """Render a ready-to-run Slurm/PBS submit script for one ESS job on a cluster, with the
         correct absolute executable, environment, parallel model and scratch handling, validated
@@ -286,6 +413,9 @@ def register_mcp(mcp, ctx) -> None:
             walltime: "HH:MM:SS" or "D-HH:MM:SS" (default min(24 h, partition max)).
             partition: Partition/queue (default: the software's allowed default partition).
             gpus: GPUs to request (GPU builds such as gaussian-16-gpu need >= 1).
+            user: The requesting person's Unix user name on the cluster, to check restricted queues
+                (queue ACLs). Omit if unknown.
+            groups: That person's Unix groups on the cluster (e.g. from `id -Gn`). Omit if unknown.
         """
         args = {"server": server, "software": software, "input_file": input_file, "cores": cores,
                 "mem_gb": mem_gb, "walltime": walltime, "partition": partition, "gpus": gpus}
@@ -297,9 +427,10 @@ def register_mcp(mcp, ctx) -> None:
             ctx.emit({"tool": "render_submit_script", "args": args, "n_results": 0})
             return f"Unknown server {server!r}. Known: {', '.join(servers) or '(none)'}"
         try:
+            ident_user, ident_groups = _submit_identity(servers[server], _explicit_identity(user, groups))
             script, notes = render_submit_script(
                 servers[server], software, input_file, job_name=job_name, cores=cores, mem_gb=mem_gb,
-                walltime=walltime, partition=partition, gpus=gpus,
+                walltime=walltime, partition=partition, gpus=gpus, user=ident_user, groups=ident_groups,
             )
         except SubmitError as e:
             ctx.emit({"tool": "render_submit_script", "args": args, "n_results": 0})
@@ -316,6 +447,8 @@ def register_mcp(mcp, ctx) -> None:
         walltime: str,
         gpus: int = 0,
         software: str | None = None,
+        user: str | None = None,
+        groups: list[str] | None = None,
     ) -> str:
         """Check a job's resources against a cluster partition's limits (walltime, cores/node,
         memory/node, GPUs, and optionally whether `software` may run there). Returns a JSON list of
@@ -329,13 +462,50 @@ def register_mcp(mcp, ctx) -> None:
             walltime: "HH:MM:SS" or "D-HH:MM:SS".
             gpus: GPUs requested.
             software: Optional software key (e.g. gaussian-16-gpu) to check partition restrictions.
+            user: The requesting person's Unix user name on the cluster (restricted queues). Optional.
+            groups: That person's Unix groups on the cluster. Optional.
         """
-        problems = check_resources(server, partition, cores, mem_gb, walltime, gpus, software=software, cfg=cfg)
+        try:
+            servers = _load()
+        except ServersConfigError as e:
+            return str(e)
+        if server in servers:
+            problems = _client_check(servers[server], partition, cores, mem_gb, walltime, gpus, software,
+                                     _explicit_identity(user, groups))
+        else:
+            problems = check_resources(server, partition, cores, mem_gb, walltime, gpus, software=software, cfg=cfg)
         ctx.emit({"tool": "check_resources",
                   "args": {"server": server, "partition": partition, "cores": cores, "mem_gb": mem_gb,
                            "walltime": walltime, "gpus": gpus, "software": software},
                   "n_results": len(problems)})
         return json.dumps(problems, indent=1)
+
+    @mcp.tool(name="queue_access")
+    def queue_access_tool(server: str, partition: str | None = None, user: str | None = None,
+                          groups: list[str] | None = None) -> str:
+        """Which partitions/queues of a cluster may this person submit to? Evaluates the
+        servers.yaml `access:` rules (queue ACLs: listed users, or members of ANY listed group).
+        Returns a JSON list of {partition, allowed: true|false|null, reason, notes}; null means the
+        queue is restricted and the user/groups are unknown - then ask the user (`id -Gn` on the
+        cluster) or pass them.
+
+        Args:
+            server: Cluster name.
+            partition: One partition/queue, or null for all of them.
+            user: The person's Unix user name on the cluster. Optional.
+            groups: The person's Unix groups on the cluster. Optional.
+        """
+        try:
+            servers = _load()
+        except ServersConfigError as e:
+            return str(e)
+        if server not in servers:
+            ctx.emit({"tool": "queue_access", "args": {"server": server}, "n_results": 0})
+            return f"Unknown server {server!r}. Known: {', '.join(servers) or '(none)'}"
+        rows, _line = _client_access_rows(servers[server], partition, _explicit_identity(user, groups))
+        ctx.emit({"tool": "queue_access", "args": {"server": server, "partition": partition},
+                  "n_results": len(rows)})
+        return json.dumps(rows, indent=1)
 
     if cluster_commands_enabled(cfg) and not ctx.readonly:
 
@@ -348,7 +518,8 @@ def register_mcp(mcp, ctx) -> None:
                 server: Cluster name.
                 what: jobs (my queued/running jobs) | job (one job's details; needs job_id) |
                     history (my jobs of the last 7 days) | partitions (partition/queue state) |
-                    quota (storage usage) | fairshare (my fair-share / priority).
+                    quota (storage usage) | fairshare (my fair-share / priority) |
+                    queue_access (which queues I may use, from qstat -Qf / scontrol + id -Gn, with limits).
                 job_id: Numeric job id (e.g. 123456 or 123456.pbs01), only with what="job".
             """
             try:

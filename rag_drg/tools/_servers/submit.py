@@ -12,6 +12,7 @@ import math
 import re
 from pathlib import PurePosixPath
 
+from .access import queue_access
 from .model import PBS_FAMILY, Partition, Server, SoftwareInstall, format_walltime, parse_walltime
 
 DEFAULT_WALLTIME_S = 24 * 3600
@@ -35,13 +36,17 @@ def _p(severity: str, message: str) -> dict:
 
 def check_resources(server: Server | str, partition: str | None, cores: int, mem_gb: float,
                     walltime: str | int | float, gpus: int = 0, *, software: str | None = None,
-                    cfg=None) -> list[dict]:
+                    cfg=None, user: str | None = None, groups: list[str] | None = None,
+                    check_access: bool = True) -> list[dict]:
     """Check a resource request against servers.yaml limits.
 
     Returns [{"severity": "error"|"warning"|"info", "message": str}]; no "error" entries means
     the request fits. `server` may be a Server or a name (then `cfg` is needed to load
     servers.yaml). `partition=None` means the server's default partition. `software` (a
     servers.yaml software key) additionally checks that the program may run on that partition.
+    `user`/`groups` (the requesting user's Unix name and groups) are checked against the
+    partition's `access:` rule: an error when denied, an info when a rule exists but the identity
+    is unknown (see access.queue_access). `check_access=False` skips the access check.
     """
     if isinstance(server, str):
         from .model import load_servers
@@ -61,6 +66,12 @@ def check_resources(server: Server | str, partition: str | None, cores: int, mem
             return [_p("error", f"unknown partition {partition!r} on {server.name}; "
                                 f"known: {', '.join(server.partitions)}")]
     where = f"{server.name}:{part.name}"
+    if check_access and part.access is not None:
+        acc = queue_access(server, part, user, groups)
+        if acc["allowed"] is False:
+            out.append(_p("error", acc["reason"]))
+        elif acc["allowed"] is None:
+            out.append(_p("info", acc["reason"]))
 
     try:
         cores = int(cores)
@@ -305,12 +316,15 @@ def _body(sw: SoftwareInstall, cores: int, gpus: int, input_file: str) -> tuple[
 def render_submit_script(server: Server, software_key: str, input_file: str, job_name: str | None = None,
                          cores: int | None = None, mem_gb: float | None = None,
                          walltime: str | int | float | None = None, partition: str | None = None,
-                         gpus: int = 0) -> tuple[str, list[str]]:
+                         gpus: int = 0, *, user: str | None = None,
+                         groups: list[str] | None = None) -> tuple[str, list[str]]:
     """A ready-to-run submit script for `software_key` on `server`, plus notes.
 
     Defaults: the software's allowed/default partition, min(16, cores per node) cores,
     ~90% of the proportional share of node memory, and min(24 h, partition max) walltime.
     Notes list the matching in-input memory/core lines and any warnings.
+    `user`/`groups` are checked against partition `access:` rules; a denied partition is an
+    error, and the default partition skips partitions this identity may not use.
     Raises SubmitError (with `.problems`) if the request violates a limit.
     """
     if software_key not in server.software:
@@ -327,10 +341,22 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
     if partition is None:
         allowed = server.partitions_for(software_key)
         dflt = server.default_partition
+        if user is not None or groups is not None:
+            usable = [p for p in allowed if queue_access(server, p, user, groups)["allowed"] is not False]
+            if allowed and not usable:
+                raise SubmitError([_p("error", f"{software_key} may run on {', '.join(p.name for p in allowed)} "
+                                               f"of {server.name}, but " + "; ".join(
+                                                   queue_access(server, p, user, groups)["reason"]
+                                                   for p in allowed))])
+            skipped = [p.name for p in allowed if p not in usable]
+            allowed = usable
+        else:
+            skipped = []
         part = dflt if dflt in allowed else (allowed[0] if allowed else dflt)
         if part is None:
             raise SubmitError([_p("error", f"{server.name} has no partitions")])
-        notes.append(f"partition: {part.name} (default)")
+        notes.append(f"partition: {part.name} (default)"
+                     + (f"; skipped {', '.join(skipped)} (no access)" if skipped else ""))
     else:
         part = server.partitions.get(partition)
         if part is None:
@@ -347,7 +373,8 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
         notes.append(f"walltime: {walltime} (default)")
     gpus = int(gpus or 0)
 
-    problems = check_resources(server, part.name, cores, mem_gb, walltime, gpus, software=software_key)
+    problems = check_resources(server, part.name, cores, mem_gb, walltime, gpus, software=software_key,
+                               user=user, groups=groups)
     if any(p["severity"] == "error" for p in problems):
         raise SubmitError(problems)
     cores = int(cores)

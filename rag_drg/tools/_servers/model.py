@@ -14,7 +14,9 @@ SCHEDULERS = ("slurm", "pbs", "pbspro", "torque", "sge", "htcondor", "local")
 PBS_FAMILY = ("pbs", "pbspro", "torque")
 ESS = ("orca", "gaussian", "qchem", "psi4", "molpro", "pyscf")
 PARALLEL = ("mpi", "threads")
-QUERY_KINDS = ("jobs", "job", "history", "partitions", "quota", "fairshare")
+QUERY_KINDS = ("jobs", "job", "history", "partitions", "quota", "fairshare", "queue_access")
+# kinds that may be overridden in servers.yaml `commands:` (queue_access runs several fixed commands)
+COMMAND_KINDS = ("jobs", "job", "history", "partitions", "quota", "fairshare")
 
 SERVER_KEYS = {
     "description", "scheduler", "host", "user", "ssh_alias", "modules_available", "arc",
@@ -22,8 +24,9 @@ SERVER_KEYS = {
 }
 PARTITION_KEYS = {
     "max_walltime", "cores_per_node", "mem_per_node_gb", "gpus_per_node", "gpu_type",
-    "max_nodes", "default", "notes",
+    "max_nodes", "default", "notes", "access",
 }
+ACCESS_KEYS = {"users", "groups", "notes"}
 SOFTWARE_KEYS = {"ess", "version", "executable", "env", "setup", "parallel", "partitions", "notes"}
 STORAGE_KEYS = {"name", "path", "quota_gb", "backed_up", "quota_command", "notes"}
 SCRATCH_KEYS = {"path", "node_local", "notes"}
@@ -32,6 +35,8 @@ ARC_KEYS = {"path", "max_simultaneous_jobs"}
 _SECRET_KEY_RE = re.compile(r"pass(word|wd|phrase)?$|token|secret|api_?key|private_?key", re.I)
 _SECRET_VALUE_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bghp_[A-Za-z0-9]{20,}")
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+# Unix user / group names (POSIX portable set; '$' allowed at the end for machine accounts)
+ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\$?$")
 
 
 class ServersConfigError(ValueError):
@@ -40,6 +45,23 @@ class ServersConfigError(ValueError):
     def __init__(self, problems: list[str]):
         self.problems = problems
         super().__init__("servers.yaml is invalid:\n  " + "\n  ".join(problems))
+
+
+@dataclass
+class Access:
+    """Who may use a partition/queue: a user listed in `users` OR a member of any of `groups`."""
+
+    users: list[str] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
+    notes: str | None = None
+
+    def describe(self) -> str:
+        bits = []
+        if self.users:
+            bits.append("users " + ", ".join(self.users))
+        if self.groups:
+            bits.append("groups " + ", ".join(self.groups))
+        return " or ".join(bits) or "nobody"
 
 
 @dataclass
@@ -53,6 +75,7 @@ class Partition:
     max_nodes: int = 1
     default: bool = False
     notes: str | None = None
+    access: Access | None = None  # None = everyone in the group may use it
 
     @property
     def max_walltime_seconds(self) -> int:
@@ -184,6 +207,30 @@ def _unknown(d: dict, allowed: set[str], where: str, problems: list[str]) -> Non
             problems.append(f"{where}: unknown key {k!r} (allowed: {', '.join(sorted(allowed))})")
 
 
+def _validate_access(acc: Any, where: str, problems: list[str]) -> None:
+    if not isinstance(acc, dict):
+        problems.append(f"{where}: must be a mapping with 'users' and/or 'groups' lists (omit it for no restriction)")
+        return
+    _unknown(acc, ACCESS_KEYS, where, problems)
+    n = 0
+    for key in ("users", "groups"):
+        v = acc.get(key)
+        if v is None:
+            continue
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            problems.append(f"{where}.{key}: must be a list of Unix {key[:-1]} names")
+            continue
+        for x in v:
+            if not ACCOUNT_NAME_RE.match(x):
+                problems.append(f"{where}.{key}: {x!r} is not a valid Unix {key[:-1]} name "
+                                "(letters, digits, _ . -)")
+        n += len(v)
+    if n == 0:
+        problems.append(f"{where}: lists no users or groups; remove 'access' if everyone may use it")
+    if acc.get("notes") is not None and not isinstance(acc["notes"], str):
+        problems.append(f"{where}.notes: must be a string")
+
+
 def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
     """Every problem in a parsed servers.yaml, as '<label>: <where>: <message>' strings."""
     from .cluster import command_problems  # local import: cluster imports model
@@ -246,6 +293,8 @@ def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
                 problems.append(f"{pw}: 'max_nodes' must be a positive integer")
             if p.get("default") is True:
                 n_default += 1
+            if "access" in p:
+                _validate_access(p["access"], f"{pw}.access", problems)
         if n_default > 1:
             problems.append(f"{w}.partitions: at most one partition may have 'default: true' ({n_default} do)")
 
@@ -289,8 +338,8 @@ def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
             problems.append(f"{w}.commands: must be a mapping")
             cmds = {}
         for k, v in cmds.items():
-            if k not in QUERY_KINDS:
-                problems.append(f"{w}.commands.{k}: unknown query (allowed: {', '.join(QUERY_KINDS)})")
+            if k not in COMMAND_KINDS:
+                problems.append(f"{w}.commands.{k}: unknown query (allowed: {', '.join(COMMAND_KINDS)})")
                 continue
             for msg in command_problems(str(v), allow_job_id=(k == "job")):
                 problems.append(f"{w}.commands.{k}: {msg}")
@@ -335,6 +384,14 @@ def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
 
 # ----------------------------------------------------------------- parsing
 
+def _parse_access(acc: Any) -> Access | None:
+    if not isinstance(acc, dict):
+        return None
+    return Access(users=[str(x) for x in acc.get("users") or []],
+                  groups=[str(x) for x in acc.get("groups") or []],
+                  notes=acc.get("notes"))
+
+
 def _parse_server(name: str, s: dict) -> Server:
     partitions = {
         str(pn): Partition(
@@ -347,6 +404,7 @@ def _parse_server(name: str, s: dict) -> Server:
             max_nodes=int(p.get("max_nodes") or 1),
             default=bool(p.get("default", False)),
             notes=p.get("notes"),
+            access=_parse_access(p.get("access")),
         )
         for pn, p in (s.get("partitions") or {}).items()
     }
