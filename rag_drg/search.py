@@ -34,7 +34,9 @@ TYPE_BOOST = {
     "theory": 0.95,
     "paper": 1.0,
     "code": 0.95,
-    "scaffold": 0.6,  # fill-in-the-blanks _TEMPLATE cards
+    "scaffold": 0.6,
+    "error": 1.0,     # errors.yaml entries: exact-match hits are strong on their own; no boost so
+                      # they don't crowd out cards for questions that merely mention an error word  # fill-in-the-blanks _TEMPLATE cards
 }
 STATUS_BOOST = {"verified": 1.1, "unreviewed": 0.9, "outdated": 0.5}
 
@@ -157,18 +159,25 @@ class Searcher:
         if not scores:
             return []
         chunks = self.store.get_many(list(scores))
+        verbatim = " ".join(query.lower().split())
+        if len(verbatim) < 12 or len(verbatim.split()) < 3:
+            verbatim = ""
         hits: list[Hit] = []
         for cid, base in scores.items():
             c = chunks.get(cid)
             if c is None:
                 continue
             s = base * TYPE_BOOST.get(c.doc_type or "reference", 1.0) * STATUS_BOOST.get(c.status or "", 1.0)
+            hay = f"{c.title}\n{c.text}".lower()
             if idents:
-                hay = f"{c.title}\n{c.text}".lower()
                 n = sum(1 for t in idents if t in hay)
                 if n:
                     s *= 1.0 + min(0.6, 0.3 * n)
                     via[cid].append("exact")
+            # The whole query appears word for word (typically a pasted error message or keyword line).
+            if verbatim and verbatim in " ".join(hay.split()):
+                s *= 1.6
+                via[cid].append("verbatim")
             hits.append(Hit(c, s, via[cid]))
         hits.sort(key=lambda h: h.score, reverse=True)
         if rerank is not None and hits:

@@ -50,12 +50,12 @@
 
 - id: gaussian-l9999
   q: "Gaussian job ended with Error termination via Lnk1e in l9999.exe, what does that mean?"
-  expect: ["curated:ess/gaussian/gaussian-essentials.md"]
+  expect: ["curated:ess/gaussian/gaussian-essentials.md", "curated:ess/errors.yaml"]
   tags: [gaussian, errors]
 
 - id: gaussian-default-grid
   q: "What is the default integration grid in Gaussian 09 compared to Gaussian 16?"
-  expect: ["curated:ess/gaussian/gaussian-essentials.md"]
+  expect: ["curated:ess/gaussian/gaussian-essentials.md", "curated:ess/gaussian/g09-vs-g16.md"]
   tags: [gaussian, dft]
 
 - id: gaussian-ts-calcfc
