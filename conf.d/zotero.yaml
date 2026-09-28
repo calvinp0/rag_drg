@@ -11,7 +11,7 @@ sources:
     zotero:
       mode: web                    # Zotero Web API v3
       library_type: group          # group | user
-      library_id: null             # the group's numeric ID, quoted: "1234567" (zotero.org/groups/<ID>/...)
+      library_id: "6305580"        # danaresearchgroup (zotero.org/groups/6305580/danaresearchgroup)
       api_key_env: ZOTERO_API_KEY  # NAME of the env var holding a read-only key; never the key itself
       collections: null            # null = whole library, or e.g. ["VAE-ESS-NN", "Datasets"] (names or keys)
       collection_tags: true        # collection names (and parents) become tags, e.g. vae-ess-nn
