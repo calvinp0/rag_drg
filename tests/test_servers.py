@@ -407,3 +407,18 @@ def test_mcp_tools(project, example):
 def test_repo_conf_ships_disabled():
     conf = yaml.safe_load((EXAMPLE.parent / "conf.d" / "servers.yaml").read_text())
     assert conf["cluster_commands"]["enabled"] is False
+
+
+def test_card_for_scheduler_without_submit_renderer_says_so():
+    from rag_drg.tools._servers.model import _parse_server
+    from rag_drg.tools._servers.render import render_card
+
+    s = _parse_server("condor", {
+        "scheduler": "htcondor", "host": "ui.example.org",
+        "partitions": {"vanilla": {"max_walltime": "72:00:00", "cores_per_node": 42, "mem_per_node_gb": 251,
+                                   "default": True}},
+        "software": {"orca-5": {"ess": "orca", "version": "5.0.4", "executable": "/opt/orca/orca",
+                                "parallel": "mpi"}}})
+    card = render_card(s)
+    assert "cannot generate htcondor submit files" in card
+    assert "Cannot render an example" not in card and "rag-drg servers submit condor" not in card
