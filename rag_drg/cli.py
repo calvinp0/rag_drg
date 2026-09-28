@@ -23,7 +23,7 @@ from .config import load_config
 def _add_filters(p: argparse.ArgumentParser):
     p.add_argument("--software", "-s", help="orca, gaussian, qchem, psi4, molpro, pyscf, arc, slurm, ...")
     p.add_argument("--version", "-v", help="e.g. 6, 16, 2024")
-    p.add_argument("--domain", "-d", help="ess, arc, hpc, project, literature")
+    p.add_argument("--domain", "-d", help="ess, arc, hpc, project, literature, or lessons (recorded lessons only)")
     p.add_argument("--doc-type", help="lesson, gotcha, card, template, schema, reference, theory, code, paper")
 
 
@@ -152,10 +152,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "lesson":
-        from .lessons import find_similar, index_lesson, lesson_text, write_lesson
+        from .lessons import check_lesson_meta, find_similar, index_lesson, lesson_text, write_lesson
         from .search import Searcher
         from .store import Store
         from .tools.lessons_workflow import submit_lesson
+
+        try:
+            check_lesson_meta(args.domain, args.software)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
 
         author = os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
         st = Store(cfg.index_path)

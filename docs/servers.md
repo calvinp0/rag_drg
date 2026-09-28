@@ -231,5 +231,6 @@ cluster_commands:
 
 Enable it only for a **per-user stdio server** (the `rag-drg serve` your own Claude Code starts),
 e.g. by adding an untracked `conf.d/zz-local.yaml` with `cluster_commands: {enabled: true}` in your
-clone (files in `conf.d/` are merged alphabetically, later ones win). BatchMode means it never
+clone (per-machine overrides, `zz-*.yaml` and `*.local.yaml`, are merged after the shared
+`conf.d/` files and win; they are git-ignored, so they never block `git pull`). BatchMode means it never
 prompts: your key must already be loaded in an agent or be passphrase-less.

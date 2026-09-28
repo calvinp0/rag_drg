@@ -266,7 +266,7 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
     from .lessons import LESSONS_SOURCE
 
     all_chunks: list[Chunk] = []
-    seen_content: dict[str, tuple] = {}
+    seen_content: dict[tuple, tuple] = {}
     for path, rel in iter_files(src):
         if src.name != LESSONS_SOURCE and _is_within(path, cfg.lessons_dir):
             continue  # lessons are indexed by their own source
@@ -329,13 +329,16 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
             c.status = meta.get("status")
         # The same page saved twice (browser copy + wget mirror, index.html?x, two folders):
         # keep one copy, preferring the one whose original URL is known, then the shorter path.
+        # Identical text with different metadata (e.g. sidecars for two program versions) is not
+        # a duplicate: both are kept so each version filter finds it.
+        dkey = (digest, chunks[0].domain, chunks[0].software, version, chunks[0].doc_type)
         rank = (url is None, len(rel), rel)
-        if digest in seen_content and seen_content[digest][0] <= rank:
-            log.info("[%s] %s duplicates %s, skipped", src.name, rel, seen_content[digest][1])
+        if dkey in seen_content and seen_content[dkey][0] <= rank:
+            log.info("[%s] %s duplicates %s, skipped", src.name, rel, seen_content[dkey][1])
             continue
-        if digest in seen_content:
-            log.info("[%s] %s duplicates %s, skipped", src.name, seen_content[digest][1], rel)
-        seen_content[digest] = (rank, rel, chunks)
+        if dkey in seen_content:
+            log.info("[%s] %s duplicates %s, skipped", src.name, seen_content[dkey][1], rel)
+        seen_content[dkey] = (rank, rel, chunks)
     for _, _, chunks in seen_content.values():
         all_chunks.extend(chunks)
     return all_chunks

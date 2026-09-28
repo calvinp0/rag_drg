@@ -91,6 +91,13 @@ def _save_state(cfg: Config, state: dict) -> None:
     tmp.replace(p)
 
 
+def _token(settings: dict) -> str | None:
+    """The GitHub token (github mode only), read from the environment variable in token_env."""
+    if settings["mode"] != "github":
+        return None
+    return os.environ.get(settings["token_env"]) or None
+
+
 def default_author() -> str | None:
     return os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
 
@@ -154,10 +161,21 @@ def _identity_env(git: _Git, author: str | None) -> dict:
     return env
 
 
-def branch_for(path: Path, batch: str, today: str | None = None) -> str:
+def branch_for(path: Path, batch: str, today: str | None = None, lessons_dir: Path | None = None) -> str:
+    """`lessons/<date>` (daily) or `lessons/<domain>-[<software>-]<date>-<slug>` (per lesson).
+
+    The domain/software folder is part of the name so that lessons with the same date and title
+    in different folders (knowledge/lessons/ess/orca/X.md vs .../hpc/X.md) get their own branch."""
     if batch == "daily":
         return f"lessons/{today or _dt.date.today().isoformat()}"
-    return f"lessons/{Path(path).stem}"  # the file name is already <date>-<slug>
+    path = Path(path)
+    parts: list[str] = []
+    if lessons_dir is not None:
+        try:
+            parts = list(path.resolve().parent.relative_to(Path(lessons_dir).resolve()).parts)
+        except ValueError:
+            parts = []
+    return "lessons/" + "-".join([*parts, path.stem])  # the file name is already <date>-<slug>
 
 
 @dataclass
@@ -198,7 +216,7 @@ def commit_and_push(cfg: Config, path: Path, author: str | None, settings: dict,
     rel = path.relative_to(top.resolve()).as_posix()
     remote, base = settings["remote"], settings["base"]
     net = _token_env_config(git, remote, token)
-    branch = branch_for(path, settings["batch"])
+    branch = branch_for(path, settings["batch"], lessons_dir=cfg.lessons_dir)
     res.branch = branch
 
     git("fetch", "--no-tags", remote, f"+refs/heads/{base}:refs/remotes/{remote}/{base}", env=net)
@@ -353,9 +371,7 @@ def submit_lesson(cfg: Config, path: Path, author: str | None = None) -> PRResul
         return PRResult(lesson=repo_rel(cfg, path), error=str(e))
     if settings["mode"] == "none":
         return None
-    token = None
-    if settings["mode"] == "github":
-        token = os.environ.get(settings["token_env"]) or None
+    token = _token(settings)
     res = PRResult(lesson=repo_rel(cfg, path))
     try:
         if settings["mode"] == "github" and not token:
@@ -479,25 +495,52 @@ def format_report(rep: dict) -> str:
 # --------------------------------------------------------------------------- #
 
 def tidy(cfg: Config, dry_run: bool = False) -> list[str]:
-    """Delete untracked lesson files whose path now exists on <remote>/<base> (their PR was
-    merged), so `git pull --ff-only` can bring in the reviewed version."""
+    """Delete untracked lesson files whose PR was merged, so `git pull --ff-only` can bring in
+    the reviewed version and folded-in lessons stop being indexed as unreviewed.
+
+    A local lesson is removed when (a) its path now exists on <remote>/<base>, or (b) the commit
+    recorded for it in index/lessons_prs.json is an ancestor of <remote>/<base> (the PR was
+    merged, even if the reviewer folded the lesson into a card and deleted the file) and the
+    local file is still exactly the version in that commit. Squash/rebase merges rewrite the
+    commit, so with those only (a) applies; delete folded lessons by hand then."""
     settings = pr_settings(cfg)
     if not cfg.lessons_dir.exists():
         return []
-    git = _Git(cfg.lessons_dir)
+    token = _token(settings)
+    git = _Git(cfg.lessons_dir, secret=token)
     top = Path(git("rev-parse", "--show-toplevel"))
-    git = _Git(top)
+    git = _Git(top, secret=token)
     remote, base = settings["remote"], settings["base"]
-    git("fetch", "--no-tags", remote, f"+refs/heads/{base}:refs/remotes/{remote}/{base}")
+    base_ref = f"refs/remotes/{remote}/{base}"
+    net = _token_env_config(git, remote, token)
+    git("fetch", "--no-tags", remote, f"+refs/heads/{base}:{base_ref}", env=net)
     lessons_rel = cfg.lessons_dir.resolve().relative_to(top.resolve()).as_posix()
     untracked = git("ls-files", "--others", "--exclude-standard", "--", lessons_rel).splitlines()
-    on_base = set(git("ls-tree", "-r", "--name-only", f"refs/remotes/{remote}/{base}", "--", lessons_rel).splitlines())
+    on_base = set(git("ls-tree", "-r", "--name-only", base_ref, "--", lessons_rel).splitlines())
+    state = load_state(cfg)
+
+    def merged(rel: str) -> bool:
+        commit = (state.get(repo_rel(cfg, (top / rel).resolve())) or {}).get("commit")
+        if not commit or not re.fullmatch(r"[0-9a-f]{7,64}", str(commit)):
+            return False
+        blob = git("rev-parse", "--verify", "-q", f"{commit}:{rel}", check=False)
+        if not blob or blob != git("hash-object", "--", rel, check=False):
+            return False  # changed locally since it was pushed: keep it
+        return subprocess.run(["git", "merge-base", "--is-ancestor", commit, base_ref], cwd=top, env=git.env,
+                              capture_output=True).returncode == 0
+
     removed = []
     for rel in untracked:
-        if rel in on_base:
+        if rel in on_base or merged(rel):
             removed.append(rel)
             if not dry_run:
                 (top / rel).unlink()
+                state.pop(repo_rel(cfg, (top / rel).resolve()), None)
+    if removed and not dry_run:
+        try:
+            _save_state(cfg, state)
+        except OSError:
+            pass
     return removed
 
 

@@ -14,7 +14,9 @@ rag-drg tokens revoke alice   # takes effect on the next request, no restart nee
 
 * Tokens are stored as SHA-256 hashes in `index/tokens.yaml` (mode 0600; `index/` is
   git-ignored). Use another file with `auth: {tokens_file: /etc/rag-drg/tokens.yaml}` in
-  `rag_drg.yaml` or a `conf.d/*.yaml` (relative paths are relative to the config file).
+  `rag_drg.yaml` or a `conf.d/*.yaml` (relative paths are relative to the config file); on the
+  server use the git-ignored `conf.d/zz-local.yaml` rather than a local commit, which would
+  break the nightly `git pull --ff-only`.
 * One token per person: the token name is who the server thinks you are. It is attached to
   every server event (`ctx.current_user()` in plugins, e.g. the query log) and is the natural
   author for recorded lessons.

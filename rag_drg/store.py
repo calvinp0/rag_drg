@@ -3,11 +3,23 @@
 A single file holds everything, so the index can live on a shared
 filesystem (e.g. the group's HPC home/project space) and be opened
 read-only by many agents at once.
+
+Concurrency: writable connections switch the database to WAL mode, so readers (the MCP
+server answering searches) are not blocked while `rag-drg ingest` writes, and every
+connection waits up to BUSY_TIMEOUT seconds for a lock instead of failing at once. WAL needs
+shared memory between the processes, i.e. all of them on one host. For an index on a
+network filesystem written from several hosts, set RAG_DRG_SQLITE_JOURNAL=delete (the
+classic rollback journal; readers then wait for the writer instead).
+Read-only connections need to create the `-shm` file next to a WAL database; if the index
+directory is not writable for the reader and no writer is running, they fall back to
+opening the file as immutable (a snapshot without locking).
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +28,10 @@ from typing import Iterable, Sequence
 import numpy as np
 
 from .chunking import Chunk
+
+log = logging.getLogger(__name__)
+
+BUSY_TIMEOUT = 30.0  # seconds to wait for a lock held by another connection (e.g. a running ingest)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS chunks (
@@ -106,13 +122,42 @@ class Store:
         if readonly:
             if not self.path.exists():
                 raise FileNotFoundError(f"Index not found at {self.path}. Run `rag-drg ingest` first.")
-            self.conn = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True, check_same_thread=False)
+            self.conn = self._connect_readonly()
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
-            self.conn.executescript(SCHEMA)
+            self.conn = sqlite3.connect(str(self.path), timeout=BUSY_TIMEOUT, check_same_thread=False)
+            self.conn.execute(f"PRAGMA busy_timeout={int(BUSY_TIMEOUT * 1000)}")
+            journal = os.environ.get("RAG_DRG_SQLITE_JOURNAL", "wal").strip().lower() or "wal"
+            if journal not in ("wal", "delete", "truncate", "persist"):
+                raise ValueError(f"RAG_DRG_SQLITE_JOURNAL must be wal or delete, got {journal!r}")
+            self.conn.execute(f"PRAGMA journal_mode={journal}")
+            if not self._has_schema():  # skip the DDL when present: it would need the write lock
+                self.conn.executescript(SCHEMA)
         self.conn.row_factory = sqlite3.Row
         self._vec_cache: tuple[np.ndarray, np.ndarray] | None = None
+
+    def _connect_readonly(self) -> sqlite3.Connection:
+        uri = f"file:{self.path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=BUSY_TIMEOUT, check_same_thread=False)
+        conn.execute(f"PRAGMA busy_timeout={int(BUSY_TIMEOUT * 1000)}")
+        try:
+            conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            return conn
+        except sqlite3.OperationalError as e:
+            # A WAL database whose -shm file does not exist and cannot be created here (read-only
+            # directory, no writer running): read it as an immutable snapshot instead.
+            if _is_lock_error(e):
+                raise
+            conn.close()
+            log.warning("index %s: %s; opening it as an immutable snapshot", self.path, e)
+            conn = sqlite3.connect(f"{uri}&immutable=1", uri=True, check_same_thread=False)
+            conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            return conn
+
+    def _has_schema(self) -> bool:
+        names = {r[0] for r in self.conn.execute("SELECT name FROM sqlite_master")}
+        return {"chunks", "chunks_fts", "embeddings", "meta", "chunks_ai", "chunks_ad", "chunks_au",
+                "idx_chunks_source", "idx_chunks_path", "idx_chunks_filter"} <= names
 
     def close(self):
         self.conn.close()
@@ -292,7 +337,11 @@ class Store:
                     ORDER BY score LIMIT ?""",
                 [match] + args + [limit],
             ).fetchall()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            # Only a malformed MATCH expression means "no keyword hits"; a locked/busy database
+            # or a missing table is a real error and must not look like an empty result.
+            if _is_lock_error(e) or "no such table" in str(e):
+                raise
             return []
         # bm25() is "lower is better"; flip sign so higher is better.
         return [(r["id"], -r["score"]) for r in rows]
@@ -325,6 +374,11 @@ class Store:
             "by_doc_type": by("doc_type"),
             "versions": versions,
         }
+
+
+def _is_lock_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return "locked" in msg or "busy" in msg
 
 
 def _filters(prefix: str = "", domain=None, software=None, version=None, doc_type=None, source=None):

@@ -232,15 +232,19 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 title: One line, e.g. "ORCA 6: use %maxcore per core in MB, not total".
                 mistake: What was done/assumed wrongly (include the wrong snippet).
                 correction: The correct approach (include the right snippet).
-                domain: ess | arc | hpc | project
+                domain: ess | arc | hpc | project | literature (ess requires `software`)
                 software: orca | gaussian | psi4 | molpro | pyscf | arc | slurm | pbs | ...
                 version: Version it applies to, if specific (e.g. "6", "16", "2024").
                 evidence: Manual section, URL, error message or who confirmed it.
                 tags: Extra keywords that will help retrieval.
             """
-            from .lessons import find_similar, lesson_text
+            from .lessons import check_lesson_meta, find_similar, lesson_text
             from .tools.lessons_workflow import submit_lesson
 
+            try:
+                check_lesson_meta(domain, software)
+            except ValueError as e:
+                return f"error: {e}"
             author = ctx.current_user() or os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
             with lock:
                 similar = find_similar(
