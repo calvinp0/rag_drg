@@ -21,7 +21,11 @@ DEFAULT_WALLTIME_S = 24 * 3600
 DEFAULT_MAX_CORES = 16
 MEM_SHARE = 0.9  # default memory: this fraction of the node's memory per core x cores
 _INPUT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./+-]*$")
-SUBMIT_SCHEDULERS = ("slurm", "pbs", "pbspro", "torque", "local")
+SUBMIT_SCHEDULERS = ("slurm", "pbs", "pbspro", "torque", "htcondor", "local")
+# HTCondor jobs are two files (the group's Atlas layout): a submit description and the script it runs
+CONDOR_SUBMIT_FILE = "submit.sub"
+CONDOR_JOB_FILE = "job.sh"
+CONDOR_DEFAULT_GB_PER_CORE = 2   # HTCondor default memory: pools may hold jobs that use far less than requested
 
 
 class SubmitError(ValueError):
@@ -225,6 +229,11 @@ def _header(server: Server, part: Partition, sw: SoftwareInstall, name: str, cor
         nodes = f"nodes=1:ppn={cores}" + (f":gpus={gpus}" if gpus else "")
         return [f"#PBS -N {name}", f"#PBS -q {part.name}", f"#PBS -l {nodes}",
                 f"#PBS -l mem={_mem_str(mem_gb, 'gb', 'mb')}", f"#PBS -l walltime={wall}", "#PBS -j oe"]
+    if s == "htcondor":
+        return [f"# HTCondor job script, run by {CONDOR_SUBMIT_FILE} ({cores} cores, {mem_gb:g} GB requested there);",
+                f"# submit with: chmod u+x {CONDOR_JOB_FILE} && condor_submit {CONDOR_SUBMIT_FILE}",
+                f"# expected run time {wall}; HTCondor has no walltime request, and the pool holds jobs running",
+                f"# longer than {format_walltime(part.max_walltime_seconds)} ({part.name} in servers.yaml)"]
     return [f"# local run (no scheduler): {cores} cores, {mem_gb:g} GB, walltime not enforced"]
 
 
@@ -233,6 +242,8 @@ def _job_vars(scheduler: str) -> tuple[str, str]:
         return '"$SLURM_SUBMIT_DIR"', '"$SLURM_JOB_ID"'
     if scheduler in PBS_FAMILY:
         return '"$PBS_O_WORKDIR"', '"${PBS_JOBID%%.*}"'
+    if scheduler == "htcondor":  # CONDOR_JOBID comes from the submit file's environment line
+        return '"${_CONDOR_JOB_IWD:-$PWD}"', '"${CONDOR_JOBID:-$$}"'
     return '"$PWD"', '"$$"'
 
 
@@ -336,7 +347,7 @@ def _env_lines(sw: SoftwareInstall, var: str) -> list[str]:
 def _scratch_and_run(server: Server, body: list[str], cleanup: list[str]) -> list[str]:
     return ["", "# --- per-job scratch" + (" (node-local)" if server.scratch.node_local else "") + " ---",
             _scratch_line(server), 'mkdir -p "$SCRATCH"', "",
-            "# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up",
+            "# on exit, also after a walltime kill or scancel/qdel/condor_rm (SIGTERM): copy back and clean up",
             "cleanup() {", *("    " + c for c in cleanup), "}",
             "trap cleanup EXIT",
             "trap 'exit 143' TERM INT",
@@ -348,6 +359,65 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
                          walltime: str | int | float | None = None, partition: str | None = None,
                          gpus: int = 0, *, user: str | None = None,
                          groups: list[str] | None = None) -> tuple[str, list[str]]:
+    """A ready-to-run submit script for `software_key` on `server`, plus notes (see _render).
+    For HTCondor this is the job script only; render_submit_files() also gives the submit file."""
+    script, notes, _meta = _render(server, software_key, input_file, job_name, cores, mem_gb, walltime,
+                                   partition, gpus, user=user, groups=groups)
+    return script, notes
+
+
+def render_submit_files(server: Server, software_key: str, input_file: str, job_name: str | None = None,
+                        cores: int | None = None, mem_gb: float | None = None,
+                        walltime: str | int | float | None = None, partition: str | None = None,
+                        gpus: int = 0, *, user: str | None = None,
+                        groups: list[str] | None = None) -> tuple[dict[str, str], list[str], dict]:
+    """Every file the job needs, as ({file name: text}, notes, meta).
+
+    One script (`<input stem>.sh`) for Slurm/PBS/Torque/local; for HTCondor the group's pair
+    `submit.sub` (requests) + `job.sh` (the script it runs). The first file is the one to edit or
+    inspect first; meta = {cores, mem_gb, walltime, partition, main, submit_command}."""
+    script, notes, meta = _render(server, software_key, input_file, job_name, cores, mem_gb, walltime,
+                                  partition, gpus, user=user, groups=groups)
+    if server.scheduler != "htcondor":
+        name = f"{PurePosixPath(input_file).stem}.sh"
+        meta.update(main=name, submit_command=f"{meta['submit_command']} {name}")
+        return {name: script}, notes, meta
+    sub = condor_submit_description(server, software_key, meta["name"], meta["cores"], meta["mem_gb"],
+                                    meta["gpus"], meta["partition"], meta["max_walltime"])
+    meta.update(main=CONDOR_SUBMIT_FILE,
+                submit_command=f"chmod u+x {CONDOR_JOB_FILE} && condor_submit {CONDOR_SUBMIT_FILE}")
+    return {CONDOR_SUBMIT_FILE: sub, CONDOR_JOB_FILE: script}, notes, meta
+
+
+def condor_submit_description(server: Server, software_key: str, name: str, cores: int, mem_gb: float,
+                              gpus: int, partition: str, max_walltime: str) -> str:
+    """HTCondor submit description in the group's Atlas layout (DRGScripts .arc/submit.py):
+    vanilla universe, shared file system (no transfer), job.sh as the executable."""
+    mb = int(math.ceil(mem_gb * 1024))
+    lines = [f"# {software_key} on {server.name} (HTCondor); generated by rag-drg from servers.yaml.",
+             f"# Submit: chmod u+x {CONDOR_JOB_FILE} && condor_submit {CONDOR_SUBMIT_FILE}",
+             f"# The pool holds jobs running longer than {max_walltime} ({partition} in servers.yaml).",
+             "universe              = vanilla",
+             f"executable            = {CONDOR_JOB_FILE}",
+             f'+JobName              = "{name}"',
+             "log                   = job.log",
+             "output                = out.txt",
+             "error                 = err.txt",
+             "getenv                = True",
+             'environment           = "CONDOR_JOBID=$(Cluster).$(Process)"',
+             "should_transfer_files = NO",
+             f"request_cpus          = {cores}",
+             f"request_memory        = {mb}MB"]
+    if gpus:
+        lines.append(f"request_gpus          = {gpus}")
+    lines += ["queue", ""]
+    return "\n".join(lines)
+
+
+def _render(server: Server, software_key: str, input_file: str, job_name: str | None,
+            cores: int | None, mem_gb: float | None, walltime: str | int | float | None,
+            partition: str | None, gpus: int, *, user: str | None,
+            groups: list[str] | None) -> tuple[str, list[str], dict]:
     """A ready-to-run submit script for `software_key` on `server`, plus notes.
 
     Defaults: the software's allowed/default partition, min(16, cores per node) cores,
@@ -395,7 +465,14 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
     if cores is None:
         cores = min(DEFAULT_MAX_CORES, part.cores_per_node)
         notes.append(f"cores: {cores} (default)")
-    if mem_gb is None:
+    if mem_gb is None and server.scheduler == "htcondor":
+        # HTCondor pools (e.g. Atlas) hold jobs that use far less memory than they request, so the
+        # default is modest instead of the node share; set mem_gb to the job's real need
+        share = int(part.mem_per_node_gb * min(int(cores), part.cores_per_node) / part.cores_per_node * MEM_SHARE)
+        mem_gb = max(1, min(share, CONDOR_DEFAULT_GB_PER_CORE * int(cores)))
+        notes.append(f"memory: {mem_gb} GB (default: {CONDOR_DEFAULT_GB_PER_CORE} GB per core on HTCondor; "
+                     "request close to the real need)")
+    elif mem_gb is None:
         mem_gb = max(1, int(part.mem_per_node_gb * min(int(cores), part.cores_per_node) / part.cores_per_node * MEM_SHARE))
         notes.append(f"memory: {mem_gb} GB (default: ~90% of this core count's share of the node)")
     if walltime is None:
@@ -435,9 +512,21 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
         notes.append(f"{p['severity']}: {p['message']}")
     if not server.scratch.path:
         notes.append("warning: servers.yaml has no scratch path for this server; using ${TMPDIR:-/tmp}")
-    submit_cmd = {"slurm": "sbatch", "local": "bash"}.get(server.scheduler, "qsub")
-    notes.append(f"submit with: {submit_cmd} <this script>.sh")
-    return script, notes
+    if server.scheduler == "htcondor":
+        submit_cmd = f"chmod u+x {CONDOR_JOB_FILE} && condor_submit {CONDOR_SUBMIT_FILE}"
+        notes.append(f"HTCondor: this is {CONDOR_JOB_FILE}; the requests go in {CONDOR_SUBMIT_FILE} "
+                     "(render_submit_files gives both)")
+        if mem_gb > 8:
+            notes.append(f"memory: {mem_gb:g} GB requested; some pools (Atlas) hold jobs that request > 8 GB but use "
+                         "< 20% of it after the first hour - request close to the real need")
+        notes.append(f"submit with: {submit_cmd}")
+    else:
+        submit_cmd = {"slurm": "sbatch", "local": "bash"}.get(server.scheduler, "qsub")
+        notes.append(f"submit with: {submit_cmd} <this script>.sh")
+    meta = {"name": name, "cores": cores, "mem_gb": mem_gb, "walltime": wall, "partition": part.name,
+            "max_walltime": format_walltime(part.max_walltime_seconds),
+            "gpus": gpus, "submit_command": submit_cmd}
+    return script, notes, meta
 
 
 # ----------------------------------------------------------------- ARC submit_scripts templates

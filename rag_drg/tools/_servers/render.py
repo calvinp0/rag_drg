@@ -9,7 +9,8 @@ import yaml
 
 from .access import queue_access
 from .model import Server, format_walltime
-from .submit import SUBMIT_SCHEDULERS, SubmitError, _is_gpu_build, render_arc_template, render_submit_script
+from .submit import (SUBMIT_SCHEDULERS, SubmitError, _is_gpu_build, render_arc_template, render_submit_files,
+                     render_submit_script)
 
 GENERATED_SUBDIR = Path("hpc") / "servers" / "generated"
 
@@ -471,12 +472,16 @@ def render_card(server: Server) -> str:
         req = _example_request(s, sw.key)
         inp = _EXAMPLE_INPUT.get(sw.ess, "job.in")
         try:
-            script, notes = render_submit_script(s, sw.key, inp, partition=req["partition"], gpus=req["gpus"])
+            files, notes, meta = render_submit_files(s, sw.key, inp, partition=req["partition"], gpus=req["gpus"])
         except (SubmitError, ValueError) as e:
             out += [f"Cannot render an example: {e}", ""]
             continue
-        out += [f"Input lines: {notes[0].split(': ', 1)[1]}", "", "```bash", script.rstrip(), "```", "",
-                f"Submit with `{submit} job.sh`.", ""]
+        out += [f"Input lines: {notes[0].split(': ', 1)[1]}", ""]
+        for fname, text in files.items():
+            lang = "bash" if fname.endswith(".sh") else "ini"
+            out += [f"`{fname}`:", "", f"```{lang}", text.rstrip(), "```", ""]
+        out += [f"Submit with `{meta['submit_command']}`." if s.scheduler == "htcondor"
+                else f"Submit with `{submit} job.sh`.", ""]
     return "\n".join(out).rstrip() + "\n"
 
 
