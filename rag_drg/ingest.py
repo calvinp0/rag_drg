@@ -23,6 +23,13 @@ MAX_TEXT_BYTES = 3_000_000
 URL_MAP = "_urls.json"
 USER_AGENT = "rag-drg/0.1 (research group documentation indexer)"
 
+# Extension point for plugins (rag_drg/tools/*): fetchers for extra source types, e.g.
+# FETCHERS["zotero"] = fn(src, cfg). A plugin source's cache dir (sources_cache/<name>) is then
+# indexed like a local folder; bookkeeping files it keeps there go in IGNORED_FILES.
+FETCHERS: dict[str, Callable[[SourceConfig, Config], None]] = {}
+IGNORED_FILES: set[str] = {URL_MAP}
+_plugins_loaded = False
+
 
 # --------------------------------------------------------------------------- #
 # Fetch
@@ -33,8 +40,32 @@ def _git(*args: str, cwd: Path | None = None):
     subprocess.run(["git", *args], cwd=cwd, check=True)
 
 
-def fetch_source(src: SourceConfig) -> None:
+def _plugin_fetcher(src: SourceConfig) -> Callable[[SourceConfig, Config], None] | None:
+    global _plugins_loaded
+    if src.type not in FETCHERS and not _plugins_loaded:
+        _plugins_loaded = True
+        from .plugins import plugin_modules
+
+        plugin_modules()  # importing a plugin registers its fetchers
+    return FETCHERS.get(src.type)
+
+
+def _config_for(src: SourceConfig) -> Config:
+    """For callers that don't pass `cfg`: the default config, if it defines this very source."""
+    from .config import load_config
+
+    cfg = load_config()
+    if any(s.name == src.name and s.path == src.path for s in cfg.sources):
+        return cfg
+    raise ValueError(f"source '{src.name}' (type '{src.type}') needs the config: call fetch_source(src, cfg)")
+
+
+def fetch_source(src: SourceConfig, cfg: Config | None = None) -> None:
     if src.type == "local":
+        return
+    fetcher = _plugin_fetcher(src) if src.type not in ("git", "url") else None
+    if fetcher is not None:
+        fetcher(src, cfg if cfg is not None else _config_for(src))
         return
     assert src.path is not None
     if src.type == "git":
@@ -143,7 +174,7 @@ def iter_files(src: SourceConfig) -> Iterator[tuple[Path, str]]:
         yield root, root.name
         return
     for p in sorted(root.rglob("*")):
-        if not p.is_file() or ".git" in p.parts or p.name == URL_MAP:
+        if not p.is_file() or ".git" in p.parts or p.name in IGNORED_FILES:
             continue
         if p.name.startswith("."):
             continue
@@ -358,7 +389,7 @@ def ingest(
             if fetch:
                 progress(f"[{src.name}] fetching ...")
                 try:
-                    fetch_source(src)
+                    fetch_source(src, cfg)
                 except Exception as e:  # noqa: BLE001
                     progress(f"[{src.name}] fetch failed: {e}")
             if src.path is None or not src.path.exists():
