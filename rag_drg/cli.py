@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("query", nargs="+")
     p.add_argument("--k", type=int, default=6)
     p.add_argument("--json", action="store_true", help="machine-readable output (for non-MCP agents)")
+    p.add_argument("--max-tokens", type=int, help="compact output within ~N tokens (for small local models)")
     _add_filters(p)
 
     p = sub.add_parser("serve", help="run the MCP server")
@@ -128,17 +129,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "search":
-        from .search import Searcher, format_hits
+        from .search import Searcher, format_hits, make_reranker
 
         searcher = Searcher(cfg)
+        query = " ".join(args.query)
         hits = searcher.search(
-            " ".join(args.query), k=args.k, domain=args.domain, software=args.software,
-            version=args.version, doc_type=args.doc_type,
+            query, k=args.k, domain=args.domain, software=args.software,
+            version=args.version, doc_type=args.doc_type, rerank=make_reranker(cfg),
         )
         if args.json:
             print(json.dumps([h.to_dict() for h in hits], indent=2, default=str))
         else:
-            print(format_hits(hits))
+            print(format_hits(hits, query=query, max_tokens=args.max_tokens))
         return 0
 
     if args.cmd == "serve":

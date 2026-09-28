@@ -14,6 +14,8 @@ Type=simple
 User=<service-user>
 WorkingDirectory=/opt/rag_drg
 Environment=RAG_DRG_CONFIG=/opt/rag_drg/rag_drg.yaml
+# Secrets (GITHUB_TOKEN for lesson PRs, ...), mode 600; see docs/lessons.md and docs/zotero.md
+EnvironmentFile=-/etc/rag-drg/secrets.env
 # Token hashes live in index/tokens.yaml by default (git-ignored). To keep them elsewhere, set
 #   auth: {tokens_file: /etc/rag-drg/tokens.yaml}
 # in rag_drg.yaml or conf.d/, readable and writable (last_used) by <service-user> only.

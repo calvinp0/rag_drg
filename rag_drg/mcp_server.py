@@ -7,7 +7,8 @@ Run locally over stdio (one process per agent session)::
 or once for the whole group over HTTP (recommended: one writer, shared lessons)::
 
     rag-drg serve --transport http --host 0.0.0.0 --port 8765
-    claude mcp add --transport http rag-drg http://<host>:8765/mcp
+    claude mcp add --transport http rag-drg http://<host>:8765/mcp \
+        --header "Authorization: Bearer $RAG_DRG_TOKEN"      # token from `rag-drg tokens add <name>`
 """
 
 from __future__ import annotations
