@@ -1,0 +1,82 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/opt/iC3H7.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-5, 56-90, 2095-2110, 2780-2801
+ Entering Gaussian System, Link 0=/Local/ce_dana/g09/g09
+ Initial command:
+ /Local/ce_dana/g09/l1.exe "/storage/ce_dana/alongd/scratch/g09/Gau-85583.inp" -scrdir="/storage/ce_dana/alongd/scratch/g09/"
+ Entering Link 1 = /Local/ce_dana/g09/l1.exe PID=     85584.
+  
+ [... 50 lines omitted ...]
+ Cite this work as:
+ Gaussian 09, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, B. Mennucci, 
+ G. A. Petersson, H. Nakatsuji, M. Caricato, X. Li, H. P. Hratchian, 
+ A. F. Izmaylov, J. Bloino, G. Zheng, J. L. Sonnenberg, M. Hada, 
+ M. Ehara, K. Toyota, R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima, 
+ Y. Honda, O. Kitao, H. Nakai, T. Vreven, J. A. Montgomery, Jr., 
+ J. E. Peralta, F. Ogliaro, M. Bearpark, J. J. Heyd, E. Brothers, 
+ K. N. Kudin, V. N. Staroverov, T. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. Rendell, J. C. Burant, S. S. Iyengar, J. Tomasi, 
+ M. Cossi, N. Rega, J. M. Millam, M. Klene, J. E. Knox, J. B. Cross, 
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann, 
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski, 
+ R. L. Martin, K. Morokuma, V. G. Zakrzewski, G. A. Voth, 
+ P. Salvador, J. J. Dannenberg, S. Dapprich, A. D. Daniels, 
+ O. Farkas, J. B. Foresman, J. V. Ortiz, J. Cioslowski, 
+ and D. J. Fox, Gaussian, Inc., Wallingford CT, 2013.
+ 
+ ******************************************
+ Gaussian 09:  ES64L-G09RevD.01 24-Apr-2013
+                22-May-2022 
+ ******************************************
+ %chk=check.chk
+ %mem=7168mb
+ %NProcShared=10
+ Will use up to   10 processors via shared memory.
+ ---------------------------------------------------------
+ #P opt=(calcfc) guess=mix uhf/3-21g IOp(2/9=2000) scf=xqc
+ ---------------------------------------------------------
+ 1/10=4,18=20,19=15,38=1/1,3;
+ 2/9=2000,12=2,17=6,18=5,40=1/2;
+ 3/5=5,11=2,16=1,25=1,30=1,71=2,116=2,140=1/1,2,3;
+ 4/13=-1/1;
+ 5/5=2,8=3,13=1,38=5/2,8;
+ [... 2004 lines omitted ...]
+     8  H    2.923046   2.798270   0.000000
+     9  H    3.953725   2.473003   1.755711   0.000000
+    10  H    3.269997   3.062079   1.752717   1.758174   0.000000
+ Stoichiometry    C3H7(2)
+ Framework group  CS[SG(CH),X(C2H6)]
+ Deg. of freedom    13
+ Full point group                 CS      NOp   2
+ Omega: Change in point group or standard orientation.
+
+ Old FWG=C01  [X(C3H7)]
+ New FWG=CS   [SG(C1H1),X(C2H6)]
+ RotChk:  IX=0 Diff= 2.00D+00
+ Largest Abelian subgroup         CS      NOp   2
+ Largest concise Abelian subgroup CS      NOp   2
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ [... 669 lines omitted ...]
+ (Enter /Local/ce_dana/g09/l9999.exe)
+
+ Test job not archived.
+ 1\1\GINC-TECH-WN190\FOpt\UHF\3-21G\C3H7(2)\ALONGD\22-May-2022\0\\#P op
+ t=(calcfc) guess=mix uhf/3-21g IOp(2/9=2000) scf=xqc\\iC3H7\\0,2\C,1.3
+ 066543126,0.1510384371,0.3273021923\C,-0.036303004,-0.1582876719,0.938
+ 7869134\C,-1.2780502555,0.4670122534,0.3555251136\H,1.4379398887,1.222
+ 8480754,0.2096079708\H,2.1182949849,-0.2249335342,0.9391419646\H,1.401
+ 7096759,-0.2973272664,-0.662040757\H,-0.1362804025,-1.0313731255,1.557
+ 4367043\H,-1.4995657932,0.0573465689,-0.6303611328\H,-2.1429970279,0.2
+ 959989996,0.9856718894\H,-1.1498080249,1.5391939333,0.237864123\\Versi
+ on=ES64L-G09RevD.01\State=2-A'\HF=-116.9860891\S2=0.764601\S2-1=0.\S2A
+ =0.750171\RMSD=3.801e-09\RMSF=3.795e-06\Dipole=-0.006194,-0.0433764,-0
+ .0816351\Quadrupole=0.2023228,0.1237288,-0.3260517,-0.0146571,-0.05899
+ 04,-0.4351362\PG=CS [SG(C1H1),X(C2H6)]\\@
+
+
+ MY GROUP MEETINGS AREN'T VERY STRUCTURED.
+     -- PROF. M. S. GORDON, OCT. 5, 1984
+ Job cpu time:       0 days  0 hours  0 minutes 25.5 seconds.
+ File lengths (MBytes):  RWF=      8 Int=      0 D2E=      0 Chk=      1 Scr=      1
+ Normal termination of Gaussian 09 at Sun May 22 09:08:36 2022.

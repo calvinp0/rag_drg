@@ -1,0 +1,32 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/trsh/molpro/insufficient_memory_3.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-10, 600-619
+
+ Working directory              : /gtmp/calvin.p/scratch/molpro/313795.zeus-master/molpro.1zPAnXaz57/
+ Global scratch directory       : /gtmp/calvin.p/scratch/molpro/313795.zeus-master/molpro.1zPAnXaz57/
+ Wavefunction directory         : /home/calvin.p/wfu/
+ Main file repository           : /gtmp/calvin.p/scratch/molpro/313795.zeus-master/molpro.1zPAnXaz57/
+
+ id        : dana
+
+ Nodes     nprocs
+ n035         1
+ [... 589 lines omitted ...]
+                                         Alpha-Beta:  -0.99810052
+                                         Alpha-Alpha: -0.14218988
+                                         Beta-Beta:   -0.13095068
+
+ Singles amplitudes (print threshold =  0.500E-01):
+
+         I         SYM. A    A   T(IA) [Beta-Beta]
+
+         9         1         1      0.05345027
+        19         1         1     -0.06842190
+
+ Spin contamination <S**2-Sz**2-Sz>     0.00044860
+
+ For minimal I/O algorithm in triples, increase memory by 522.58 Mwords to 1522.63 Mwords.
+
+ For full I/O caching in triples, increase memory by 3136.12 Mwords to 4136.17 Mwords.
+
+ A further 111.29 Mwords of memory are needed for the triples to run. Increase memory to 1111.34 Mwords.
+
+ GLOBAL ERROR fehler on processor   0                                         

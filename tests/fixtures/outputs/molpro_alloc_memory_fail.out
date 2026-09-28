@@ -1,0 +1,30 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/trsh/molpro/insufficient_memory_2.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-10, 495-512
+Nodes     nprocs
+ c-16-9-3     8
+ GA implementation: MPI file
+ GA implementation (serial work in mppx): MPI file
+
+ Using customized tuning parameters: mindgm=1; mindgv=20; mindgc=4; mindgr=1; noblas=0; minvec=7
+ default implementation of scratch files=sf  
+
+
+ Variables initialized (1013), CPU time= 0.01 sec
+ [... 484 lines omitted ...]
+                          double       43376           3866C3B0       598     1  1:598
+                          double       43406           3866C2C0        30     1  1:30
+                          double       43436           3866C1D0        30     1  1:30
+                          double      401040           383B1AB0    357604     1  1:357604
+                          double      758644           380F7390    357604     1  1:357604
+                          double      759544           380F5770       900     1  1:900
+                          double      760444           380F3B50       900     1  1:900
+                          double      767884           380E52D0      7440     1  1:7440
+                          double      767944           380E50F0        60     1  1:60
+                          integer     767984           380E4FB0        40     1  1:40
+                          integer     768384           380E4330       400     1  1:400
+                          double      768784           380E36B0       400     1  1:400
+ = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+ ? Error
+ ? Insufficient memory to allocate a new array of length 321843600 8-byte words
+ ? The problem occurs in memory
+
+ GLOBAL ERROR fehler on processor   0                                         

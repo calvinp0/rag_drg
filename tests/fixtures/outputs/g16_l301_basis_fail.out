@@ -1,0 +1,60 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/trsh/gaussian/atomic_number_out_of_range.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-5, 56-90, 165-181
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /opt/g16/l1.exe "/scratch/alongd/g16/a29874-21243/Gau-34180.inp" -scrdir="/scratch/alongd/g16/a29874-21243/"
+ Entering Link 1 = /opt/g16/l1.exe PID=     34182.
+  
+ [... 50 lines omitted ...]
+ Cite this work as:
+ Gaussian 16, Revision B.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2016.
+ 
+ ******************************************
+ Gaussian 16:  ES64L-G16RevB.01 20-Dec-2017
+                 5-Nov-2019 
+ ******************************************
+ %chk=check.chk
+ %mem=14000mb
+ %NProcShared=8
+ Will use up to    8 processors via shared memory.
+ -----------------------------------------------------
+ #P opt guess=mix b3lyp/6-311g** scf=xqc iop(2/9=2000)
+ -----------------------------------------------------
+ 1/18=20,19=15,26=3,38=1/1,3;
+ 2/9=2000,12=2,17=6,18=5,40=1/2;
+ 3/5=4,6=6,7=101,11=2,25=1,30=1,71=1,74=-5/1,2,3;
+ 4/13=-1/1;
+ 5/5=2,8=3,13=1,38=5/2,8;
+ [... 74 lines omitted ...]
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1         53           0        0.000000    0.000000    0.031771
+      2          1           0        0.000000    0.000000   -1.683860
+ ---------------------------------------------------------------------
+ Rotational constants (GHZ):           0.0000000         171.7195643         171.7195643
+ Leave Link  202 at Tue Nov  5 09:44:38 2019, MaxMem=  1835008000 cpu:               0.1 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: 6-311G(d,p) (5D, 7F)
+ Atomic number out of range for 6-311G basis.
+ Error termination via Lnk1e in /opt/g16/l301.exe at Tue Nov  5 09:44:38 2019.
+ Job cpu time:       0 days  0 hours  0 minutes  6.2 seconds.
+ Elapsed time:       0 days  0 hours  0 minutes  0.8 seconds.
+ File lengths (MBytes):  RWF=      6 Int=      0 D2E=      0 Chk=      1 Scr=      1
