@@ -297,6 +297,7 @@ def test_wrong_key_is_a_clear_error(zot, monkeypatch):
 
 
 def test_fetch_hook_and_ingest_metadata(zot):
+    pytest.importorskip("pypdf")  # the synced PDF is indexed through the optional `pdf` extra
     _, make_cfg = zot
     cfg = make_cfg()
     assert FETCHERS["zotero"] is zplugin._fetch

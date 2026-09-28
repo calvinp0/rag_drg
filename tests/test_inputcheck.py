@@ -6,6 +6,13 @@ from pathlib import Path
 
 import pytest
 
+try:
+    import basis_set_exchange  # noqa: F401
+
+    HAVE_BSE = True
+except ImportError:  # optional `chem` extra
+    HAVE_BSE = False
+
 from rag_drg.config import load_config
 from rag_drg.tools import inputcheck
 from rag_drg.tools.inputcheck import (EXTRA_CHECKS, Finding, ParsedInput, check_input, detect_program, hook_main,
@@ -76,7 +83,9 @@ def test_detection():
 def test_parsed_fields(cfg):
     inp, _ = parse_input((VALID / "orca_ts.inp").read_text(), "orca_ts.inp")
     assert (inp.program, inp.charge, inp.multiplicity, inp.nprocs, inp.memory_per_core_mb) == ("orca", 0, 2, 16, 3000)
-    assert inp.basis == "def2-TZVP" and inp.method == "wB97X-D3" and inp.job_type == "ts" and len(inp.atoms) == 7
+    assert inp.method == "wB97X-D3" and inp.job_type == "ts" and len(inp.atoms) == 7
+    if HAVE_BSE:  # ORCA's `!` line: telling the basis from other keywords uses the BSE name list
+        assert inp.basis == "def2-TZVP"
     inp, _ = parse_input((VALID / "g16_opt.gjf").read_text(), "g16_opt.gjf")
     assert (inp.method, inp.basis, inp.nprocs, inp.memory_total_mb) == ("wB97XD", "Def2TZVP", 16, 56 * 1024)
     inp, _ = parse_input((VALID / "molpro_ccsdt.com").read_text(), "m.com")
@@ -129,6 +138,7 @@ def test_bohr_units_scale_distances(cfg):
     assert "close-atoms" in codes(run(g, "h2.gjf", cfg))
 
 
+@pytest.mark.skipif(not HAVE_BSE, reason="needs the chem extra (basis_set_exchange)")
 def test_basis_coverage(cfg):
     g = "%mem=1GB\n#P B3LYP/6-31G(d)\n\nmei\n\n0 1\nC 0 0 0\nI 2.14 0 0\nH -0.36 1.03 0\nH -0.36 -0.51 0.89\n" \
         "H -0.36 -0.51 -0.89\n\n"
