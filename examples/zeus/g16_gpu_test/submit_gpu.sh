@@ -25,8 +25,8 @@ echo "allowed cores: $(awk '/Cpus_allowed_list/{print $2}' /proc/self/status)"
 echo "g16: $(command -v g16)   g16root=${g16root:-unset}"
 nvidia-smi -L
 
-# Gaussian pins itself to the core numbers it is given, so take them from the cores this job
-# may use (the PBS cpuset) instead of assuming 0-3; the first core drives the GPU.
+# Gaussian pins itself to the core numbers in %CPU, so take them from the cores this job may
+# use (the PBS cpuset) instead of assuming 0-3; the first core controls the GPU (%GPUCPU).
 expand() {  # "0-3,8,10-11" -> "0 1 2 3 8 10 11"
     local p i out=()
     IFS=',' read -ra parts <<< "$1"
@@ -38,10 +38,14 @@ expand() {  # "0-3,8,10-11" -> "0 1 2 3 8 10 11"
 }
 read -ra ALLOWED <<< "$(expand "$(awk '/Cpus_allowed_list/{print $2}' /proc/self/status)")"
 CPUS=("${ALLOWED[@]:0:$NCPU}")
-export GAUSS_CDEF=$(IFS=,; echo "${CPUS[*]}")   # same as %CPU=
+CPU_LINE="%CPU=$(IFS=,; echo "${CPUS[*]}")"
 # GPU numbers are CUDA's: with CUDA_VISIBLE_DEVICES set, the job's first GPU is 0.
-export GAUSS_GDEF="0=${CPUS[0]}"                 # same as %GPUCPU=
-echo "GAUSS_CDEF=$GAUSS_CDEF   GAUSS_GDEF=$GAUSS_GDEF"
+GPU_LINE="%GPUCPU=0=${CPUS[0]}"
+echo "$CPU_LINE   $GPU_LINE"
+
+# Gaussian uses no GPU unless told: put %CPU / %GPUCPU at the top of the input (they then
+# appear at the top of the .log too). The .gjf in this directory stays unchanged.
+{ echo "$CPU_LINE"; echo "$GPU_LINE"; cat "$INPUT.gjf"; } > "$INPUT.run.gjf"
 
 # --- GPU utilization every 15 s, to show the GPU really works --------------------------
 nvidia-smi --query-gpu=timestamp,index,uuid,utilization.gpu,memory.used --format=csv -l 15 > gpu_usage.csv &
@@ -56,7 +60,7 @@ trap cleanup EXIT
 trap 'exit 143' TERM INT
 
 touch initial_time_gpu
-{ time g16 < "$INPUT.gjf" > "$INPUT.log" ; } 2> time_gpu.txt
+{ time g16 < "$INPUT.run.gjf" > "$INPUT.log" ; } 2> time_gpu.txt
 touch final_time_gpu
 
 echo "--- summary ---"
