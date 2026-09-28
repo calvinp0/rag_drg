@@ -68,7 +68,8 @@ sources:
   # ---------------------------------------------------------- group scripts
   # The group's working cluster setup: ARC runner + ~/.arc/settings.py and submit.py per ESS,
   # RMG / T3 submit scripts and the .bashrc they rely on (DanaResearchGroup/DRGScripts, public).
-  # These are what actually runs on zeus; servers.yaml mirrors them.
+  # Templates, and they can go stale: where they disagree with the cluster (servers.yaml / the
+  # cluster cards, confirmed by the group), the cluster wins.
   - name: drgscripts
     type: git
     url: https://github.com/DanaResearchGroup/DRGScripts.git
