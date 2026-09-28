@@ -219,11 +219,18 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 evidence: Manual section, URL, error message or who confirmed it.
                 tags: Extra keywords that will help retrieval.
             """
-            author = os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
+            from .lessons import find_similar, lesson_text
+            from .tools.lessons_workflow import submit_lesson
+
+            author = ctx.current_user() or os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
             with lock:
+                similar = find_similar(
+                    cfg, searcher, lesson_text(title, mistake, correction), software=software, domain=domain,
+                )
                 path = write_lesson(
                     cfg, title=title, mistake=mistake, correction=correction, domain=domain,
                     software=software, version=version, evidence=evidence, tags=tags, author=author,
+                    similar=[s.path for s in similar],
                 )
                 index_lesson(cfg, store, path)
                 try:
@@ -231,12 +238,21 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 except Exception:  # noqa: BLE001 - keyword search still finds it
                     pass
             rel = path.relative_to(cfg.root) if path.is_relative_to(cfg.root) else path
+            # Git/GitHub work happens outside the index lock and never raises.
+            pr = submit_lesson(cfg, path, author=author)
             ctx.emit({"tool": "record_lesson", "args": {"title": title, "domain": domain, "software": software},
-                      "path": str(rel), "n_results": 1})
-            return (
-                f"Lesson saved to {rel} (status: unreviewed) and indexed. "
-                "Ask the user to commit it and open a PR so the group can review it."
-            )
+                      "path": str(rel), "n_results": 1, "similar": [s.path for s in similar],
+                      "pr": pr.pr_url if pr else None, "pr_error": pr.error if pr else None})
+            out = f"Lesson saved to {rel} (status: unreviewed) and indexed."
+            if similar:
+                out += "\npossibly duplicates: " + ", ".join(f"{s.path} ({s.score:.2f})" for s in similar)
+                out += ("\nIf one of these already says the same thing, tell the user; the reviewer can merge them "
+                        "(they are listed in the lesson's `similar:` front matter).")
+            if pr is None:
+                out += "\nAsk the user to commit it and open a PR so the group can review it."
+            else:
+                out += "\n" + pr.summary()
+            return out
 
     for mod in plugin_modules():
         if hasattr(mod, "register_mcp"):
