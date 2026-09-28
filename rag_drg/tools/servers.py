@@ -2,7 +2,7 @@
 
 Spec: docs/servers-spec.md; usage: docs/servers.md.
 
-    rag-drg servers [--file F] list | show NAME | render-cards [--out DIR] | arc-settings [NAME ...]
+    rag-drg servers [--file F] list | show NAME | render-cards [--out DIR] | arc-settings [NAME ...] [--local N|--no-local]
     rag-drg servers submit SERVER SOFTWARE INPUT [--cores N --mem GB --time T --partition P --gpus G -o FILE]
     rag-drg servers check SERVER [PARTITION] --cores N --mem GB --time T [--gpus G --software KEY]
     rag-drg servers query SERVER {jobs,job,history,partitions,quota,fairshare,queue_access} [JOB_ID]
@@ -49,7 +49,8 @@ from ._servers.model import (
     load_servers,
     servers_path,
 )
-from ._servers.render import access_text, arc_settings, generated_dir, render_card, render_cards
+from ._servers.arc_runner import render_arc_runner_script
+from ._servers.render import access_text, arc_settings, arc_settings_parts, generated_dir, render_card, render_cards
 from ._servers.submit import SubmitError, check_resources, render_submit_script
 
 __all__ = [
@@ -57,7 +58,7 @@ __all__ = [
     "identity_for",
     "live_queue_access", "local_identity", "local_identity_allowed", "queue_access",
     "Partition", "Scratch", "Server", "ServersConfigError", "SoftwareInstall", "Storage", "SubmitError",
-    "arc_settings", "check_file", "check_resources", "cluster_query", "load_servers", "render_card",
+    "arc_settings", "arc_settings_parts", "check_file", "render_arc_runner_script", "check_resources", "cluster_query", "load_servers", "render_card",
     "render_cards", "render_submit_script",
 ]
 
@@ -184,6 +185,9 @@ def register_cli(subparsers):
 
     q = ssub.add_parser("arc-settings", help="print ARC `servers` + `global_ess_settings` for ~/.arc/settings.py")
     q.add_argument("names", nargs="*", help="clusters to include (default: all)")
+    q.add_argument("--local", help="the cluster ARC itself runs on, emitted as ARC's 'local' server "
+                                   "(default: the one selected cluster with an arc.runner block)")
+    q.add_argument("--no-local", action="store_true", help="treat every cluster as remote (ARC on your workstation)")
 
     q = ssub.add_parser("submit", help="print a ready-to-run submit script (notes go to stderr)")
     q.add_argument("server")
@@ -275,7 +279,8 @@ def _cli(args: argparse.Namespace, cfg) -> int:
         return 0
     if cmd == "arc-settings":
         try:
-            print(arc_settings(servers, args.names or None), end="")
+            local = None if args.no_local else (args.local or "auto")
+            print(arc_settings(servers, args.names or None, local=local), end="")
         except KeyError as e:
             print(e.args[0], file=sys.stderr)
             return 1
