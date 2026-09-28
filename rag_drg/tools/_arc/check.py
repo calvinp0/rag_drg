@@ -33,7 +33,18 @@ YEAR_SUFFIX = re.compile(r"^(?P<base>.*[a-z].*?)[-_]?(?P<year>(19|20)\d\d)$")
 
 class ArcYamlLoader(yaml.SafeLoader):
     """Like ARC's ARCYAMLLoader (arc/common.py): only true/false are booleans; yes/no/on/off stay
-    strings (so a bare `NO` label is the string "NO"). Safe: no python/* object tags except tuples."""
+    strings (so a bare `NO` label is the string "NO"). Safe: no python/* object tags except tuples.
+
+    Aliases (``*name``) are refused: ARC inputs don't need them, and nested aliases expand
+    exponentially (a few hundred bytes can take minutes and gigabytes to walk)."""
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            event = self.peek_event()
+            raise yaml.composer.ComposerError(
+                None, None, f"YAML aliases (*{event.anchor}) are not supported in ARC input files; "
+                "write the value out", event.start_mark)
+        return super().compose_node(parent, index)
 
 
 ArcYamlLoader.yaml_implicit_resolvers = {

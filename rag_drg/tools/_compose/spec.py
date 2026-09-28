@@ -47,16 +47,21 @@ class Spec:
 
 
 SPEC_KEYS = tuple(f.name for f in fields(Spec))
+ATOMIC_KEYS = frozenset({"molecule"})
 
 
 def deep_merge(base, over):
     """`over` wins; dicts are merged recursively, everything else is replaced. An explicit None
-    (YAML `null`) in `over` removes the key, so a step can switch off e.g. a protocol's dispersion."""
+    (YAML `null`) in `over` removes the key, so a step can switch off e.g. a protocol's dispersion.
+    Keys in ATOMIC_KEYS (`molecule`) are replaced whole: its forms (xyz / xyz_file / smiles) are
+    alternatives, so merging them would mix two molecules."""
     if isinstance(base, dict) and isinstance(over, dict):
         out = copy.deepcopy(base)
         for k, v in over.items():
             if v is None:
                 out.pop(k, None)
+            elif k in ATOMIC_KEYS:
+                out[k] = copy.deepcopy(v)
             else:
                 out[k] = deep_merge(out.get(k), v)
         return out
@@ -70,9 +75,13 @@ def apply_protocol(spec: dict, protocol: dict | None, step: str | None) -> tuple
     Returns (merged dict, notes)."""
     notes: list[str] = []
     if not protocol:
+        if step is not None and not isinstance(step, str):
+            raise ComposeError(f"step must be a string (a protocol step name), got {type(step).__name__}")
         if step:
             raise ComposeError(f"--step {step!r} given without a protocol")
         return dict(spec), notes
+    if step is not None and not isinstance(step, str):
+        raise ComposeError(f"step must be a string (a protocol step name), got {type(step).__name__}")
     if not isinstance(protocol, dict):
         raise ComposeError("a protocol must be a mapping (YAML dict)")
     base = {k: v for k, v in protocol.items() if k not in ("steps", "description", "protocol")}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -67,6 +68,8 @@ def parse_xyz_text(text: str) -> list[tuple[str, float, float, float]]:
             x, y, z = (float(t) for t in tok[1:4])
         except ValueError:
             raise ComposeError(f"cannot read coordinates in xyz line {r.strip()!r}") from None
+        if not all(math.isfinite(c) for c in (x, y, z)):
+            raise ComposeError(f"coordinates must be finite numbers in xyz line {r.strip()!r}")
         atoms.append((el, x, y, z))
     if not atoms:
         raise ComposeError("no atoms found in the xyz text")

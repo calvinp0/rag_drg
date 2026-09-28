@@ -225,6 +225,8 @@ def build_rest_app(ctx) -> Any:
         spec, protocol = data.get("spec"), data.get("protocol")
         if not isinstance(spec, dict) or (protocol is not None and not isinstance(protocol, dict)):
             return JSONResponse({"error": "need 'spec' (object) and optional 'protocol' (object)"}, status_code=400)
+        if data.get("step") is not None and not isinstance(data.get("step"), str):
+            return JSONResponse({"error": "'step' must be a string"}, status_code=400)
         from .compose_ess import compose_ess_job
 
         groups = data.get("client_groups")

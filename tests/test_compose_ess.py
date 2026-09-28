@@ -324,6 +324,7 @@ def test_standalone_no_submit_script(cfg):
     assert "%nprocshared=4" in r["input_text"] and "%mem=7GB" in r["input_text"]
 
 
+@needs_bse
 def test_unknown_server(cfg):
     s = spec("orca", "sp")
     s["resources"]["server"] = "nope"
@@ -331,6 +332,7 @@ def test_unknown_server(cfg):
     assert not r["ok"] and "unknown server" in r["errors"][0]
 
 
+@needs_bse
 def test_ambiguous_software_needs_version(cfg):
     s = spec("orca", "sp", version=None)
     r = compose_ess_job(s, cfg=cfg)
