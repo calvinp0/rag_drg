@@ -50,6 +50,9 @@ The other CPU queues below are for ESS jobs submitted by hand.
 
 ### The group's working ARC setup (DRGScripts)
 
+DRGScripts is a set of group templates and can go stale. Where it disagrees with what is on the
+cluster, the cluster wins.
+
 The group keeps its working zeus scripts in
 [DanaResearchGroup/DRGScripts](https://github.com/DanaResearchGroup/DRGScripts), under
 `Servers/Zeus/`. That repository is indexed too (source `drgscripts`); copy from it rather than

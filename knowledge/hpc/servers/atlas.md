@@ -18,6 +18,10 @@ Items marked *to fill in* are not known yet; don't guess them. Atlas is part of 
 of the ATLAS experiment computing, and **its admin is very strict**: follow the rules below exactly.
 The machine-readable version is the `atlas` entry in `servers.yaml` (card: `generated/atlas.md`).
 
+**DRGScripts can be stale.** Its Atlas files are old templates, and where they disagree with what is
+on the cluster, the cluster wins. For example, DRGScripts has `'memory': 256` where the group uses
+40, and it calls a `g16` that is not installed. Prefer the values marked confirmed here.
+
 ## Rules (from the group wiki)
 
 * **Do not install any software, and do not create conda environments.** The only exception is
@@ -83,7 +87,8 @@ The machine-readable version is the `atlas` entry in `servers.yaml` (card: `gene
 
 ### Submit descriptions
 
-The group's pattern (DRGScripts `.arc/submit.py`, `RMG/submit.sub`) is two files:
+Every ESS job is two files, created together (confirmed by the group; DRGScripts `.arc/submit.py`,
+`RMG/submit.sub`):
 1. **`submit.sub`**, which sets:
    * `universe = vanilla`, `executable = job.sh`, `should_transfer_files = no`;
    * `log` / `output` / `error` files, `+JobName = "..."`;
@@ -102,7 +107,7 @@ the scratch directory at the end.
 | Program | Install | Used by the group's scripts |
 |---|---|---|
 | Gaussian 09 | `/Local/ce_dana/g09` (readable by group `ce_dana` only): `g09root=/Local/ce_dana`, `source /Local/ce_dana/g09/bsd/g09.login` (csh), `/Local/ce_dana/g09/g09` | yes (ARC) |
-| Gaussian 16 | **not in `/Local/ce_dana`** (no `g16` directory). DRGScripts' `incore_commands` calls `g16`; *to fill in:* whether `command -v g16` finds one elsewhere | - |
+| Gaussian 16 | **not installed on Atlas** (confirmed by the group, 2026-09-28). The `g16` in DRGScripts' `incore_commands` is stale; use Gaussian 09 | - |
 | ORCA 5.0.4 | `/Local/ce_dana/orca_5_0_4_linux_x86-64_shared_openmpi411/orca`, OpenMPI 4.1.1 in `/Local/ce_dana/openmpi-4.1.1` | yes (ARC) |
 | ORCA 4.0.1.2 | `/Local/ce_dana/orca_4_0_1_2_linux_x86-64_openmpi202`, OpenMPI 2.0.2 in `/Local/ce_dana/openmpi-2.0.2` | no |
 | Molpro | `/Local/ce_dana/molpro-mpp-2020.2.1`, `-2021.2.1`, `-2022.2.3`. **Use the latest, 2022.2.3** (group rule) | ARC's job runs `molpro-mpp-2022.2.3/bin/molpro -n N -t 1 -d $MOLPRO_SCRDIR` (its submit file still puts 2021.2.1 on PATH) |
@@ -124,20 +129,30 @@ Psi4 and PySCF are not in `/Local/ce_dana`.
   * defines aliases: `arce` / `rmge` / `t3e` / `tcke` / `rmse` (activate the conda envs), `arc`,
     `rmg`, `arkane`, `t3`, `sb`, `st`, `runs`.
 * The group maintains the shared ARC and RMG clones and `arc_env`. Ask Alon for updates.
+* **Conda envs are shared; code clones are often per user.** Everyone activates the group envs
+  (`arc_env`, `rmg_env`, `t3_env` in `/Local/ce_dana/anaconda3`), and nobody creates envs. For
+  ARC, RMG-Py, RMG-database and T3, many users run their own git clone (their branch) instead of
+  the shared one in `/Local/ce_dana/Code`:
+  * The clone lives in `~/Code` (the wiki's suggestion) or in `/storage/ce_dana/<user>/Code`.
+  * The user repoints `arc_path` / `rmgpy_path` / `rmgdb_path` / `t3_path` (and `PYTHONPATH`) in
+    `~/.bash_aliases`.
+  * So never assume `$arc_path` is `/Local/ce_dana/Code/ARC/`: check the user's `echo $arc_path`.
+    This is the same per-user rule as zeus (`~/.config/rag-drg/user.yaml`).
 
 ## ARC on Atlas
 
 * **ARC runs on the head (login) node, inside a `screen` session, not as a batch job** (wiki;
   confirmed by the group). This is the opposite of zeus, where ARC runs as a PBS job on n170.
   Only the ESS jobs that ARC spawns go through HTCondor.
-* `~/.arc/settings.py` (wiki):
+* `~/.arc/settings.py` (wiki; `memory` 40 confirmed by the group):
   * `servers['local'] = {'path': '/storage/ce_dana/', 'cluster_soft': 'HTCondor', 'un': '<user>',
-    'cpus': 8, 'memory': 40}`;
+    'cpus': 8, 'memory': 40}`. Some users raise `cpus` (e.g. 10).
+  * Users also tune `default_job_settings`, e.g. `{'job_total_memory_gb': 6, 'job_cpu_cores': 6}`.
+    Keep `job_memory` close to real use (see the hold rules).
   * `global_ess_settings`: gaussian, orca and molpro all go to `local`;
   * `supported_ess = ['gaussian', 'molpro', 'orca']`.
 
-  DRGScripts' copy has `'memory': 256` and `default_job_settings = {'job_total_memory_gb': 6,
-  'job_cpu_cores': 8}`. *To fill in:* which of the two is current.
+  DRGScripts' copy has `'memory': 256`, which is stale: the group uses 40.
 * `~/.arc/submit.py`: the HTCondor templates from DRGScripts (`Servers/Atlas/.arc/submit.py`).
   Its `pipe_submit` is a Slurm template left over from another cluster and does not apply here.
 

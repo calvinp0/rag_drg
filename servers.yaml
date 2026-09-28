@@ -229,8 +229,8 @@ servers:
     user: null                        # your own Atlas user name
     arc:
       path: /storage/ce_dana/         # ARC servers['local']['path'] (wiki / DRGScripts .arc/settings.py)
-      cpus: 8                         # servers['local']['cpus'] (wiki and DRGScripts agree)
-      # memory: wiki says 40, DRGScripts 256 - not set until the group says which is current
+      cpus: 8                         # servers['local']['cpus'] (group wiki; some users raise it, e.g. 10)
+      memory_gb: 40                   # servers['local']['memory'] (group wiki; confirmed 2026-09-28; DRGScripts' 256 is stale)
     partitions:
       vanilla:                        # HTCondor has no queues; one entry for the vanilla universe
         max_walltime: "72:00:00"      # TIME_EXCEEDED: held after 72 h (120 h for HiMemUser jobs > 60 GB)
