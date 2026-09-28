@@ -2,7 +2,7 @@
 title: "zeus (Technion) - cluster card"
 domain: hpc
 software: pbs
-doc_type: card
+doc_type: reference
 status: draft
 tags: [cluster, server, zeus, gpu, gpucpu, cuda_visible_devices, drgscripts, setup.sh, opt/pbs, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
 ---
@@ -49,6 +49,9 @@ The other CPU queues below are for ESS jobs submitted by hand.
   ARC's default.
 
 ### The group's working ARC setup (DRGScripts)
+
+DRGScripts is a set of group templates and can go stale. Where it disagrees with what is on the
+cluster, the cluster wins.
 
 The group keeps its working zeus scripts in
 [DanaResearchGroup/DRGScripts](https://github.com/DanaResearchGroup/DRGScripts), under

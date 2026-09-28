@@ -217,3 +217,80 @@ servers:
         parallel: mpi
         partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
         notes: "readable only by Unix group molpro"
+
+  # Atlas: HTCondor (ATLAS-experiment computing at the Technion; strict admin: install nothing).
+  # From the group wiki, condor_status / condor_config_val and ls /Local/ce_dana on tech-ui02
+  # (2026-09-28). ARC runs on the login node inside `screen` (not as a batch job), so there is no
+  # arc.runner; the ESS jobs it spawns go through HTCondor. See knowledge/hpc/servers/atlas.md.
+  atlas:
+    description: "Atlas (HTCondor, tech-ui02). ARC runs on the login node in screen; ESS jobs via condor_submit."
+    scheduler: htcondor
+    host: tech-ui02.hep.technion.ac.il
+    user: null                        # your own Atlas user name
+    arc:
+      path: /storage/ce_dana/         # ARC servers['local']['path'] (wiki / DRGScripts .arc/settings.py)
+      cpus: 8                         # servers['local']['cpus'] (group wiki; some users raise it, e.g. 10)
+      memory_gb: 40                   # servers['local']['memory'] (group wiki; confirmed 2026-09-28; DRGScripts' 256 is stale)
+    partitions:
+      vanilla:                        # HTCondor has no queues; one entry for the vanilla universe
+        max_walltime: "72:00:00"      # TIME_EXCEEDED: held after 72 h (120 h for HiMemUser jobs > 60 GB)
+        cores_per_node: 42            # smallest machines (wn077-100, wn161-176); most have 58, some 76/154
+        mem_per_node_gb: 251          # smallest machine (wn210: 257060 MB); most have 256 GB, 5 have 1 TB
+        gpus_per_node: 0
+        max_nodes: 1
+        default: true
+        notes: >-
+          Jobs are held (then removed after 24 h) when they use more memory than requested, run past
+          72 h, or - for requests > 8 GB - use < 20% of the requested memory after the first hour.
+          Request memory close to real use.
+    scratch:
+      path: "/storage/ce_dana/$USER/scratch"   # the group's scratch area (not backed up)
+      node_local: false
+    storage:
+      - name: home
+        path: "/srv01/technion/$USER"
+        quota_gb: 10
+        backed_up: true
+        quota_command: "quota"
+        notes: "git clones (~/Code), ~/.arc, dotfiles only; never run jobs here"
+      - name: storage
+        path: "/storage/ce_dana/$USER"
+        quota_gb: 5000
+        backed_up: false
+        quota_command: "quota"
+        notes: "runs and scratch; 5 TB for group ce_dana; per-user limit of ~149,000 files"
+    software:
+      gaussian-09:
+        ess: gaussian
+        version: "09"
+        executable: /Local/ce_dana/g09/g09
+        env:
+          g09root: /Local/ce_dana
+        setup:
+          - "source $g09root/g09/bsd/g09.profile"   # bash counterpart of the group's csh g09.login
+        parallel: threads
+        notes: "readable by group ce_dana only; the group's ARC job script is csh and sources g09.login"
+      orca-5:
+        ess: orca
+        version: "5.0.4"
+        executable: /Local/ce_dana/orca_5_0_4_linux_x86-64_shared_openmpi411/orca
+        env:
+          PATH: "/Local/ce_dana/orca_5_0_4_linux_x86-64_shared_openmpi411:/Local/ce_dana/openmpi-4.1.1/bin:$PATH"
+          LD_LIBRARY_PATH: "/Local/ce_dana/orca_5_0_4_linux_x86-64_shared_openmpi411:/Local/ce_dana/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        parallel: mpi
+        notes: "as in DRGScripts .arc/submit.py; ORCA 4.0.1.2 is also installed but unused"
+      molpro-2022:
+        ess: molpro
+        version: "2022.2.3"
+        executable: /Local/ce_dana/molpro-mpp-2022.2.3/bin/molpro
+        parallel: mpi
+        notes: "the latest on Atlas (group decision); 2020.2.1 and 2021.2.1 are also installed"
+      qchem-6.1:
+        ess: qchem
+        version: "6.1.1"
+        executable: /Local/ce_dana/Q-Chem/bin/qchem
+        env:
+          QC: /Local/ce_dana/Q-Chem
+        setup:
+          - "source $QC/qcenv.sh"
+        parallel: threads
