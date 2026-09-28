@@ -781,7 +781,12 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
         except yaml.YAMLError:
             data = None
         if is_errors_file(data):
-            return dict(data.get("meta") or {}), _sections_to_chunks(errors_sections(data), rel_path, 4000, 0)
+            chunks = _sections_to_chunks(errors_sections(data), rel_path, 4000, 0)
+            for c in chunks:  # "ESS errors > <software> > <id>": each entry belongs to one program
+                parts = c.title.split(" > ")
+                if len(parts) >= 2:
+                    c.software = parts[1].lower()
+            return dict(data.get("meta") or {}), chunks
     if suffix == ".json":
         return meta, _sections_to_chunks(json_sections(text, path.name), rel_path, size, overlap)
     if suffix == ".py":
