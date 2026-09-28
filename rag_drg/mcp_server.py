@@ -357,8 +357,9 @@ def serve(
 
     # A shared HTTP server runs as a service account: never treat its own Unix identity as the
     # requesting user's for queue-access rules (clients send theirs; see docs/remote-client.md).
-    # Set only once all start-up checks have passed, just before the server is built.
-    os.environ.setdefault("RAG_DRG_SERVER_MODE", "1")
+    # Set only once all start-up checks have passed, just before the server is built. Forced (not
+    # setdefault): an inherited empty/0 value must not turn the shared server into a local one.
+    os.environ["RAG_DRG_SERVER_MODE"] = "1"
     mcp = build_server(cfg, readonly=readonly, host=host, port=port, profile=profile)
     attach_user(mcp)  # events (and lessons) carry the token owner's name
     run_http(mcp, "sse" if transport == "sse" else "http", host, port, hosts, token_store,

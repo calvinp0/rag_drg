@@ -28,6 +28,7 @@ from pathlib import Path
 
 import yaml
 
+from ._arc.check import load_arc_yaml
 from ._servers.access import queue_access
 from ._servers.arc_runner import render_arc_runner_script
 from ._servers.model import Server, ServersConfigError, load_servers, servers_path
@@ -246,7 +247,7 @@ def compose_arc_run(input_content: str, server: Server | str, input_file: str = 
     notes: list[str] = []
 
     try:
-        data = yaml.safe_load(input_content)
+        data = load_arc_yaml(input_content)
     except yaml.YAMLError as e:
         data = None
         findings.append(_f("error", "arc-input-yaml", f"{input_file} is not valid YAML: {e}"))

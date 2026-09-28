@@ -451,7 +451,8 @@ def _cli(args, cfg) -> int:
 
 def register_mcp(mcp, ctx) -> None:
     @mcp.tool(name="compose_ess_job")
-    def compose_ess_job_tool(spec: dict, protocol: dict | None = None, step: str | None = None) -> str:
+    def compose_ess_job_tool(spec: dict, protocol: dict | None = None, step: str | None = None,
+                             user: str | None = None, groups: list[str] | None = None) -> str:
         """Compose a correct ESS input file (ORCA, Gaussian, Q-Chem, Psi4, Molpro, PySCF) plus the
         matching submit script from an explicit spec, instead of writing the input by hand. The
         result is validated with check_input; on any error no files are returned.
@@ -472,13 +473,23 @@ def register_mcp(mcp, ctx) -> None:
             protocol: Optional protocol mapping (defaults + `steps: {name: {...}}`), e.g. the parsed
                 YAML of the user's project protocol; merged UNDER spec.
             step: Protocol step to apply (e.g. "sp").
+            user: Your Unix user on the cluster (restricted queues). Optional.
+            groups: Your Unix groups on the cluster. Optional.
         """
         if not isinstance(spec, dict):
             return json.dumps({"ok": False, "errors": ["spec must be an object"]})
         if protocol is not None and not isinstance(protocol, dict):
             return json.dumps({"ok": False, "errors": ["protocol must be an object (the parsed protocol YAML); "
                                                        "the server does not read protocol files"]})
-        res = compose_ess_job(spec, protocol, step, cfg=ctx.cfg, allow_files=False)
+        if step is not None and not isinstance(step, str):
+            return json.dumps({"ok": False, "errors": ["step must be a string (a protocol step name)"]})
+        from ._servers.access import client_identity_scope
+
+        if user or groups:
+            with client_identity_scope(user, groups):
+                res = compose_ess_job(spec, protocol, step, cfg=ctx.cfg, allow_files=False)
+        else:
+            res = compose_ess_job(spec, protocol, step, cfg=ctx.cfg, allow_files=False)
         ctx.emit({"tool": "compose_ess_job",
                   "args": {k: spec.get(k) for k in ("program", "job", "method", "basis")}
                   | {"server": (spec.get("resources") or {}).get("server") if isinstance(spec.get("resources"), dict)
