@@ -17,6 +17,18 @@ servers:
     arc:                               # optional extras for the generated ARC `servers` entry
       path: /home                      # ARC 'path' (remote base path)
       max_simultaneous_jobs: 20
+      ess_queues: [<partition>, ...]   # optional: queues ARC may send ESS jobs to, first = ARC's default
+                                       #   (default: the partitions without `access:` or GPUs)
+      runner:                          # optional: ARC itself runs on this cluster as a batch job
+        queue: <partition>             #   queue of the runner job (e.g. alon_q)
+        host: n170                     #   optional: pin to a node (PBS Pro host=, Torque nodes=, Slurm --nodelist)
+        host_cores: 32                 #   optional: the pinned node's cores / memory (default: the queue's)
+        host_mem_gb: 192
+        cores: 1                       #   default 1
+        mem_gb: 8                      #   default 8
+        walltime: "3600:00:00"         #   optional; default = the queue's max walltime
+        extra_setup: []                #   optional group-wide shell lines
+                                       # NOT here (per user): arc_path, conda_env, conda_sh (docs/arc-run.md)
     partitions:                        # Slurm partitions or PBS queues
       <partition>:
         max_walltime: "72:00:00"       # HH:MM:SS, or "D-HH:MM:SS" (read as a string even unquoted; no base-60)
@@ -89,6 +101,14 @@ Additional rules added by the implementation (see docs/servers.md):
   at least one user or group. A user may use the partition when their user name is listed OR
   they belong to any listed group. Omit `access` for an unrestricted partition.
 * `commands:` cannot override `queue_access` (it runs a fixed set of commands, see docs/servers.md).
+* `arc.ess_queues` is a non-empty list of defined partitions without repeats.
+* `arc.runner` (see docs/arc-run.md): `queue` is a defined partition; `host` is a node name
+  (letters, digits, `_ . -`); `host_cores`/`host_mem_gb` only with `host`; `cores`/`mem_gb` fit the
+  pinned node (`host_cores`/`host_mem_gb`) or else the queue's per-node limits; `walltime` <= the
+  queue's max walltime; `extra_setup` is a list of single shell lines; the scheduler is `slurm`,
+  `pbs`, `pbspro` or `torque`. Per-user keys (`arc_path`, `conda_env`, `conda_sh`, `env`, `python`)
+  are errors: each person gives them to `rag-drg arc compose` or in `~/.config/rag-drg/user.yaml`.
+  A server with a runner is emitted as ARC's `'local'` server by `servers arc-settings`.
 
 Live read-only commands are off unless `conf.d/servers.yaml` sets
 `cluster_commands: {enabled: true}` (see docs/servers.md for why).
@@ -99,4 +119,6 @@ Python access (implemented in `rag_drg/tools/servers.py`):
 from rag_drg.tools.servers import load_servers   # -> dict[name, Server] (dataclasses), {} if no file
 from rag_drg.tools.servers import check_resources, render_submit_script, cluster_query, arc_settings
 from rag_drg.tools.servers import queue_access   # -> {allowed: True|False|None, reason, partition, notes}
+from rag_drg.tools.servers import render_arc_runner_script, arc_settings_parts   # ARC runs on the cluster
+from rag_drg.tools.compose_arc import compose_arc_run   # -> {submit_sh, arc_settings_py, arc_submit_py, findings, notes}
 ```

@@ -12,6 +12,8 @@ Mounted under ``/api`` on the same HTTP server as the MCP endpoint (``rag-drg se
                              "client_user"?, "client_groups"?}   -> findings (+ "text")
     POST /api/diagnose      {"content", "filename"?, "software"?}  -> diagnosis (+ "text")
     POST /api/check_basis   {"basis", "elements"? | "smiles"? | "xyz"?, "software"?}
+    POST /api/compose       {"spec": {...}, "protocol"?: {...}, "step"?, "client_user"?, "client_groups"?}
+                            -> composed input + submit script (see docs/compose.md)
 
 Search results are JSON (``{"query", "results": [...], "text"?}``); with ``max_tokens`` the
 results are the compact selection (curated knowledge first, each text trimmed to its most
@@ -215,6 +217,32 @@ def build_rest_app(ctx) -> Any:
         res["text"] = format_report(res)
         return JSONResponse(json.loads(json.dumps(res, default=str)))
 
+    async def compose_ep(request: Request):
+        try:
+            data = await _json_body(request)
+        except _BadRequest as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        spec, protocol = data.get("spec"), data.get("protocol")
+        if not isinstance(spec, dict) or (protocol is not None and not isinstance(protocol, dict)):
+            return JSONResponse({"error": "need 'spec' (object) and optional 'protocol' (object)"}, status_code=400)
+        if data.get("step") is not None and not isinstance(data.get("step"), str):
+            return JSONResponse({"error": "'step' must be a string"}, status_code=400)
+        from .compose_ess import compose_ess_job
+
+        groups = data.get("client_groups")
+        identity = (data.get("client_user") or None,
+                    [str(g) for g in groups] if isinstance(groups, list) else None)
+
+        def work():
+            with client_identity(identity):
+                return compose_ess_job(spec, protocol, data.get("step"), cfg=ctx.cfg, allow_files=False)
+
+        res = await anyio.to_thread.run_sync(work)
+        ctx.emit({"tool": "compose_ess_job", "transport": "rest",
+                  "args": {k: spec.get(k) for k in ("program", "job", "method", "basis")},
+                  "n_results": int(bool(res.get("ok")))})
+        return JSONResponse(json.loads(json.dumps(res, default=str)))
+
     def health(request: Request):
         return JSONResponse({"status": "ok", "readonly": bool(ctx.readonly)})
 
@@ -226,6 +254,7 @@ def build_rest_app(ctx) -> Any:
         Route("/check_input", check_input_ep, methods=["POST"]),
         Route("/diagnose", diagnose_ep, methods=["POST"]),
         Route("/check_basis", check_basis_ep, methods=["GET", "POST"]),
+        Route("/compose", compose_ep, methods=["POST"]),
     ])
 
 

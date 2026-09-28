@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from .access import queue_access
 from .model import Server, format_walltime
 from .submit import SubmitError, _is_gpu_build, render_arc_template, render_submit_script
 
@@ -87,6 +88,75 @@ def arc_queue_split(server: Server) -> tuple[list, dict[str, str]]:
     return kept, excluded
 
 
+def arc_ess_queues(server: Server, user: str | None = None,
+                   groups: list[str] | None = None) -> tuple[list, dict[str, str]]:
+    """(partitions ARC may submit ESS jobs to, first = ARC's default queue; {left-out partition: why}).
+
+    servers.yaml `arc.ess_queues` in its order when given, else arc_queue_split() (the
+    non-restricted, non-GPU partitions, default first). With a known identity (`user`/`groups`),
+    queues that identity may not use are left out too.
+    """
+    names = server.arc.get("ess_queues") or []
+    if names:
+        kept = [server.partitions[q] for q in names if q in server.partitions]
+        excluded = {p: "not in arc.ess_queues" for p in server.partitions if p not in names}
+    else:
+        kept, excluded = arc_queue_split(server)
+        excluded = dict(excluded)
+    if user is not None or groups is not None:
+        usable = []
+        for p in kept:
+            acc = queue_access(server, p, user, groups)
+            if acc["allowed"] is False:
+                excluded[p.name] = "no access for " + (user or "you")
+            else:
+                usable.append(p)
+        kept = usable
+    return kept, excluded
+
+
+def _node_limits(entry: dict, p) -> None:
+    entry["cpus"] = p.cores_per_node
+    mem = p.mem_per_node_gb
+    entry["memory"] = int(mem) if float(mem).is_integer() else mem
+
+
+def arc_local_entry(server: Server, user: str | None = None, groups: list[str] | None = None) -> dict:
+    """ARC `servers['local']` for a cluster ARC itself runs on (servers.yaml `arc.runner`).
+
+    `queues` = arc_ess_queues() with their max walltimes (ARC submits every job to the first one;
+    see docs/arc-run.md). cpus/memory are the first queue's node: ARC gives a job
+    min(8, cpus) cores and caps its memory at 95% of `memory`. `excluded_queues` keeps ARC's PBS
+    queue discovery (`qstat -q`, arc/job/trsh.py) off the partitions left out.
+    """
+    queues, excluded = arc_ess_queues(server, user, groups)
+    entry: dict = {"cluster_soft": ARC_CLUSTER_SOFT[server.scheduler]}
+    if queues:
+        _node_limits(entry, queues[0])
+        entry["queues"] = {p.name: format_walltime(p.max_walltime_seconds) for p in queues}
+    if excluded:
+        entry["excluded_queues"] = list(excluded)
+    if server.arc.get("max_simultaneous_jobs") is not None:
+        entry["max_simultaneous_jobs"] = int(server.arc["max_simultaneous_jobs"])
+    return entry
+
+
+def _local_server_name(servers: dict[str, Server], names: list[str], local) -> str | None:
+    """Which of `names` is ARC's 'local' server: `local` (a name, None/False = none) or, with
+    "auto", the one server with an `arc.runner` block."""
+    if local == "auto":
+        runners = [n for n in names if servers[n].arc_runner is not None]
+        if len(runners) > 1:
+            raise KeyError(f"several servers have an arc.runner block ({', '.join(runners)}); ARC runs on one "
+                           "of them - pick it with --local NAME")
+        return runners[0] if runners else None
+    if not local:
+        return None
+    if local not in names:
+        raise KeyError(f"--local {local!r} is not one of the selected servers ({', '.join(names)})")
+    return local
+
+
 def arc_server_entry(server: Server) -> dict:
     part = server.default_partition
     entry: dict = {"cluster_soft": ARC_CLUSTER_SOFT[server.scheduler]}
@@ -99,7 +169,7 @@ def arc_server_entry(server: Server) -> dict:
         mem = part.mem_per_node_gb
         entry["memory"] = int(mem) if float(mem).is_integer() else mem
     # ARC takes the first queue as the default one.
-    ordered, _ = arc_queue_split(server)
+    ordered, _ = arc_ess_queues(server)
     if ordered:
         entry["queues"] = {p.name: format_walltime(p.max_walltime_seconds) for p in ordered}
     if server.arc.get("max_simultaneous_jobs") is not None:
@@ -107,24 +177,66 @@ def arc_server_entry(server: Server) -> dict:
     return entry
 
 
-def arc_settings(servers: dict[str, Server], names: list[str] | None = None) -> str:
-    """Python source for ~/.arc/settings.py: a `servers` dict and a suggested `global_ess_settings`."""
+def arc_settings(servers: dict[str, Server], names: list[str] | None = None, local="auto", *,
+                 user: str | None = None, groups: list[str] | None = None) -> str:
+    """Python source for ~/.arc/settings.py: a `servers` dict and a suggested `global_ess_settings`,
+    followed by the `submit_scripts` dict for ~/.arc/submit.py.
+
+    `local`: the server ARC itself runs on, emitted as ARC's `'local'` server ("auto" = the one
+    selected server with an `arc.runner` block; None = every server is remote, reached over SSH).
+    `user`/`groups` (the person ARC runs as) drop the ESS queues they may not use.
+    """
+    settings_src, submit_src = arc_settings_parts(servers, names, local, user=user, groups=groups)
+    return settings_src + "\n" + submit_src
+
+
+def _local_comment(server: Server) -> list[str]:
+    r = server.arc_runner
+    where = f"queue {r.queue}" + (f" on node {r.host}" if r.host else "") if r else "this cluster"
+    return [
+        f"    # {server.name} is ARC's 'local' server: ARC.py itself runs on {server.name}",
+        f"    # (a runner job in {where}; `rag-drg arc compose`), so ARC submits its ESS",
+        "    # jobs with the local qsub/sbatch instead of over SSH (arc/job/local.py), runs them in the",
+        "    # project directory, and needs no address/key. For that server ARC reads servers['local']",
+        "    # and submit_scripts['local'].",
+    ]
+
+
+def arc_settings_parts(servers: dict[str, Server], names: list[str] | None = None,
+                       local="auto", *, user: str | None = None,
+                       groups: list[str] | None = None) -> tuple[str, str]:
+    """(~/.arc/settings.py snippet, ~/.arc/submit.py snippet); see arc_settings()."""
     names = names or list(servers)
     unknown = [n for n in names if n not in servers]
     if unknown:
         raise KeyError(f"unknown server(s) {unknown}; known: {', '.join(servers) or '(none)'}")
-    lines = [
-        "# Generated by `rag-drg servers arc-settings` from servers.yaml. Paste into ~/.arc/settings.py.",
-        "# Add your own 'un' (username) and 'key' (path to your SSH private key) to each server;",
-        "# ARC does not read ~/.ssh/config. Never commit these.",
-        "servers = {",
-    ]
-    for n in names:
+    local_name = _local_server_name(servers, names, local)
+    remote = [n for n in names if n != local_name]
+    lines = ["# Generated by `rag-drg servers arc-settings` from servers.yaml. Paste into ~/.arc/settings.py."]
+    if remote:
+        lines += ["# Add your own 'un' (username) and 'key' (path to your SSH private key) to each remote server;",
+                  "# ARC does not read ~/.ssh/config. Never commit these."]
+    lines.append("servers = {")
+    if local_name is not None:
+        s = servers[local_name]
+        lines += _local_comment(s)
+        lines.append("    'local': {")
+        queues, excluded = arc_ess_queues(s, user, groups)
+        for k, v in arc_local_entry(s, user, groups).items():
+            lines.append(f"        {k!r}: {v!r},")
+        for p in queues:
+            if p.access is not None:
+                lines.append(f"        # queue {p.name!r} is restricted ({access_text(p)}); drop it if you are not one of them")
+        for pname, why in excluded.items():
+            lines.append(f"        # queue {pname!r} excluded: {why}")
+        lines.append("        'un': __import__('getpass').getuser(),  # ARC runs as you on the cluster")
+        lines.append("    },")
+    for n in remote:
         s = servers[n]
         lines.append(f"    {n!r}: {{")
         for k, v in arc_server_entry(s).items():
             lines.append(f"        {k!r}: {v!r},")
-        _, excluded = arc_queue_split(s)
+        _, excluded = arc_ess_queues(s)
         for pname, why in excluded.items():
             lines.append(f"        # queue {pname!r} left out of 'queues': {why}")
         lines.append("        # 'un': '<your username>',")
@@ -136,8 +248,9 @@ def arc_settings(servers: dict[str, Server], names: list[str] | None = None) -> 
     lines.append("")
     lines.append("# Suggested; a list is a priority order. 'local' must also exist in `servers` for in-core ESS.")
     lines.append("global_ess_settings = {")
+    arc_name = {n: ("local" if n == local_name else n) for n in names}
     for ess in ARC_ESS:
-        having = [n for n in names if any(sw.ess == ess for sw in servers[n].software.values())]
+        having = [arc_name[n] for n in names if any(sw.ess == ess for sw in servers[n].software.values())]
         if having:
             val = having[0] if len(having) == 1 else having
             lines.append(f"    {ess!r}: {val!r},")
@@ -146,8 +259,32 @@ def arc_settings(servers: dict[str, Server], names: list[str] | None = None) -> 
     lines.append("}")
     if any(sw.ess == "psi4" for n in names for sw in servers[n].software.values()):
         lines.append("# psi4 is installed but is not in ARC's supported_ess, so it has no entry here.")
-    lines += ["", *arc_submit_scripts(servers, names)]
-    return "\n".join(lines) + "\n"
+    if local_name is not None:
+        lines += _local_command_note(servers[local_name])
+    return "\n".join(lines) + "\n", "\n".join(arc_submit_scripts(servers, names, local_name)) + "\n"
+
+
+# ARC's defaults (arc/settings/settings.py) call the scheduler by absolute path.
+_ARC_LOCAL_COMMANDS = {
+    "PBS": ("/usr/local/bin/qsub", "/usr/local/bin/qstat -u $USER", "/usr/local/bin/qdel"),
+    "Slurm": ("/usr/bin/sbatch", "/usr/bin/squeue -u $USER", "/usr/bin/scancel"),
+}
+
+
+def _local_command_note(server: Server) -> list[str]:
+    soft = ARC_CLUSTER_SOFT[server.scheduler]
+    cmds = _ARC_LOCAL_COMMANDS.get(soft)
+    if not cmds:
+        return []
+    sub, stat, dele = cmds
+    tool = "qsub" if soft == "PBS" else "sbatch"
+    return [
+        "",
+        f"# ARC submits with submit_command[{soft!r}] = {sub!r} (check_status_command {stat!r},",
+        f"# delete_command {dele!r}). If `command -v {tool}` on the runner node prints another path, override",
+        "# them here (a top-level name in ~/.arc/settings.py replaces ARC's whole dict), e.g.:",
+        f"# submit_command = {{{soft!r}: '/path/to/{tool}'}}",
+    ]
 
 
 def _version_key(sw) -> tuple:
@@ -162,7 +299,7 @@ def arc_ess_install(server: Server, ess: str):
     return max(cands, key=_version_key) if cands else None
 
 
-def arc_submit_scripts(servers: dict[str, Server], names: list[str]) -> list[str]:
+def arc_submit_scripts(servers: dict[str, Server], names: list[str], local_name: str | None = None) -> list[str]:
     """Lines of a `submit_scripts` dict for ~/.arc/submit.py (one template per ARC-supported ESS)."""
     lines = [
         "# " + "=" * 94,
@@ -177,7 +314,7 @@ def arc_submit_scripts(servers: dict[str, Server], names: list[str]) -> list[str
     ]
     for n in names:
         s = servers[n]
-        lines.append(f"    {n!r}: {{")
+        lines.append(f"    {('local' if n == local_name else n)!r}: {{" + (f"  # {n}" if n == local_name else ""))
         for ess in ARC_ESS:
             sw = arc_ess_install(s, ess)
             if sw is None:
@@ -238,8 +375,16 @@ def render_card(server: Server) -> str:
                "log in with SSH keys or an agent (no passwords)")
     out.append(f"* Environment modules: {'available' if s.modules_available else 'not used'}; "
                "programs are called by the absolute paths below")
-    out += ["* ARC `servers` entry for `~/.arc/settings.py` (add your `un` and `key`):", "",
-            "```python", arc_settings({s.name: s}).split("\n\n# Suggested")[0].strip(), "```", ""]
+    if s.arc_runner is None:
+        out.append("* ARC `servers` entry for `~/.arc/settings.py` (add your `un` and `key`):")
+    else:
+        r = s.arc_runner
+        out.append(f"* ARC runs on this cluster: a runner job in queue `{r.queue}`"
+                   + (f" on node `{r.host}`" if r.host else "")
+                   + " runs your own `$ARC_PATH/ARC.py` in your conda env, and ARC submits the ESS jobs from "
+                   f"there (`rag-drg arc compose input.yml --server {s.name}` writes submit.sh and the "
+                   "settings; see docs/arc-run.md). ARC's `servers` entry is `'local'`:")
+    out += ["", "```python", arc_settings({s.name: s}).split("\n\n# Suggested")[0].strip(), "```", ""]
 
     out += ["## Partitions / queues", "",
             "| Name | Max walltime | Cores/node | Mem/node (GB) | GPUs/node | Max nodes | Default | Access | Notes |",

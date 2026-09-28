@@ -787,6 +787,17 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
                 if len(parts) >= 2:
                     c.software = parts[1].lower()
             return dict(data.get("meta") or {}), chunks
+    if suffix in (".yml", ".yaml") and re.search(r"(?m)^arc_input_schema:\s*$", text):
+        # Generated ARC input schema (knowledge/arc/input_schema.snapshot.yaml): one chunk per input key,
+        # "ARC input > <key>", "ARC input > species > <key>", "ARC input > level dict > <key>".
+        from .tools._arc.schema import is_schema_file, schema_sections
+
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError:
+            data = None
+        if is_schema_file(data):
+            return dict(data.get("meta") or {}), _sections_to_chunks(schema_sections(data), rel_path, 4000, 0)
     if suffix == ".json":
         return meta, _sections_to_chunks(json_sections(text, path.name), rel_path, size, overlap)
     if suffix == ".py":

@@ -150,3 +150,20 @@ It needs `pip install 'rag-drg[st]'` (sentence-transformers) and applies to the 
 sets the order, with the curated/status boosts kept as a small prior, so lessons and cards
 still win near-ties. If the package or model is unavailable, the server logs a warning and
 searches without it. In code: `Searcher.search(..., rerank=fn)` with `fn(query, texts) -> scores`.
+
+## Keep the tool list small: `--profile minimal`
+
+Most non-Claude agents load every MCP tool definition into the context up front. The full tool
+set is about 4,800 tokens; the minimal profile about 650:
+
+```bash
+rag-drg serve --transport http --profile minimal      # or RAG_DRG_PROFILE=minimal
+```
+
+It exposes three tools: `search_knowledge`, `find_tool(task)` (returns the one or two tools that
+fit, with their arguments) and `run_tool(name, args)`. Every other tool stays available through
+them. Search results also end with a "Tool hint" line when the question is really an action
+("my job failed" -> `diagnose_output`, "check my input" -> `check_input`).
+
+Claude Code does not need this: it defers MCP tool schemas and loads them on demand, so the
+default `full` profile costs it little.

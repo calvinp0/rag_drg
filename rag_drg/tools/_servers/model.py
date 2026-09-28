@@ -30,7 +30,17 @@ ACCESS_KEYS = {"users", "groups", "notes"}
 SOFTWARE_KEYS = {"ess", "version", "executable", "env", "setup", "parallel", "partitions", "notes"}
 STORAGE_KEYS = {"name", "path", "quota_gb", "backed_up", "quota_command", "notes"}
 SCRATCH_KEYS = {"path", "node_local", "notes"}
-ARC_KEYS = {"path", "max_simultaneous_jobs"}
+ARC_KEYS = {"path", "max_simultaneous_jobs", "ess_queues", "runner"}
+# arc.runner: the batch job that runs ARC itself on the cluster (see docs/arc-run.md). Only
+# group-level facts; each person's ARC clone and conda install are per-user (arc_runner.py).
+RUNNER_KEYS = {"queue", "host", "host_cores", "host_mem_gb", "cores", "mem_gb", "walltime", "extra_setup",
+               "notes"}
+RUNNER_PER_USER_KEYS = {"arc_path", "conda_sh", "conda_env", "env", "python"}
+RUNNER_SCHEDULERS = ("slurm", "pbs", "pbspro", "torque")
+RUNNER_DEFAULT_CORES = 1
+RUNNER_DEFAULT_MEM_GB = 8
+_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,252}[A-Za-z0-9])?$")
+_CONDA_ENV_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
 
 _SECRET_KEY_RE = re.compile(r"pass(word|wd|phrase)?$|token|secret|api_?key|private_?key", re.I)
 _SECRET_VALUE_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bghp_[A-Za-z0-9]{20,}")
@@ -114,6 +124,26 @@ class Scratch:
 
 
 @dataclass
+class ArcRunner:
+    """servers.yaml `arc.runner`: the batch job that runs ARC.py itself on the cluster.
+
+    ARC then submits its ESS jobs from that node with the local qsub/sbatch, so in ARC's
+    settings the cluster is the `'local'` server (see render.arc_settings). Group-level facts
+    only: the ARC clone and conda install are per user (arc_runner.resolve_arc_user_env).
+    """
+
+    queue: str
+    host: str | None = None
+    host_cores: int | None = None        # the pinned node's cores (default: the queue's cores_per_node)
+    host_mem_gb: float | None = None     # the pinned node's memory (default: the queue's mem_per_node_gb)
+    cores: int = RUNNER_DEFAULT_CORES
+    mem_gb: float = RUNNER_DEFAULT_MEM_GB
+    walltime: str | None = None          # None = the queue's max walltime
+    extra_setup: list[str] = field(default_factory=list)
+    notes: str | None = None
+
+
+@dataclass
 class Server:
     name: str
     scheduler: str
@@ -128,6 +158,7 @@ class Server:
     storage: list[Storage] = field(default_factory=list)
     software: dict[str, SoftwareInstall] = field(default_factory=dict)
     commands: dict[str, str] = field(default_factory=dict)
+    arc_runner: ArcRunner | None = None
 
     @property
     def default_partition(self) -> Partition | None:
@@ -230,6 +261,85 @@ def _validate_access(acc: Any, where: str, problems: list[str]) -> None:
     if n == 0:
         problems.append(f"{where}: lists no users or groups; remove 'access' if everyone may use it")
     if acc.get("notes") is not None and not isinstance(acc["notes"], str):
+        problems.append(f"{where}.notes: must be a string")
+
+
+def _safe_abs_path(v: Any) -> bool:
+    return isinstance(v, str) and bool(_EXE_RE.match(v))
+
+
+def _validate_runner(r: Any, sched: Any, parts: dict, where: str, problems: list[str]) -> None:
+    """servers.yaml `arc.runner` (the ARC.py batch job); limits are checked against its queue."""
+    if not isinstance(r, dict):
+        problems.append(f"{where}: must be a mapping (queue, host, cores, mem_gb, walltime, ...)")
+        return
+    for k in r:
+        if k in RUNNER_PER_USER_KEYS:
+            problems.append(f"{where}.{k}: per-user setting, not for the shared servers.yaml; give it with "
+                            f"`rag-drg arc compose --{k.replace('_', '-')}` or in ~/.config/rag-drg/user.yaml "
+                            "(see docs/arc-run.md)")
+    _unknown({k: v for k, v in r.items() if k not in RUNNER_PER_USER_KEYS}, RUNNER_KEYS, where, problems)
+    if sched not in RUNNER_SCHEDULERS:
+        problems.append(f"{where}: an ARC runner job needs a batch scheduler ({', '.join(RUNNER_SCHEDULERS)}), "
+                        f"not {sched!r}")
+    q = r.get("queue")
+    part = parts.get(q) if isinstance(q, str) else None
+    if not isinstance(q, str) or not q:
+        problems.append(f"{where}.queue: required (the queue/partition the ARC.py job runs in)")
+    elif not isinstance(part, dict):
+        problems.append(f"{where}.queue: unknown partition {q!r} (known: {', '.join(map(str, parts)) or '(none)'})")
+        part = None
+    elif not _NAME_RE.match(q):
+        problems.append(f"{where}.queue: {q!r} has characters that are not allowed (letters, digits, _ . -)")
+    host = r.get("host")
+    if host is not None and not (isinstance(host, str) and _HOSTNAME_RE.match(host)):
+        problems.append(f"{where}.host: {host!r} is not a node name (letters, digits, _ . -)")
+    # the runner is checked against its node: host_cores/host_mem_gb when pinned and given, else the queue's
+    node_cores = part.get("cores_per_node") if part is not None else None
+    node_mem = part.get("mem_per_node_gb") if part is not None else None
+    node_c = node_m = f"per node of {q}"
+    hc, hm = r.get("host_cores"), r.get("host_mem_gb")
+    if hc is not None:
+        if not (_is_int(hc) and hc > 0):
+            problems.append(f"{where}.host_cores: must be a positive integer")
+        elif host is None:
+            problems.append(f"{where}.host_cores: only meaningful with `host` (the pinned node)")
+        else:
+            node_cores, node_c = hc, f"on node {host}"
+    if hm is not None:
+        if not (_is_num(hm) and hm > 0):
+            problems.append(f"{where}.host_mem_gb: must be a positive number")
+        elif host is None:
+            problems.append(f"{where}.host_mem_gb: only meaningful with `host` (the pinned node)")
+        else:
+            node_mem, node_m = hm, f"on node {host}"
+    cores = r.get("cores", RUNNER_DEFAULT_CORES)
+    if not (_is_int(cores) and cores > 0):
+        problems.append(f"{where}.cores: must be a positive integer")
+    elif _is_int(node_cores) and cores > node_cores:
+        problems.append(f"{where}.cores: {cores} > {node_cores} cores {node_c}")
+    mem = r.get("mem_gb", RUNNER_DEFAULT_MEM_GB)
+    if not (_is_num(mem) and mem > 0):
+        problems.append(f"{where}.mem_gb: must be a positive number")
+    elif _is_num(node_mem) and mem > node_mem:
+        problems.append(f"{where}.mem_gb: {mem:g} GB > {node_mem:g} GB {node_m}")
+    wt = r.get("walltime")
+    if wt is not None:
+        try:
+            secs = parse_walltime(wt)
+        except ValueError as e:
+            problems.append(f"{where}.walltime: {e}")
+        else:
+            try:
+                qmax = parse_walltime(part["max_walltime"]) if part is not None and "max_walltime" in part else None
+            except ValueError:
+                qmax = None
+            if qmax is not None and secs > qmax:
+                problems.append(f"{where}.walltime: {format_walltime(secs)} > max {format_walltime(qmax)} of {q}")
+    setup = r.get("extra_setup") or []
+    if not isinstance(setup, list) or not all(isinstance(x, str) and "\n" not in x for x in setup):
+        problems.append(f"{where}.extra_setup: must be a list of single shell lines")
+    if r.get("notes") is not None and not isinstance(r["notes"], str):
         problems.append(f"{where}.notes: must be a string")
 
 
@@ -339,8 +449,20 @@ def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
                 problems.append(f"{w}.arc: must be a mapping")
             else:
                 _unknown(arc, ARC_KEYS, f"{w}.arc", problems)
+                eq = arc.get("ess_queues")
+                if eq is not None:
+                    if not isinstance(eq, list) or not eq or not all(isinstance(x, str) for x in eq):
+                        problems.append(f"{w}.arc.ess_queues: must be a non-empty list of partition names")
+                    else:
+                        for x in eq:
+                            if x not in parts:
+                                problems.append(f"{w}.arc.ess_queues: unknown partition {x!r}")
+                        if len(set(eq)) != len(eq):
+                            problems.append(f"{w}.arc.ess_queues: lists a partition twice")
                 if arc.get("max_simultaneous_jobs") is not None and not _is_int(arc["max_simultaneous_jobs"]):
                     problems.append(f"{w}.arc.max_simultaneous_jobs: must be an integer")
+                if "runner" in arc:
+                    _validate_runner(arc["runner"], sched, parts, f"{w}.arc.runner", problems)
 
         cmds = s.get("commands") or {}
         if not isinstance(cmds, dict):
@@ -442,6 +564,20 @@ def _parse_server(name: str, s: dict) -> Server:
         for st in (s.get("storage") or [])
     ]
     sc = s.get("scratch") or {}
+    rr = (s.get("arc") or {}).get("runner")
+    runner = None
+    if isinstance(rr, dict):
+        runner = ArcRunner(
+            queue=str(rr["queue"]),
+            host=None if rr.get("host") is None else str(rr["host"]),
+            host_cores=rr.get("host_cores"),
+            host_mem_gb=None if rr.get("host_mem_gb") is None else float(rr["host_mem_gb"]),
+            cores=int(rr.get("cores", RUNNER_DEFAULT_CORES)),
+            mem_gb=float(rr.get("mem_gb", RUNNER_DEFAULT_MEM_GB)),
+            walltime=None if rr.get("walltime") is None else str(rr["walltime"]),
+            extra_setup=list(rr.get("extra_setup") or []),
+            notes=rr.get("notes"),
+        )
     return Server(
         name=name,
         scheduler=s["scheduler"],
@@ -456,6 +592,7 @@ def _parse_server(name: str, s: dict) -> Server:
         storage=storage,
         software=software,
         commands={str(k): str(v) for k, v in (s.get("commands") or {}).items()},
+        arc_runner=runner,
     )
 
 

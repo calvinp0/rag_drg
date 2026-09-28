@@ -100,12 +100,18 @@ Local models: see [`integrations/local-models.md`](integrations/local-models.md)
 | `check_resources(server, partition, cores, mem_gb, walltime, gpus)` | Does a request fit the partition? |
 | `cluster_query(server, what)` | Read-only live queries (jobs, quota, partitions); off unless enabled |
 
+**Tool profiles.** `rag-drg serve --profile minimal` exposes only `search_knowledge`,
+`find_tool` and `run_tool` (about 650 tokens instead of 4,800) for clients that load every tool
+schema up front, e.g. local models; see [integrations/local-models.md](integrations/local-models.md).
+
 ### Command line
 
 | Command | Purpose | Docs |
 |---|---|---|
 | `rag-drg search "..." [--software X --version V --max-tokens N --json]` | Search from a terminal or a script | |
-| `rag-drg check-input FILE [--submit SCRIPT]`, `--hook` | Input checker; `--hook` is the Claude Code hook mode | [docs/input-checker.md](docs/input-checker.md) |
+| `rag-drg compose SPEC.yaml` (or `--program orca --job sp --method ...`) | Compose a checked ESS input + submit script from an explicit spec or your project's protocol file | [docs/compose.md](docs/compose.md) |
+| `rag-drg arc check input.yml`, `arc compose input.yml --server zeus`, `arc schema` | ARC: validate input.yml against a schema generated from ARC `main`; compose the runner job (e.g. alon_q on n170) and ARC's `settings.py` / `submit.py` snippets | [docs/arc-input.md](docs/arc-input.md), [docs/arc-run.md](docs/arc-run.md) |
+| `rag-drg check-input FILE [--submit SCRIPT]`, `--hook` | Input checker; `--hook` is the Claude Code hook mode (also routes ARC input.yml) | [docs/input-checker.md](docs/input-checker.md) |
 | `rag-drg basis NAME --elements C,H,I` | Basis coverage check | [docs/input-checker.md](docs/input-checker.md) |
 | `rag-drg diagnose OUTPUT` | Diagnose a failed job | [docs/diagnose.md](docs/diagnose.md) |
 | `rag-drg level NAME [--software X]` | Level-of-theory support table | |
@@ -155,8 +161,9 @@ The tool is only as good as what's in it. In order of value:
    each person's copy. Web crawls for the ORCA 6 / Gaussian / Molpro online docs are
    pre-configured but `enabled: false`: enable them in `rag_drg.yaml` if the site terms allow it.
    Also fill the `unknown` cells in `knowledge/ess/levels_of_theory.yaml` as you check them.
-4. **Project cards and paper notes**: `knowledge/projects/<project>/` (see the
-   `vae-ess-nn` skeleton) and `papers/<project>/` (PDFs git-ignored, `notes.md` committed).
+4. **Only group-wide knowledge belongs here.** Project-specific protocols and notes stay in each
+   project's own repository (the compose tools accept a protocol file by path);
+   `knowledge/projects/_TEMPLATE.md` is there for anything a project wants to share group-wide.
 5. **Review lessons** that agents record: they arrive as `status: unreviewed` files in
    `knowledge/lessons/`; merge them via PR (verify, or fold into a card).
 

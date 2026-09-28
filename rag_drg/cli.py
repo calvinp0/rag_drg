@@ -64,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
                         "repeatable; '*' disables the check")
     p.add_argument("--ssl-certfile", help="serve HTTPS directly (else put nginx/caddy in front)")
     p.add_argument("--ssl-keyfile")
+    p.add_argument("--profile", choices=["full", "minimal"],
+                   help="full: every tool (default; right for Claude Code, which defers tool schemas); "
+                        "minimal: search_knowledge + find_tool + run_tool, for small-context/local models "
+                        "(also $RAG_DRG_PROFILE or `mcp: {profile: ...}` in the config)")
 
     p = sub.add_parser("lesson", help="record a lesson learned (a correction)")
     p.add_argument("--title", required=True)
@@ -148,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
 
         serve(cfg, transport=args.transport, host=args.host, port=args.port, readonly=args.readonly,
               auth=args.auth, allowed_hosts=args.allowed_hosts, allow_unauthenticated=args.allow_unauthenticated,
-              ssl_certfile=args.ssl_certfile, ssl_keyfile=args.ssl_keyfile)
+              ssl_certfile=args.ssl_certfile, ssl_keyfile=args.ssl_keyfile, profile=args.profile)
         return 0
 
     if args.cmd == "lesson":
