@@ -21,3 +21,9 @@ jobs:
         run: |
           rag-drg ingest --source curated --source lessons --no-embed
           rag-drg search "ORCA maxcore" --k 1
+      # Retrieval quality on eval/qa.yaml against the curated index built above. Items whose
+      # expected answers live in ARC/Psi4/PySCF (not fetched here) are skipped automatically, so
+      # this is deterministic: upstream repos are unpinned and would make CI fail on their
+      # commits rather than ours. Run the full set locally or on the server (docs/evaluation.md).
+      - name: Retrieval eval (curated subset)
+        run: rag-drg eval --min-hit-rate 0.9 --show-failures
