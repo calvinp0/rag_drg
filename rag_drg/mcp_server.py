@@ -38,6 +38,8 @@ Pass `software` (orca, gaussian, qchem, psi4, molpro, pyscf, arc) and `version` 
 Use `doc_type="reference"` for keywords/syntax and `doc_type="theory"` for method background.
 Use `lookup_level_of_theory` before translating a method/functional between codes.
 Results tagged `lesson` or `gotcha` are corrections the group has already made - follow them.
+With a small context window, pass `max_tokens` (e.g. 800) to `search_knowledge` for a compact
+answer (most relevant lines only), then `get_context(chunk_id)` for the full text if needed.
 When a human corrects you on something this knowledge base should have told you, call
 `record_lesson` so the next agent does not repeat the mistake.
 """
@@ -80,6 +82,7 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
         domain: str | None = None,
         doc_type: str | None = None,
         k: int = 6,
+        max_tokens: int | None = None,
     ) -> str:
         """Search the group knowledge base (hybrid keyword + semantic).
 
@@ -94,21 +97,28 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
             doc_type: lesson | gotcha | card | template | schema | reference (keywords/usage) |
                 theory (method background from manuals) | code | paper
             k: Number of results (default 6, max 20).
+            max_tokens: Answer budget for small-context models (about 4 characters per token).
+                When set, curated lessons/gotchas/cards come first and each result is cut to
+                its most relevant lines, keeping citations. Default: full results.
         """
+        from .search import make_reranker
+
+        if max_tokens is not None:
+            max_tokens = max(50, int(max_tokens))
         with lock:
             hits = searcher.search(
                 query, k=max(1, min(int(k), 20)), domain=domain, software=software,
-                version=version, doc_type=doc_type,
+                version=version, doc_type=doc_type, rerank=make_reranker(cfg),
             )
         ctx.emit({
             "tool": "search_knowledge",
             "args": {"query": query, "software": software, "version": version, "domain": domain,
-                     "doc_type": doc_type, "k": k},
+                     "doc_type": doc_type, "k": k, "max_tokens": max_tokens},
             "n_results": len(hits),
             "results": [{"source": h.chunk.source, "path": h.chunk.path, "title": h.chunk.title,
                          "doc_type": h.chunk.doc_type, "score": round(h.score, 5)} for h in hits],
         })
-        return format_hits(hits)
+        return format_hits(hits, query=query, max_tokens=max_tokens)
 
     @mcp.tool()
     def get_context(chunk_id: int, neighbors: int = 2) -> str:
@@ -251,12 +261,47 @@ def _lessons(cfg: Config):
     return lessons_source(cfg)
 
 
-def serve(cfg: Config, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8765, readonly: bool = False):
-    mcp = build_server(cfg, readonly=readonly, host=host, port=port)
-    kwargs = {"host": host, "port": port} if mcp._rag_drg_sdk_major >= 2 else {}
-    if transport in ("http", "streamable-http"):
-        mcp.run(transport="streamable-http", **kwargs)
-    elif transport == "sse":
-        mcp.run(transport="sse", **kwargs)
+def serve(
+    cfg: Config,
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    readonly: bool = False,
+    auth: str = "token",
+    allowed_hosts: list[str] | None = None,
+    allow_unauthenticated: bool = False,
+    ssl_certfile: str | None = None,
+    ssl_keyfile: str | None = None,
+):
+    """Run the server. stdio: plain MCP. http/sse: MCP + REST API (/api) on one uvicorn server,
+    behind bearer-token auth unless `auth="none"` (see docs/auth.md)."""
+    if transport not in ("http", "streamable-http", "sse"):
+        build_server(cfg, readonly=readonly, host=host, port=port).run()
+        return
+
+    from .auth import TokenStore, is_loopback, tokens_path
+    from .http_app import attach_user, run_http
+
+    auth_cfg = cfg.extra.get("auth") or {}
+    hosts = list(auth_cfg.get("allowed_hosts") or []) + list(allowed_hosts or [])
+    token_store = None
+    if auth == "token":
+        token_store = TokenStore(tokens_path(cfg))
+        if not token_store.entries():
+            raise SystemExit(
+                f"No API tokens in {token_store.path}. Create one with `rag-drg tokens add <name>`, "
+                "or run with `--auth none` (loopback only, or add --allow-unauthenticated)."
+            )
+    elif auth == "none":
+        if not is_loopback(host) and not allow_unauthenticated:
+            raise SystemExit(
+                f"Refusing to serve licensed manual text without authentication on {host}. "
+                "Use token auth (default), bind 127.0.0.1, or pass --allow-unauthenticated."
+            )
     else:
-        mcp.run()
+        raise SystemExit(f"Unknown auth mode {auth!r} (token | none)")
+
+    mcp = build_server(cfg, readonly=readonly, host=host, port=port)
+    attach_user(mcp)  # events (and lessons) carry the token owner's name
+    run_http(mcp, "sse" if transport == "sse" else "http", host, port, hosts, token_store,
+             ssl_certfile=ssl_certfile, ssl_keyfile=ssl_keyfile)
