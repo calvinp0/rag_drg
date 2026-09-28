@@ -378,7 +378,7 @@ def test_lint_checks_pr_and_similar(project):
             similar=["knowledge/ess/orca/gone.md"])
     _lesson(project, "ess/orca/2026-01-03-bad2.md", software="orca", similar="knowledge/ess/orca/orca.md")
     problems = wf.lint(project)
-    assert len(problems) == 3
+    assert len(problems) == 2  # bad pr URL + non-list similar; dangling path is allowed
     assert any("'pr' must be a pull request URL" in p for p in problems)
     assert not any("gone.md" in p for p in problems)  # dangling hints are allowed
     assert any("must be a list" in p for p in problems)
@@ -386,6 +386,6 @@ def test_lint_checks_pr_and_similar(project):
 
     from rag_drg.lint import lint as full_lint  # the plugin hook runs as part of `rag-drg lint`
 
-    assert len([p for p in full_lint(project) if "bad" in p]) == 3
+    assert len([p for p in full_lint(project) if "bad" in p]) == 2
     bad_cfg = configure(project, mode="gitlab")
     assert any("lessons.pr.mode" in p for p in wf.lint(bad_cfg))
