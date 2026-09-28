@@ -51,7 +51,7 @@ from ._servers.model import (
 )
 from ._servers.arc_runner import render_arc_runner_script
 from ._servers.render import access_text, arc_settings, arc_settings_parts, generated_dir, render_card, render_cards
-from ._servers.submit import SubmitError, check_resources, render_submit_script
+from ._servers.submit import SubmitError, check_resources, render_submit_files, render_submit_script
 
 __all__ = [
     "Access", "CLIENT_IDENTITY", "access_problem", "client_identity", "client_identity_scope", "discover_pbs",
@@ -59,7 +59,7 @@ __all__ = [
     "live_queue_access", "local_identity", "local_identity_allowed", "queue_access",
     "Partition", "Scratch", "Server", "ServersConfigError", "SoftwareInstall", "Storage", "SubmitError",
     "arc_settings", "arc_settings_parts", "check_file", "render_arc_runner_script", "check_resources", "cluster_query", "load_servers", "render_card",
-    "render_cards", "render_submit_script",
+    "render_cards", "render_submit_files", "render_submit_script",
 ]
 
 
@@ -201,7 +201,9 @@ def register_cli(subparsers):
     q.add_argument("--gpus", type=int, default=0)
     q.add_argument("--user", help="check queue access for this Unix user")
     q.add_argument("--groups", help="comma-separated Unix groups of that user")
-    q.add_argument("-o", "--output", help="write the script to this file instead of stdout")
+    q.add_argument("-o", "--output", help="write the script to this file instead of stdout (single-file schedulers)")
+    q.add_argument("--out-dir", help="write every file of the job into this directory "
+                                     "(HTCondor: submit.sub + job.sh)")
 
     q = ssub.add_parser("check", help="check a resource request against partition limits")
     q.add_argument("server")
@@ -291,18 +293,32 @@ def _cli(args: argparse.Namespace, cfg) -> int:
             return 1
         try:
             user, groups = _submit_identity(s, _explicit_identity(args.user, args.groups))
-            script, notes = render_submit_script(
+            files, notes, _meta = render_submit_files(
                 s, args.software, args.input, job_name=args.job_name, cores=args.cores, mem_gb=args.mem_gb,
                 walltime=args.walltime, partition=args.partition, gpus=args.gpus, user=user, groups=groups,
             )
         except SubmitError as e:
             print(_format_problems(e.problems), file=sys.stderr)
             return 1
-        if args.output:
-            Path(args.output).write_text(script)
+        if args.out_dir:
+            d = Path(args.out_dir)
+            d.mkdir(parents=True, exist_ok=True)
+            for fname, text in files.items():
+                (d / fname).write_text(text)
+                if fname.endswith(".sh"):
+                    (d / fname).chmod(0o755)
+                print(f"wrote {d / fname}", file=sys.stderr)
+        elif args.output and len(files) == 1:
+            Path(args.output).write_text(next(iter(files.values())))
             print(f"wrote {args.output}", file=sys.stderr)
+        elif args.output:
+            print(f"this job has {len(files)} files ({', '.join(files)}): use --out-dir DIR", file=sys.stderr)
+            return 2
+        elif len(files) == 1:
+            print(next(iter(files.values())), end="")
         else:
-            print(script, end="")
+            for fname, text in files.items():
+                print(f"=== {fname} ===\n{text}", end="" if text.endswith("\n") else "\n")
         for n in notes:
             print(f"# {n}", file=sys.stderr)
         return 0
@@ -402,7 +418,7 @@ def register_mcp(mcp, ctx) -> None:
         user: str | None = None,
         groups: list[str] | None = None,
     ) -> str:
-        """Render a ready-to-run Slurm/PBS submit script for one ESS job on a cluster, with the
+        """Render a ready-to-run Slurm/PBS submit script (HTCondor: submit.sub + job.sh) for one ESS job on a cluster, with the
         correct absolute executable, environment, parallel model and scratch handling, validated
         against the partition limits. Also returns the memory/core lines the INPUT must contain
         (ORCA %pal/%maxcore, Gaussian %nprocshared/%mem, Q-Chem MEM_TOTAL, Molpro memory, ...).
@@ -433,7 +449,7 @@ def register_mcp(mcp, ctx) -> None:
             return f"Unknown server {server!r}. Known: {', '.join(servers) or '(none)'}"
         try:
             ident_user, ident_groups = _submit_identity(servers[server], _explicit_identity(user, groups))
-            script, notes = render_submit_script(
+            files, notes, _meta = render_submit_files(
                 servers[server], software, input_file, job_name=job_name, cores=cores, mem_gb=mem_gb,
                 walltime=walltime, partition=partition, gpus=gpus, user=ident_user, groups=ident_groups,
             )
@@ -441,7 +457,10 @@ def register_mcp(mcp, ctx) -> None:
             ctx.emit({"tool": "render_submit_script", "args": args, "n_results": 0})
             return "Cannot render the script:\n" + _format_problems(e.problems)
         ctx.emit({"tool": "render_submit_script", "args": args, "n_results": 1})
-        return "```bash\n" + script + "```\n\nNotes:\n" + "\n".join(f"- {n}" for n in notes)
+        if len(files) == 1:
+            return "```bash\n" + next(iter(files.values())) + "```\n\nNotes:\n" + "\n".join(f"- {n}" for n in notes)
+        blocks = [f"File `{fname}`:\n```{'bash' if fname.endswith('.sh') else 'ini'}\n{text}```" for fname, text in files.items()]
+        return "\n\n".join(blocks) + "\n\nNotes:\n" + "\n".join(f"- {n}" for n in notes)
 
     @mcp.tool(name="check_resources")
     def check_resources_tool(
