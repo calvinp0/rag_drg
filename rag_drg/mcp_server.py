@@ -308,6 +308,10 @@ def serve(
     from .auth import TokenStore, is_loopback, tokens_path
     from .http_app import attach_user, run_http
 
+    # A shared HTTP server runs as a service account: never treat its own Unix identity as the
+    # requesting user's for queue-access rules (clients send theirs; see docs/remote-client.md).
+    os.environ.setdefault("RAG_DRG_SERVER_MODE", "1")
+
     auth_cfg = cfg.extra.get("auth") or {}
     hosts = list(auth_cfg.get("allowed_hosts") or []) + list(allowed_hosts or [])
     token_store = None

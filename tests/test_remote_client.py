@@ -108,3 +108,35 @@ def test_head_tail_of_big_file(tmp_path):
     text = cli._head_tail(big)
     assert text.startswith(" Entering Gaussian") and "l502.exe" in text and "lines omitted" in text
     assert len(text) < 500_000
+
+
+GPU_SCRIPT = """#!/bin/bash
+#SBATCH --job-name=g
+#SBATCH --partition=gpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:1
+#SBATCH --mem=64G
+#SBATCH --time=12:00:00
+/opt/g16/g16 < job.gjf > job.log
+"""
+
+
+def test_queue_access_uses_the_requesting_users_identity(client, project, monkeypatch):
+    """The shared server judges queue access for the *client*, never its own service account."""
+    cli, _ = client
+    shutil.copy(ROOT / "servers.example.yaml", project.root / "servers.yaml")  # gpu: alice or @gpuusers
+    monkeypatch.setenv("RAG_DRG_SERVER_MODE", "1")
+    body = {"filename": "run_gpu.sh", "content": GPU_SCRIPT}
+
+    def access(user, groups):
+        res = cli._request("POST", "check_input", body={**body, "client_user": user, "client_groups": groups})
+        return [f for f in res["findings"] if f["code"] == "cluster-access"]
+
+    denied = access("bob", ["chem"])
+    assert denied and denied[0]["severity"] in ("error", "warning") and "gpu" in denied[0]["message"]
+    assert not [f for f in access("alice", ["chem"]) if f["severity"] in ("error", "warning")]
+    assert not [f for f in access("carol", ["gpuusers"]) if f["severity"] in ("error", "warning")]
+    # No identity sent: the server must not fall back to its own account -> at most "unknown" info.
+    assert all(f["severity"] == "info" for f in access(None, None))

@@ -221,12 +221,12 @@ def client_identity(identity: tuple[str | None, list[str] | None]):
     """Tell the cluster checks who the *requesting* user is (the server process is a service
     account). Uses rag_drg.tools.cluster_limits.CLIENT_IDENTITY when that plugin provides it."""
     try:
-        from .cluster_limits import CLIENT_IDENTITY  # type: ignore[attr-defined]
-    except Exception:  # noqa: BLE001 - older plugin without identity support
+        from .cluster_limits import client_identity_scope
+    except Exception:  # noqa: BLE001 - cluster registry plugin unavailable
         yield
         return
-    token = CLIENT_IDENTITY.set(identity if any(identity) else None)
-    try:
+    if not any(identity):
         yield
-    finally:
-        CLIENT_IDENTITY.reset(token)
+        return
+    with client_identity_scope(*identity):
+        yield
