@@ -110,20 +110,4 @@ source $QC/qcenv.sh
 
 ## How to submit
 
-Generate a filled-in script with `rag-drg servers submit atlas <software-key> <input> [--cores N --mem GB --time HH:MM:SS --partition P --gpus G]` (MCP: `render_submit_script`). It checks the partition limits and prints the matching memory/core lines for the input. Examples with default resources:
-
-### Submit gaussian-09
-
-Cannot render an example: submit scripts for scheduler 'htcondor' are not supported (supported: slurm, pbs, pbspro, torque, local)
-
-### Submit orca-5
-
-Cannot render an example: submit scripts for scheduler 'htcondor' are not supported (supported: slurm, pbs, pbspro, torque, local)
-
-### Submit molpro-2022
-
-Cannot render an example: submit scripts for scheduler 'htcondor' are not supported (supported: slurm, pbs, pbspro, torque, local)
-
-### Submit qchem-6.1
-
-Cannot render an example: submit scripts for scheduler 'htcondor' are not supported (supported: slurm, pbs, pbspro, torque, local)
+rag-drg cannot generate htcondor submit files yet (`render_submit_script` refuses). Follow the hand-written card for atlas and the group's own templates.

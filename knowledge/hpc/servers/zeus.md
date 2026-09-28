@@ -2,7 +2,7 @@
 title: "zeus (Technion) - cluster card"
 domain: hpc
 software: pbs
-doc_type: card
+doc_type: reference
 status: draft
 tags: [cluster, server, zeus, gpu, gpucpu, cuda_visible_devices, drgscripts, setup.sh, opt/pbs, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
 ---

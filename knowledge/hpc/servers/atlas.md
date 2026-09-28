@@ -2,7 +2,7 @@
 title: "Atlas (HTCondor) - cluster card"
 domain: hpc
 software: htcondor
-doc_type: card
+doc_type: reference
 status: draft
 tags: [cluster, server, atlas, htcondor, condor_submit, condor_q, tech-ui02, ce_dana, storage, screen, arc, drgscripts, submit.sub, held, wastingmemory]
 ---
