@@ -74,6 +74,11 @@ def _load_cfg(cfg):
 
 
 def _extra(inp: ParsedInput, sub: ParsedSubmit | None, cfg) -> list[Finding]:
+    # Plugins register their checks when imported; make sure that has happened even when
+    # check_input is called as a library function rather than through the CLI/MCP server.
+    from ..plugins import plugin_modules
+
+    plugin_modules()
     out = []
     for fn in list(EXTRA_CHECKS):
         try:
