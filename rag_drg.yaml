@@ -92,7 +92,11 @@ sources:
     software: pyscf
     base_url: https://github.com/pyscf/pyscf/blob/master
 
-  # ORCA 6 has an HTML manual. (URL not checked from the build machine; check before relying on it.)
+  # ORCA 6's manual is a set of HTML pages. Two ways to get it in:
+  #  (a) enable this crawler and run `rag-drg fetch --source orca6-manual-web` on a machine that
+  #      can reach the site (URL not checked from the build machine), or
+  #  (b) download the pages yourself (wget mirror or browser "Save page as") into sources/orca/6/,
+  #      which the orca6-manual source below indexes. See sources/README.md.
   - name: orca6-manual-web
     type: url
     urls: [https://www.faccts.de/docs/orca/6.0/manual/]
@@ -104,8 +108,9 @@ sources:
     version: "6"
     enabled: false
 
-  # ORCA manuals are PDFs behind the forum login: download them and drop them here.
-  #   sources/orca/5/orca_manual_5_0_4.pdf, sources/orca/6/orca_manual_6_0_1.pdf
+  # Local ORCA docs. Any mix of PDFs and saved/mirrored HTML pages works:
+  #   sources/orca/5/orca_manual_5_0_4.pdf
+  #   sources/orca/6/www.faccts.de/docs/orca/6.0/manual/...   (wget mirror; URLs are rebuilt)
   # Manual PDFs are split along their bookmarks (chapter > section > subsection), and each
   # section is labelled doc_type "reference" (keywords/usage) or "theory" (method background).
   - name: orca5-manual
@@ -123,8 +128,15 @@ sources:
 
   # Gaussian keyword reference pages. The site documents G16; G09-only differences
   # belong in knowledge/ess/gaussian. (URLs not checked from the build machine.)
+  # Crawls the keyword index plus every page it links to on gaussian.com (one hop), or give
+  # the explicit list below. Alternatively save the pages into sources/gaussian/16/ yourself.
   - name: gaussian-keywords
     type: url
+    crawl: true
+    max_depth: 1
+    max_pages: 400
+    allow_prefix: [https://gaussian.com/]
+    deny: ["/wp-", "/feed", "?", "/news", "/events", "/store", "/contact", "/citation", "/license", "/tag/", "/category/"]
     urls:
       - https://gaussian.com/keywords/
       - https://gaussian.com/running/
@@ -152,7 +164,7 @@ sources:
     version: "16"
     enabled: false
 
-  # Local Gaussian PDFs/HTML, one folder per version so the version filter works.
+  # Local Gaussian PDFs and/or saved HTML pages, one folder per version so the version filter works.
   - name: gaussian09-manual
     type: local
     path: sources/gaussian/09
@@ -165,6 +177,16 @@ sources:
     domain: ess
     software: gaussian
     version: "16"
+
+  # Gaussian books (theory + worked examples; written for G09 but relevant to G16 too).
+  # sources/gaussian/book/_meta.yaml sets the book title; OCR scanned books first (see sources/README.md).
+  - name: gaussian-books
+    type: local
+    path: sources/gaussian/book
+    domain: ess
+    software: gaussian
+    version: ["09", "16"]
+    tags: [book]
 
   # Q-Chem 6.1: the user manual PDF goes in sources/qchem/6.1/.
   - name: qchem61-manual

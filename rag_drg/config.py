@@ -56,6 +56,7 @@ class SourceConfig:
     allow_prefix: list[str] = field(default_factory=list)
     deny: list[str] = field(default_factory=list)  # substrings; matching URLs are skipped
     max_pages: int = 200
+    max_depth: int | None = None  # link hops from the start urls (None = unlimited within allow_prefix)
     delay: float = 0.5
 
 
@@ -101,6 +102,15 @@ def _as_list(value: Any) -> list:
     return [value]
 
 
+def _version_str(value: Any) -> str | None:
+    """`version: "16"` or `version: ["09", "16"]` -> "16" / "09|16"."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, (list, tuple)):
+        return "|".join(str(v) for v in value)
+    return str(value)
+
+
 def load_config(path: str | os.PathLike | None = None) -> Config:
     cfg_path = _find_config(path)
     root = cfg_path.parent
@@ -141,7 +151,7 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
                 exclude=_as_list(s.get("exclude")),
                 domain=s.get("domain"),
                 software=s.get("software"),
-                version=None if s.get("version") is None else str(s.get("version")),
+                version=_version_str(s.get("version")),
                 doc_type=s.get("doc_type", "reference"),
                 doc_type_rules=_as_list(s.get("doc_type_rules")),
                 tags=_as_list(s.get("tags")),
@@ -151,6 +161,7 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
                 allow_prefix=_as_list(s.get("allow_prefix")),
                 deny=_as_list(s.get("deny")),
                 max_pages=int(s.get("max_pages", 200)),
+                max_depth=None if s.get("max_depth") is None else int(s.get("max_depth")),
                 delay=float(s.get("delay", 0.5)),
             )
         )

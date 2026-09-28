@@ -371,68 +371,128 @@ def psi4_options_sections(text: str) -> list[tuple[list[str], str]]:
 # --------------------------------------------------------------------------- #
 
 class _HTMLToText(HTMLParser):
-    SKIP = {"script", "style", "nav", "header", "footer", "noscript", "svg"}
-    BLOCK = {"p", "div", "br", "li", "tr", "table", "section", "article", "dd", "dt", "pre"}
+    """HTML -> Markdown-ish text, keeping only the page's main content.
+
+    Saved or mirrored manual pages (ORCA's Sphinx manual, gaussian.com keyword pages) carry
+    navigation sidebars, headers, footers and a table of contents on every page; indexing
+    those would repeat the same menu text thousands of times. When the page has a <main>,
+    <article> or role="main" element, only its text is kept; elements whose class/id look
+    like navigation are dropped everywhere.
+    """
+
+    SKIP_TAGS = {"script", "style", "nav", "header", "footer", "noscript", "svg", "form", "button"}
+    VOID = {"br", "img", "hr", "meta", "link", "input", "wbr", "source", "area", "base", "col", "embed", "param", "track"}
+    BLOCK = {"p", "div", "br", "li", "tr", "table", "section", "article", "dd", "dt", "pre", "ul", "ol"}
     HEADINGS = {"h1": 1, "h2": 2, "h3": 3, "h4": 4}
+    NAV_ATTR = re.compile(
+        r"(^|[\s_-])(sidebar|sphinxsidebar|toctree-wrapper|bd-sidebar|wy-nav|navbar|nav|menu|breadcrumbs?|"
+        r"footer|header|related|prev-next|search|skip-link|headerlink|toc|localtoc|cookie|banner)($|[\s_-])",
+        re.IGNORECASE,
+    )
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.out: list[str] = []
-        self.skip_depth = 0
-        self.heading: int | None = None
+        self.all: list[str] = []
+        self.main: list[str] = []
+        self.stack: list[tuple[str, bool, bool]] = []  # (tag, skip, main)
         self.pre = 0
         self.title = ""
         self._in_title = False
+        self.canonical: str | None = None
+        self.saw_main = False
+
+    @property
+    def skipping(self) -> bool:
+        return any(sk for _, sk, _ in self.stack)
+
+    @property
+    def in_main(self) -> bool:
+        return any(m for _, _, m in self.stack)
+
+    def emit(self, text: str):
+        if self.skipping:
+            return
+        self.all.append(text)
+        if self.in_main:
+            self.main.append(text)
 
     def handle_starttag(self, tag, attrs):
-        if tag in self.SKIP:
-            self.skip_depth += 1
-        elif tag == "title":
+        a = dict(attrs)
+        if tag == "link" and (a.get("rel") or "").lower() == "canonical" and a.get("href"):
+            self.canonical = a["href"]
+        if tag == "meta" and a.get("property") == "og:url" and a.get("content") and not self.canonical:
+            self.canonical = a["content"]
+        if tag == "title":
             self._in_title = True
-        elif tag in self.HEADINGS:
-            self.heading = self.HEADINGS[tag]
-            self.out.append("\n\n" + "#" * self.heading + " ")
+        if tag not in self.VOID:
+            ident = f"{a.get('class') or ''} {a.get('id') or ''}"
+            skip = tag in self.SKIP_TAGS or (
+                tag in ("div", "aside", "section", "ul") and bool(self.NAV_ATTR.search(ident))
+            ) or a.get("role") in ("navigation", "search", "banner", "contentinfo") or tag == "aside"
+            main = tag in ("main", "article") or a.get("role") == "main"
+            if main:
+                self.saw_main = True
+            self.stack.append((tag, skip, main))
+        if tag in self.HEADINGS:
+            self.emit("\n\n" + "#" * self.HEADINGS[tag] + " ")
         elif tag == "pre":
             self.pre += 1
-            self.out.append("\n```\n")
+            self.emit("\n```\n")
         elif tag in ("td", "th"):
-            self.out.append(" | ")
+            self.emit(" | ")
         elif tag in self.BLOCK:
-            self.out.append("\n")
+            self.emit("\n")
 
     def handle_endtag(self, tag):
-        if tag in self.SKIP:
-            self.skip_depth = max(0, self.skip_depth - 1)
-        elif tag == "title":
+        if tag == "title":
             self._in_title = False
-        elif tag in self.HEADINGS:
-            self.heading = None
-            self.out.append("\n")
+        if tag in self.HEADINGS:
+            self.emit("\n")
         elif tag == "pre":
             self.pre = max(0, self.pre - 1)
-            self.out.append("\n```\n")
+            self.emit("\n```\n")
         elif tag in self.BLOCK:
-            self.out.append("\n")
+            self.emit("\n")
+        if tag in self.VOID:
+            return
+        # Pop to the matching open tag (tolerates unclosed <p>, <li>, ...).
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                break
 
     def handle_data(self, data):
         if self._in_title:
             self.title += data
             return
-        if self.skip_depth:
-            return
-        if self.pre:
-            self.out.append(data)
-        else:
-            self.out.append(re.sub(r"\s+", " ", data))
+        self.emit(data if self.pre else re.sub(r"\s+", " ", data))
+
+    def handle_comment(self, data):
+        # Browsers' "Save page as" records the source: <!-- saved from url=(0042)https://... -->
+        m = re.search(r"saved from url=\(\d+\)(\S+)", data)
+        if m and not self.canonical:
+            self.canonical = m.group(1)
+
+
+_TITLE_SUFFIX = re.compile(r"\s+[—–|·]\s+.*$|\s+-\s+(ORCA|Gaussian|Q-Chem|Molpro|Psi4|PySCF)\b.*$", re.IGNORECASE)
 
 
 def html_to_markdown(html: str) -> tuple[str, str]:
+    title, text, _ = parse_html(html)
+    return title, text
+
+
+def parse_html(html: str) -> tuple[str, str, str | None]:
+    """Return (page title without site suffix, main text as Markdown-ish text, source URL)."""
     p = _HTMLToText()
     p.feed(html)
-    text = "".join(p.out)
+    main = "".join(p.main)
+    text = main if p.saw_main and len(main.strip()) > 100 else "".join(p.all)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return p.title.strip(), text.strip()
+    text = text.replace("\u00b6", "")  # Sphinx permalink pilcrows
+    title = _TITLE_SUFFIX.sub("", re.sub(r"\s+", " ", p.title).strip())
+    return title, text.strip(), p.canonical
 
 
 # --------------------------------------------------------------------------- #
@@ -561,6 +621,61 @@ def pdf_sections(path: Path, doc_title: str | None = None) -> list[tuple[list[st
     return sections
 
 
+def _page_garbled(text: str) -> bool:
+    visible = [ch for ch in text if not ch.isspace()]
+    if len(visible) < 50:
+        return False
+    if text.count("(cid:") >= 3:
+        return True
+    letters = sum(ch.isalpha() for ch in visible)
+    if letters / len(visible) < 0.55:
+        return True
+    words = re.findall(r"[A-Za-z]{4,}", text)
+    if len(words) >= 20:
+        no_vowel = sum(1 for w in words if not re.search(r"[aeiouyAEIOUY]", w))
+        if no_vowel / len(words) > 0.3:
+            return True
+    return False
+
+
+def pdf_quality(path: Path) -> dict:
+    """Does this PDF have a usable text layer? Used by `rag-drg check-pdf` and ingest warnings.
+
+    verdict:
+      "ok"         - text on (nearly) every page
+      "partial"    - some pages are images only (e.g. scanned figures/chapters)
+      "scanned"    - little or no text: needs OCR (`ocrmypdf --skip-text in.pdf out.pdf`)
+      "garbled"    - text exists but is unreadable (font encoding): `ocrmypdf --force-ocr`
+    """
+    reader = _pdf_reader(path)
+    texts = _page_texts(reader)
+    n = len(texts)
+    empty = [i + 1 for i, t in enumerate(texts) if len(t.strip()) < 30]
+    garbled = [i + 1 for i, t in enumerate(texts) if _page_garbled(t)]
+    outline = pdf_outline(reader)
+    if n == 0:
+        verdict = "scanned"
+    elif len(empty) / n > 0.5:
+        verdict = "scanned"
+    elif len(garbled) / n > 0.2:
+        verdict = "garbled"
+    elif len(empty) / n > 0.05:
+        verdict = "partial"
+    else:
+        verdict = "ok"
+    sample_page = next((t for t in texts if len(t.strip()) > 200 and not _page_garbled(t)), "")
+    return {
+        "file": str(path),
+        "pages": n,
+        "pages_without_text": len(empty),
+        "pages_garbled": len(garbled),
+        "first_pages_without_text": empty[:15],
+        "bookmarks": len(outline),
+        "verdict": verdict,
+        "sample": re.sub(r"\s+", " ", sample_page)[:300],
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Theory vs. parameters: manuals mix method background with keyword documentation.
 # Agents asking "what is the keyword" should not get pages of equations, and vice versa.
@@ -639,8 +754,13 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
     if suffix == ".rst":
         return meta, _sections_to_chunks(rst_sections(text), rel_path, size, overlap)
     if suffix in (".html", ".htm"):
-        title, md = html_to_markdown(text)
-        return meta, _sections_to_chunks(markdown_sections(md), rel_path, size, overlap, title or None)
+        title, md, url = parse_html(text)
+        if url:
+            meta["url"] = url
+        chunks = _sections_to_chunks(markdown_sections(md), rel_path, size, overlap, title or None)
+        for c in chunks:
+            c.kind = classify_section(c.title.split(" > "), c.text)
+        return meta, chunks
     if path.name == "read_options.cc":
         return meta, _sections_to_chunks(psi4_options_sections(text), rel_path, size, overlap)
     if suffix in (".yml", ".yaml") and "levels_of_theory" in text:
@@ -663,5 +783,8 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
 
 
 def chunk_html_string(html: str, url: str, size: int = 1500, overlap: int = 200) -> list[Chunk]:
-    title, md = html_to_markdown(html)
-    return _sections_to_chunks(markdown_sections(md), url, size, overlap, title or None)
+    title, md, _ = parse_html(html)
+    chunks = _sections_to_chunks(markdown_sections(md), url, size, overlap, title or None)
+    for c in chunks:
+        c.kind = classify_section(c.title.split(" > "), c.text)
+    return chunks

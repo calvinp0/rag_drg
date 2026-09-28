@@ -64,6 +64,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--evidence")
     p.add_argument("--tag", action="append", dest="tags")
 
+    p = sub.add_parser("check-pdf", help="is a PDF text-searchable, or does it need OCR? (and does it have bookmarks)")
+    p.add_argument("paths", nargs="+")
+
     p = sub.add_parser("level", help="which ESS supports a level of theory and how to write it")
     p.add_argument("name", nargs="?", default="", help="e.g. wB97X-D, 'DLPNO-CCSD(T)/cc-pVTZ'; empty lists all")
     p.add_argument("--software", "-s")
@@ -138,6 +141,38 @@ def main(argv: list[str] | None = None) -> int:
         st.close()
         print(f"Wrote {path} (status: unreviewed). Commit it and open a PR for review.")
         return 0
+
+    if args.cmd == "check-pdf":
+        from pathlib import Path
+
+        from .chunking import pdf_quality
+
+        advice = {
+            "ok": "text layer is fine; ingest as is.",
+            "partial": "some pages are images only; `ocrmypdf --skip-text in.pdf out.pdf` OCRs just those pages.",
+            "scanned": "no usable text: run `ocrmypdf --skip-text in.pdf out.pdf` and ingest the output instead.",
+            "garbled": "text is unreadable (font encoding): run `ocrmypdf --force-ocr in.pdf out.pdf`.",
+        }
+        worst = 0
+        for p_ in args.paths:
+            files = sorted(Path(p_).rglob("*.pdf")) if Path(p_).is_dir() else [Path(p_)]
+            if not files or not all(f.is_file() for f in files):
+                print(f"{p_}: no PDF found")
+                worst = max(worst, 2)
+                continue
+            for f in files:
+                q = pdf_quality(f)
+                print(f"{q['file']}\n  pages: {q['pages']}, without text: {q['pages_without_text']}, "
+                      f"garbled: {q['pages_garbled']}, bookmarks: {q['bookmarks']}")
+                if q["first_pages_without_text"]:
+                    print(f"  pages without text (first): {q['first_pages_without_text']}")
+                print(f"  verdict: {q['verdict']} - {advice[q['verdict']]}")
+                if not q["bookmarks"]:
+                    print("  no bookmarks: it will be indexed page by page (still searchable, coarser titles).")
+                if q["sample"]:
+                    print(f"  sample: {q['sample'][:160]}...")
+                worst = max(worst, 0 if q["verdict"] == "ok" else 1)
+        return worst
 
     if args.cmd == "level":
         from .levels import lookup
