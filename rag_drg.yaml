@@ -42,23 +42,22 @@ sources:
     doc_type: paper
 
   # ---------------------------------------------------------------------- ARC
+  # Only ARC's user-facing INPUT/OUTPUT surface is indexed (docs, examples, output schema, settings).
+  # The code itself crowded search (3520 of 3860 chunks were code); the input keys, defaults and
+  # descriptions come instead from the schema generated from the code (`rag-drg arc schema`, indexed
+  # via knowledge/arc/input_schema.snapshot.yaml). The checkout stays broad because the generator
+  # reads arc/main.py, arc/species, arc/reaction, arc/level.py, arc/common.py, arc/job and arc/settings.
   - name: arc
     type: git
     url: https://github.com/ReactionMechanismGenerator/ARC.git
     sparse: [/docs/source/, /arc/, /examples/, /README.md]
     include:
       - docs/source/*.rst
-      - examples/**/*.yml
+      - examples/**
       - arc/schemas/*.json
-      - arc/settings/*.py
-      - arc/*.py
-      - arc/job/**/*.py
-      - arc/species/*.py
-      - arc/reaction/*.py
-      - arc/parser/*.py
-      - arc/statmech/*.py
+      - arc/settings/settings.py
+      - arc/settings/submit.py
       - README.md
-    exclude: ["**/*_test.py", "arc/testing/**"]
     doc_type_rules:
       - {glob: "arc/schemas/*.json", doc_type: schema}
       - {glob: "examples/**", doc_type: template}

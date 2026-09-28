@@ -1,0 +1,41 @@
+project: my project
+job_memmory: 14
+max_job_time: 24 hours
+n_confs: '10'
+level_of_theory: wb97xd/def2svp
+opt_level: b3lyp/6-31g
+sp_level:
+  method: wb97xd
+  basis: def2tzvp
+  software: orca
+  sovlent: water
+freq_level: b97d32023/def2svp
+scan_level: dlpno-ccsd(t)/def2-tzvp def2-tzvp/c
+specific_job_type: stability
+job_types:
+  rotors: no
+  fine_grid: true
+  1d_rotors: true
+ess_settings:
+  gausian: local
+  orca: [zeus]
+ts_adapters: heuristics
+species:
+  - label: NO
+    smiles: '[N]=O'
+    multiplicity: 1
+  - label: OH
+    smile: '[OH]'
+  - label: OH
+    smiles: '[OH]'
+    charge: 1
+  - label: TS0
+    xyz: 'H 0 0 0'
+  - label: TS1
+    is_ts: true
+reactions:
+  - label: OH + CH4 <=> H2O + CH3
+  - label: A+B=>C
+  - reactants: [OH]
+    products: [NO]
+    ts_label: TS0
