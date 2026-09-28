@@ -53,6 +53,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default=os.environ.get("RAG_DRG_HOST", "127.0.0.1"))
     p.add_argument("--port", type=int, default=int(os.environ.get("RAG_DRG_PORT", "8765")))
     p.add_argument("--readonly", action="store_true", help="open the index read-only; disables record_lesson")
+    p.add_argument("--auth", choices=["token", "none"], default=os.environ.get("RAG_DRG_AUTH", "token"),
+                   help="http/sse: require 'Authorization: Bearer <token>' (default; see `rag-drg tokens`)")
+    p.add_argument("--allow-unauthenticated", action="store_true",
+                   help="allow --auth none on a non-loopback address")
+    p.add_argument("--allowed-host", action="append", dest="allowed_hosts",
+                   default=[h for h in os.environ.get("RAG_DRG_ALLOWED_HOSTS", "").split(",") if h.strip()],
+                   help="host name clients use in the URL (Host-header check), e.g. rag.chem.example.ac.il; "
+                        "repeatable; '*' disables the check")
+    p.add_argument("--ssl-certfile", help="serve HTTPS directly (else put nginx/caddy in front)")
+    p.add_argument("--ssl-keyfile")
 
     p = sub.add_parser("lesson", help="record a lesson learned (a correction)")
     p.add_argument("--title", required=True)
@@ -134,7 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "serve":
         from .mcp_server import serve
 
-        serve(cfg, transport=args.transport, host=args.host, port=args.port, readonly=args.readonly)
+        serve(cfg, transport=args.transport, host=args.host, port=args.port, readonly=args.readonly,
+              auth=args.auth, allowed_hosts=args.allowed_hosts, allow_unauthenticated=args.allow_unauthenticated,
+              ssl_certfile=args.ssl_certfile, ssl_keyfile=args.ssl_keyfile)
         return 0
 
     if args.cmd == "lesson":
