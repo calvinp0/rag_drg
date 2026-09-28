@@ -355,16 +355,11 @@ def _add_compose(sub) -> None:
 
 
 def register_cli(subparsers):
-    existing = subparsers.choices.get("arc")
-    if existing is None:
-        p = subparsers.add_parser("arc", help="ARC runs on a cluster: compose the runner job and settings")
-        sub = p.add_subparsers(dest="arc_cmd", required=True)
-        _add_compose(sub)
-        return {"arc": _cli}
-    # another plugin owns `rag-drg arc`; register under a name of our own
-    p = subparsers.add_parser("arc-compose", help="compose an ARC run on a cluster (runner job + settings)")
-    _add_compose(p.add_subparsers(dest="arc_cmd", required=True))
-    return {"arc-compose": _cli}
+    from ._arc.cli import add_arc_command, arc_group, dispatch
+
+    _add_compose(arc_group(subparsers))
+    add_arc_command("compose", _cli)
+    return {"arc": dispatch}
 
 
 def _within(path: Path, other: Path) -> bool:

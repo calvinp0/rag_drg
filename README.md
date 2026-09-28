@@ -109,7 +109,9 @@ schema up front, e.g. local models; see [integrations/local-models.md](integrati
 | Command | Purpose | Docs |
 |---|---|---|
 | `rag-drg search "..." [--software X --version V --max-tokens N --json]` | Search from a terminal or a script | |
-| `rag-drg check-input FILE [--submit SCRIPT]`, `--hook` | Input checker; `--hook` is the Claude Code hook mode | [docs/input-checker.md](docs/input-checker.md) |
+| `rag-drg compose SPEC.yaml` (or `--program orca --job sp --method ...`) | Compose a checked ESS input + submit script from an explicit spec or your project's protocol file | [docs/compose.md](docs/compose.md) |
+| `rag-drg arc check input.yml`, `arc compose input.yml --server zeus`, `arc schema` | ARC: validate input.yml against a schema generated from ARC `main`; compose the runner job (e.g. alon_q on n170) and ARC's `settings.py` / `submit.py` snippets | [docs/arc-input.md](docs/arc-input.md), [docs/arc-run.md](docs/arc-run.md) |
+| `rag-drg check-input FILE [--submit SCRIPT]`, `--hook` | Input checker; `--hook` is the Claude Code hook mode (also routes ARC input.yml) | [docs/input-checker.md](docs/input-checker.md) |
 | `rag-drg basis NAME --elements C,H,I` | Basis coverage check | [docs/input-checker.md](docs/input-checker.md) |
 | `rag-drg diagnose OUTPUT` | Diagnose a failed job | [docs/diagnose.md](docs/diagnose.md) |
 | `rag-drg level NAME [--software X]` | Level-of-theory support table | |

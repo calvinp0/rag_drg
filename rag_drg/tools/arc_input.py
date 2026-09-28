@@ -130,8 +130,9 @@ def format_findings(findings: list[Finding], name: str | None = None) -> str:
 
 
 def register_cli(subparsers):
-    p = subparsers.add_parser("arc", help="ARC input.yml: generate the input schema, check input files")
-    asub = p.add_subparsers(dest="arc_cmd", required=True)
+    from ._arc.cli import add_arc_command, arc_group, dispatch
+
+    asub = arc_group(subparsers)
     q = asub.add_parser("schema", help="generate the ARC input schema from ARC's source (static; ARC is not imported)")
     q.add_argument("--arc-path", help="ARC checkout (default: the `arc` source in sources_cache/)")
     q.add_argument("--out", help="output file: .json, or .yaml for the snapshot format "
@@ -139,7 +140,9 @@ def register_cli(subparsers):
     q = asub.add_parser("check", help="check ARC input files (exit 1 on errors)")
     q.add_argument("paths", nargs="+")
     q.add_argument("--json", action="store_true")
-    return {"arc": _cli}
+    add_arc_command("schema", _cli)
+    add_arc_command("check", _cli)
+    return {"arc": dispatch}
 
 
 def _cli(args, cfg) -> int:

@@ -30,7 +30,7 @@ TYPE_BOOST = {
     "gotcha": 1.35,
     "card": 1.25,
     "template": 1.2,
-    "schema": 1.2,
+    "schema": 1.0,
     "reference": 1.0,
     "theory": 0.95,
     "paper": 1.0,
