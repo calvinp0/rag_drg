@@ -169,11 +169,19 @@ shared server never uses its own.
 
 ## For zeus (to fill in)
 
-Confirmed: `qsub` works from n170 (so ARC can submit its ESS jobs from the runner node). The
-group's facts are in `knowledge/hpc/servers/zeus.md`. Still open: the path of `qsub` on n170
-(`command -v qsub`; ARC assumes `/usr/local/bin/qsub`).
+Confirmed:
+* `qsub` works from n170 and is at `/usr/local/bin/qsub` (ARC's default).
+* n170 is PBS vnode `gd004`, with 384 cores and about 1511 GiB of memory.
+* The queue limits and access groups from `qstat -Qf`.
 
-`servers.yaml` needs, from `rag-drg servers discover-pbs` and the group: the partitions `alon_q`
-(max walltime 3600 h, multi-node), `mafat_new_q`, `zeus_long_q`, `zeus_short_q`, `zeus_comb_q`,
-`alon_comb_q` with their per-node cores/memory and `access:`; `arc.ess_queues` in the order ARC
-should prefer; `arc.runner` with `queue: alon_q`, `host: n170` and n170's `host_cores`/`host_mem_gb`.
+These are recorded in `knowledge/hpc/servers/zeus.md`.
+
+Still needed for `servers.yaml`: the cores and memory per node of every queue, since
+`cores_per_node` and `mem_per_node_gb` are required fields. Run on zeus:
+
+    pbsnodes -a | grep -E '^[a-z]|resources_available\.(host|ncpus|mem|ngpus|qlist) '
+
+Save that output and the full `qstat -Qf` output, then draft the block with
+`rag-drg servers discover-pbs --from-file qstat.txt --pbsnodes nodes.txt`. Also set `arc.ess_queues`
+in the order ARC should prefer, and `arc.runner` with `queue: alon_q`, `host: n170`,
+`host_cores: 384` and `host_mem_gb: 1511`.
