@@ -33,6 +33,10 @@ servers:
         gpu_type: A100
         max_nodes: 1
         notes: "GPU jobs only (Gaussian 16 GPU build)"
+        access:                       # optional queue ACL; omit = everyone in the group may use it
+          users: [alice]              # these Unix users ...
+          groups: [gpuusers]          # ... or members of ANY of these Unix groups
+          notes: "ask the PI to be added to gpuusers"
     scratch:
       path: "/scratch/$USER"          # node-local disk; a per-job directory is created under it
       node_local: true

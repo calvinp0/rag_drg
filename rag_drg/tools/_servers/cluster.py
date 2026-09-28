@@ -16,7 +16,7 @@ import socket
 import subprocess
 from typing import Callable
 
-from .model import PBS_FAMILY, QUERY_KINDS, Server
+from .model import COMMAND_KINDS, PBS_FAMILY, QUERY_KINDS, Server
 
 TIMEOUT_S = 30
 MAX_OUTPUT = 8000
@@ -51,6 +51,18 @@ def _check_pbsnodes(args: list[str]) -> str | None:
     return None
 
 
+def _check_id(args: list[str]) -> str | None:
+    if not args or any(not re.fullmatch(r"-[unGgr]+", a) for a in args):
+        return "only 'id -un' / 'id -Gn' style options are allowed (no user argument)"
+    return None
+
+
+def _check_sacctmgr(args: list[str]) -> str | None:
+    if args[:1] not in (["show"], ["list"]) or any(a in ("-i", "--immediate") for a in args):
+        return "only 'sacctmgr show|list ...' is allowed"
+    return None
+
+
 def _check_lfs(args: list[str]) -> str | None:
     return None if args[:1] == ["quota"] else "only 'lfs quota ...' is allowed"
 
@@ -66,6 +78,8 @@ ALLOWED_PROGRAMS: dict[str, Callable[[list[str]], str | None] | None] = {
     "sinfo": None,
     "sshare": None,
     "scontrol": _check_scontrol,
+    "sacctmgr": _check_sacctmgr,
+    "id": _check_id,
     "qstat": None,
     "pbsnodes": _check_pbsnodes,
     "quota": None,
@@ -103,6 +117,14 @@ def command_problems(command: str, allow_job_id: bool = False) -> list[str]:
     return problems
 
 
+# queue_access: fixed command sets (not overridable in servers.yaml `commands:`)
+QUEUE_ACCESS_COMMANDS: dict[str, list[str]] = {
+    "slurm": ["id -un", "id -Gn", "scontrol show partition",
+              "sacctmgr show assoc user=$USER format=Account,Partition -P -n"],
+    "pbs": ["id -un", "id -Gn", "qstat -Qf"],
+}
+
+
 def default_commands(server: Server, what: str) -> list[str]:
     if server.scheduler == "slurm":
         cmds = list(SLURM_DEFAULTS.get(what, []))
@@ -114,12 +136,15 @@ def default_commands(server: Server, what: str) -> list[str]:
         cmds = []
     if what == "quota":
         cmds = [st.quota_command for st in server.storage if st.quota_command]
+    if what == "queue_access":
+        fam = "pbs" if server.scheduler in ("pbs", "pbspro") else server.scheduler
+        cmds = list(QUEUE_ACCESS_COMMANDS.get(fam, []))
     return cmds
 
 
 def commands_for(server: Server, what: str) -> list[str]:
     """Override from servers.yaml `commands:` if set, else the scheduler default(s)."""
-    if what in server.commands:
+    if what in server.commands and what in COMMAND_KINDS:
         return [server.commands[what]]
     return default_commands(server, what)
 
@@ -163,11 +188,33 @@ def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
     return text[:limit] + f"\n... [truncated, {len(text) - limit} more characters]"
 
 
+def run_command(server: Server, cmd: str, job_id: str | None = None, runner: Callable | None = None,
+                allow_job_id: bool = False) -> tuple[int | None, str, str]:
+    """Run one allowlisted command; (returncode or None if it could not run, stdout, stderr/reason)."""
+    problems = command_problems(cmd, allow_job_id=allow_job_id)
+    if problems:
+        raise ValueError(f"refusing to run {cmd!r}: " + "; ".join(problems))
+    runner = runner or subprocess.run  # looked up at call time so tests can patch subprocess.run
+    argv = build_argv(server, cmd, job_id)
+    try:
+        res = runner(argv, capture_output=True, text=True, timeout=TIMEOUT_S, check=False)
+    except subprocess.TimeoutExpired:
+        return None, "", f"timed out after {TIMEOUT_S} s"
+    except FileNotFoundError as e:
+        return None, "", f"cannot run: {e}"
+    return res.returncode, res.stdout or "", res.stderr or ""
+
+
+def where_label(server: Server) -> str:
+    return "local" if is_local(server) else "via ssh " + ssh_target(server)
+
+
 def cluster_query(server: Server, what: str, job_id: str | None = None,
                   runner: Callable | None = None) -> str:
     """Run the allowlisted read-only command(s) for `what` and return their (truncated) output.
 
-    what: jobs | job (needs job_id) | history | partitions | quota | fairshare.
+    what: jobs | job (needs job_id) | history | partitions | quota | fairshare | queue_access.
+    queue_access returns a per-queue "may I use it" report (see live_access.py).
     Raises ValueError for anything not allowed.
     """
     if what not in QUERY_KINDS:
@@ -178,29 +225,29 @@ def cluster_query(server: Server, what: str, job_id: str | None = None,
         job_id = str(job_id)
     elif job_id is not None:
         raise ValueError("job_id is only used with what='job'")
+    if what == "queue_access":
+        from .live_access import live_queue_access, format_live_report
+
+        return _truncate(format_live_report(server, live_queue_access(server, runner=runner)))
     cmds = commands_for(server, what)
     if not cmds:
         raise ValueError(f"no '{what}' command known for {server.name} ({server.scheduler}); "
                          f"add one under servers.{server.name}.commands.{what} in servers.yaml")
-    runner = runner or subprocess.run  # looked up at call time so tests can patch subprocess.run
-    outputs: list[str] = []
-    for cmd in cmds:
+    for cmd in cmds:  # validate everything before running anything
         problems = command_problems(cmd, allow_job_id=(what == "job"))
         if problems:
             raise ValueError(f"refusing to run {cmd!r}: " + "; ".join(problems))
-        argv = build_argv(server, cmd, job_id if what == "job" else None)
+    outputs: list[str] = []
+    for cmd in cmds:
         shown = cmd.replace(_JOB_PLACEHOLDER, job_id or "")
-        try:
-            res = runner(argv, capture_output=True, text=True, timeout=TIMEOUT_S, check=False)
-        except subprocess.TimeoutExpired:
-            outputs.append(f"$ {shown}\n[timed out after {TIMEOUT_S} s]")
+        rc, out, err = run_command(server, cmd, job_id if what == "job" else None, runner=runner,
+                                   allow_job_id=(what == "job"))
+        if rc is None:
+            outputs.append(f"$ {shown}\n[{err}]")
             continue
-        except FileNotFoundError as e:
-            outputs.append(f"$ {shown}\n[cannot run: {e}]")
-            continue
-        text = (res.stdout or "") + (("\n[stderr]\n" + res.stderr) if res.stderr else "")
-        outputs.append(f"$ {shown}\n{text.rstrip()}\n[exit {res.returncode}]")
-    header = f"{server.name} ({'local' if is_local(server) else 'via ssh ' + ssh_target(server)}): {what}"
+        text = out + (("\n[stderr]\n" + err) if err else "")
+        outputs.append(f"$ {shown}\n{text.rstrip()}\n[exit {rc}]")
+    header = f"{server.name} ({where_label(server)}): {what}"
     return _truncate(header + "\n\n" + "\n\n".join(outputs))
 
 

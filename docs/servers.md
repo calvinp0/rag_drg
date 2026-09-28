@@ -20,8 +20,10 @@ and write `servers.yaml` with the real values:
    (`slurm`, `pbs`/`pbspro`, `torque`, `sge`, `htcondor`, `local`). No usernames needed
    (`user: null` = each person's own account) and **never passwords or keys**.
 2. **Partitions/queues** we are allowed to use: max walltime, cores per node, memory per node (GB),
-   GPUs per node and GPU type, which one is the default. Get them from `sinfo -o "%P %l %c %m %G"`
-   (Slurm) or `qstat -Qf` / `pbsnodes -aSj` (PBS), or the cluster documentation.
+   GPUs per node and GPU type, which one is the default, and who may use restricted ones
+   (`access:`, see [Restricted queues](#restricted-queues-access)). Get them from
+   `sinfo -o "%P %l %c %m %G"` / `scontrol show partition` (Slurm) or `qstat -Qf` / `pbsnodes -aSj`
+   (PBS), or the cluster documentation. For PBS, `rag-drg servers discover-pbs` drafts the block.
 3. **Every ESS install**: absolute path of the executable, the environment lines it needs
    (e.g. ORCA's OpenMPI `PATH`/`LD_LIBRARY_PATH`, `g16root` + `source $g16root/g16/bsd/g16.profile`,
    `QC`/`QCAUX` + `source $QC/qcenv.sh`, the Python env of Psi4/PySCF), MPI vs threads, and the
@@ -62,7 +64,11 @@ Everything is under one command, `rag-drg servers`. `--file F` uses another file
 | `servers arc-settings [NAME ...]` | Python `servers = {...}` and a suggested `global_ess_settings` for `~/.arc/settings.py` |
 | `servers submit SERVER SOFTWARE INPUT [--cores N --mem GB --time T --partition P --gpus G --job-name J -o FILE]` | submit script on stdout (or `-o`), notes (input lines, warnings) on stderr |
 | `servers check SERVER [PARTITION] --cores N --mem GB --time T [--gpus G --software KEY]` | check a request against the limits (exit 1 on errors) |
-| `servers query SERVER {jobs,job,history,partitions,quota,fairshare} [JOB_ID]` | read-only live query (disabled by default, see below) |
+| `servers query SERVER {jobs,job,history,partitions,quota,fairshare,queue_access} [JOB_ID]` | read-only live query (disabled by default, see below) |
+| `servers access SERVER [--user U --groups G1,G2] [--live]` | which partitions you may use (static `access:` rules); `--live` also asks the scheduler as you |
+| `servers discover-pbs --from-file qstat_Qf.txt [--pbsnodes nodes.txt]` | print a DRAFT `partitions:` block from saved `qstat -Qf` (+ `pbsnodes -a`/`-aSj`) output |
+
+`servers check` and `servers submit` also take `--user U --groups G1,G2` for restricted queues.
 
 Example:
 
@@ -104,8 +110,9 @@ They mirror `knowledge/hpc/templates/*.sh`:
 |---|---|
 | `list_servers()` | clusters, partitions, software keys |
 | `server_info(name)` | the full card for one cluster |
-| `render_submit_script(server, software, input_file, job_name, cores, mem_gb, walltime, partition, gpus)` | script + input lines, or the limit violations |
-| `check_resources(server, partition, cores, mem_gb, walltime, gpus, software)` | JSON list of `{severity, message}` (`[]` = fits) |
+| `render_submit_script(server, software, input_file, job_name, cores, mem_gb, walltime, partition, gpus, user, groups)` | script + input lines, or the limit violations |
+| `check_resources(server, partition, cores, mem_gb, walltime, gpus, software, user, groups)` | JSON list of `{severity, message}` (`[]` = fits) |
+| `queue_access(server, partition, user, groups)` | JSON list of `{partition, allowed: true/false/null, reason, notes}` |
 | `cluster_query(server, what, job_id)` | read-only live query; only registered when enabled and the server is not `--readonly` |
 
 Python (for other plugins, e.g. an input checker):
@@ -116,6 +123,81 @@ servers = load_servers(cfg)                     # {} if there is no servers.yaml
 problems = check_resources(servers["zeus"], "cpu", cores=16, mem_gb=64, walltime="24:00:00")
 problems = check_resources("zeus", None, 16, 64, "24:00:00", software="orca-6", cfg=cfg)
 ```
+
+## Restricted queues (`access`)
+
+PBS queues can be limited to some users/groups (queue ACLs: `acl_user_enable`/`acl_users`,
+`acl_group_enable`/`acl_groups` in `qstat -Qf <queue>`); Slurm partitions likewise
+(`AllowGroups`, `AllowAccounts`, `DenyAccounts` in `scontrol show partition`). Record them per
+partition so agents do not write scripts for queues the user cannot submit to:
+
+```yaml
+    partitions:
+      gpu:
+        ...
+        access:                 # optional; absent = everyone in the group may use it
+          users: [alice, bob]   # Unix user names allowed
+          groups: [danagrp]     # Unix groups allowed (member of ANY listed group is enough)
+          notes: "ask X to be added"
+```
+
+`queue_access(server, partition, user, groups)` answers `allowed: true` (no rule, user listed,
+or a group matches), `false`, or `null` = unknown (a rule exists but the user/groups that could
+admit them are not known). `check_resources` adds an **error** for a denied partition and an
+**info** when unknown; `render_submit_script` refuses a denied partition and, when it picks the
+default partition for a known identity, skips partitions that identity may not use. Cards,
+`list_servers` and `server_info` show the rules. The Python functions never guess the identity:
+pass `user`/`groups`, or `use_local_identity=True` to `queue_access`.
+
+### Whose identity? (contract for the CLI, MCP tools, hook and REST layer)
+
+The process evaluating the rules is not always the person submitting: on the shared server it is
+a service account. The CLI, the MCP tools and the input-checker bridge
+(`rag_drg/tools/cluster_limits.py`, code `cluster-access`) resolve the requesting identity with
+`client_identity()` (in `rag_drg.tools.servers`, re-exported by `cluster_limits`), first match wins:
+
+1. explicit values (`--user/--groups`, the MCP tools' `user`/`groups` arguments);
+2. the context variable `CLIENT_IDENTITY` (`contextvars.ContextVar`, value `(user, [groups])`,
+   either may be `None`), which a server sets per request:
+   `with client_identity_scope(user, groups): ...` (or `CLIENT_IDENTITY.set(...)` / `.reset(token)`);
+3. environment variables `RAG_DRG_CLIENT_USER` and `RAG_DRG_CLIENT_GROUPS` (comma-separated);
+4. this process's user and groups (`getpass.getuser()`, `os.getgroups()`), **only** when
+   `local_identity_allowed()`: false when `RAG_DRG_SERVER_MODE` is set to anything but
+   `0/false/no/off`. **A shared MCP/HTTP server must set `RAG_DRG_SERVER_MODE=1`.**
+
+The local identity is only *authoritative* when this machine is the cluster (`scheduler: local`,
+or running on the login host): a laptop's user name and groups rarely match the cluster account.
+So a denial judged from a laptop's identity is a **warning** (not an error that blocks the hook),
+and `servers access` shows it as `unknown`. Verify with `--live`.
+
+### Live check and discovery
+
+`rag-drg servers access NAME --live` (or `cluster_query(server, "queue_access")`, both need live
+commands enabled, see below) runs, as you over SSH: `id -un`, `id -Gn` and
+- PBS Pro/OpenPBS: `qstat -Qf` - per queue: `usable` yes/no/unknown and why (`enabled`, `started`,
+  `acl_users`, `acl_groups`; every enabled ACL must admit you), plus limits
+  (`resources_max.walltime/ncpus/mem/ngpus`, `max_run`, `max_user_run`, ...). PBS compares
+  `acl_groups` with the job's group, so if the matching group is a secondary one, submit with
+  `#PBS -W group_list=<group>`. Torque is not supported (different output).
+- Slurm: `scontrol show partition` + `sacctmgr show assoc user=$USER format=Account,Partition -P -n`
+  (`State`, `AllowGroups`, `AllowAccounts`/`DenyAccounts` vs. your accounts; `MaxTime`, ...).
+
+It also notes queues missing from `servers.yaml` and walltimes that differ from it.
+
+To fill `servers.yaml` for a PBS cluster such as zeus, save the scheduler's view once and draft
+the block:
+
+```bash
+ssh zeus.technion.ac.il 'qstat -Qf' > qstat_Qf.txt
+ssh zeus.technion.ac.il 'pbsnodes -a' > pbsnodes.txt        # or pbsnodes -aSj
+rag-drg servers discover-pbs --from-file qstat_Qf.txt --pbsnodes pbsnodes.txt
+```
+
+The output is a **draft to review**: walltime from `resources_max.walltime`, cores/memory/GPUs
+per node as the minimum over the nodes serving each queue (`queue =` or `resources_available.Qlist`
+in `pbsnodes -a`; all nodes when that mapping is unknown, falling back to the queue's per-job
+`resources_max.*`), `access:` from the ACLs, `max_run`/`max_user_run` as notes, route queues
+skipped, `TODO` where nothing was found.
 
 ## Live cluster queries (off by default)
 
@@ -129,6 +211,7 @@ problems = check_resources("zeus", None, 16, 64, "24:00:00", software="orca-6", 
 | `partitions` | `sinfo -s`, `sinfo -o "%P %a %l %D %c %m %G"` | `qstat -Q`, `pbsnodes -aSj` |
 | `quota` | every `storage[].quota_command` | same |
 | `fairshare` | `sshare -u $USER` | (none; set `commands.fairshare`) |
+| `queue_access` | `id -un`, `id -Gn`, `scontrol show partition`, `sacctmgr show assoc user=$USER ...` | `id -un`, `id -Gn`, `qstat -Qf` (not Torque) |
 
 Per-cluster overrides go in `commands:` and must pass the same allowlist (see the spec).
 Execution: `ssh -o BatchMode=yes -o ConnectTimeout=10 <ssh_alias | user@host | host> -- <command>`

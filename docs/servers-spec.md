@@ -27,6 +27,10 @@ servers:
         max_nodes: 1                   # optional
         default: true                  # optional; exactly one partition may be default
         notes: "..."                   # optional
+        access:                        # optional queue ACL; absent = everyone in the group may use it
+          users: [alice, bob]          # Unix user names allowed
+          groups: [danagrp]            # Unix groups allowed (member of ANY listed group is enough)
+          notes: "ask X to be added"   # optional
     scratch:
       path: "/scratch/$USER"           # node-local or shared scratch base; $USER / $SLURM_JOB_ID allowed
       node_local: true
@@ -69,7 +73,7 @@ Additional rules added by the implementation (see docs/servers.md):
 * A software key is `<ess>` or `<ess>-<anything>` (e.g. `orca-6`, `gaussian-16-gpu`); a key
   containing `gpu` marks a GPU build.
 * `storage[].quota_command` and every `commands:` entry must pass the read-only allowlist used by
-  the live cluster tools (`squeue sacct sinfo sshare`, `scontrol show`, `qstat`, `pbsnodes` with
+  the live cluster tools (`squeue sacct sinfo sshare`, `scontrol show`, `sacctmgr show|list`, `id -un|-Gn`, `qstat`, `pbsnodes` with
   read-only flags, `quota`, `df`, `lfs quota`, `mmlsquota`, `beegfs-ctl --getquota`; arguments
   only from `[A-Za-z0-9_@%:=,./+- ]`, `$USER`, and `{job_id}` in `commands.job`). Allowed
   `commands:` keys: `jobs job history partitions quota fairshare`.
@@ -78,6 +82,11 @@ Additional rules added by the implementation (see docs/servers.md):
 * Generated cards in `knowledge/hpc/servers/generated/` must be up to date with `servers.yaml`
   and belong to an existing server.
 * Every ESS job is single-node: `cores <= cores_per_node` (`max_nodes` is informational).
+* `partitions.<p>.access` (optional) is a mapping with only `users`, `groups` (lists of Unix
+  names: letters, digits, `_ . -`, not starting with `.`/`-`) and `notes` (string); it must list
+  at least one user or group. A user may use the partition when their user name is listed OR
+  they belong to any listed group. Omit `access` for an unrestricted partition.
+* `commands:` cannot override `queue_access` (it runs a fixed set of commands, see docs/servers.md).
 
 Live read-only commands are off unless `conf.d/servers.yaml` sets
 `cluster_commands: {enabled: true}` (see docs/servers.md for why).
@@ -87,4 +96,5 @@ Python access (implemented in `rag_drg/tools/servers.py`):
 ```python
 from rag_drg.tools.servers import load_servers   # -> dict[name, Server] (dataclasses), {} if no file
 from rag_drg.tools.servers import check_resources, render_submit_script, cluster_query, arc_settings
+from rag_drg.tools.servers import queue_access   # -> {allowed: True|False|None, reason, partition, notes}
 ```

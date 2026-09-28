@@ -45,6 +45,18 @@ def _fmt(v) -> str:
     return str(v)
 
 
+def access_text(p) -> str:
+    """'everyone' or 'users a, b; groups g' for a partition."""
+    if p.access is None:
+        return "everyone"
+    bits = []
+    if p.access.users:
+        bits.append("users " + ", ".join(p.access.users))
+    if p.access.groups:
+        bits.append("groups " + ", ".join(p.access.groups))
+    return "; ".join(bits)
+
+
 def _code(v) -> str:
     return f"`{v}`" if v not in (None, "") else "-"
 
@@ -154,13 +166,23 @@ def render_card(server: Server) -> str:
             "```python", arc_settings({s.name: s}).split("\n\n# Suggested")[0].strip(), "```", ""]
 
     out += ["## Partitions / queues", "",
-            "| Name | Max walltime | Cores/node | Mem/node (GB) | GPUs/node | Max nodes | Default | Notes |",
-            "|---|---|---|---|---|---|---|---|"]
+            "| Name | Max walltime | Cores/node | Mem/node (GB) | GPUs/node | Max nodes | Default | Access | Notes |",
+            "|---|---|---|---|---|---|---|---|---|"]
     for p in s.partitions.values():
         gpu = f"{p.gpus_per_node} x {p.gpu_type}" if p.gpus_per_node and p.gpu_type else _fmt(p.gpus_per_node or 0)
         out.append(f"| `{p.name}` | `{p.max_walltime}` | {p.cores_per_node} | {_fmt(p.mem_per_node_gb)} | {gpu} | "
-                   f"{p.max_nodes} | {_fmt(p.default)} | {p.notes or ''} |")
+                   f"{p.max_nodes} | {_fmt(p.default)} | {access_text(p)} | {p.notes or ''} |")
     out.append("")
+    restricted = [p for p in s.partitions.values() if p.access is not None]
+    if restricted:
+        out += ["Restricted queues (servers.yaml `access:`): only the listed users, or members of ANY listed "
+                "group, may submit there. Check yours with `rag-drg servers access "
+                f"{s.name}` (add `--live` to ask the scheduler itself).", ""]
+        for p in restricted:
+            if p.access.notes:
+                out.append(f"* `{p.name}`: {p.access.notes.strip()}")
+        if any(p.access.notes for p in restricted):
+            out.append("")
 
     out += ["## Installed software", "",
             "| Key | ESS | Version | Executable | Parallel | Partitions |", "|---|---|---|---|---|---|"]
