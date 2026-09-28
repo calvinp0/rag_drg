@@ -9,7 +9,7 @@ import yaml
 
 from .access import queue_access
 from .model import Server, format_walltime
-from .submit import SubmitError, _is_gpu_build, render_arc_template, render_submit_script
+from .submit import SUBMIT_SCHEDULERS, SubmitError, _is_gpu_build, render_arc_template, render_submit_script
 
 GENERATED_SUBDIR = Path("hpc") / "servers" / "generated"
 
@@ -455,6 +455,11 @@ def render_card(server: Server) -> str:
     if sc.notes:
         out += [sc.notes.strip(), ""]
 
+    if s.scheduler not in SUBMIT_SCHEDULERS:
+        out += ["## How to submit", "",
+                f"rag-drg cannot generate {s.scheduler} submit files yet (`render_submit_script` refuses). "
+                f"Follow the hand-written card for {s.name} and the group's own templates.", ""]
+        return "\n".join(out).rstrip() + "\n"
     out += ["## How to submit", "",
             "Generate a filled-in script with `rag-drg servers submit "
             f"{s.name} <software-key> <input> [--cores N --mem GB --time HH:MM:SS --partition P --gpus G]` "
