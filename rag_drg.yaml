@@ -106,6 +106,8 @@ sources:
 
   # ORCA manuals are PDFs behind the forum login: download them and drop them here.
   #   sources/orca/5/orca_manual_5_0_4.pdf, sources/orca/6/orca_manual_6_0_1.pdf
+  # Manual PDFs are split along their bookmarks (chapter > section > subsection), and each
+  # section is labelled doc_type "reference" (keywords/usage) or "theory" (method background).
   - name: orca5-manual
     type: local
     path: sources/orca/5
@@ -150,12 +152,38 @@ sources:
     version: "16"
     enabled: false
 
-  # Local Gaussian material (e.g. the G09 / G16 PDF user references, Linda/GPU notes).
-  - name: gaussian-local
+  # Local Gaussian PDFs/HTML, one folder per version so the version filter works.
+  - name: gaussian09-manual
     type: local
-    path: sources/gaussian
+    path: sources/gaussian/09
     domain: ess
     software: gaussian
+    version: "09"
+  - name: gaussian16-manual
+    type: local
+    path: sources/gaussian/16
+    domain: ess
+    software: gaussian
+    version: "16"
+
+  # Q-Chem 6.1: the user manual PDF goes in sources/qchem/6.1/.
+  - name: qchem61-manual
+    type: local
+    path: sources/qchem/6.1
+    domain: ess
+    software: qchem
+    version: "6.1"
+  # Q-Chem online manual. (URL not checked from the build machine; check before relying on it.)
+  - name: qchem61-manual-web
+    type: url
+    urls: [https://manual.q-chem.com/6.1/]
+    crawl: true
+    allow_prefix: [https://manual.q-chem.com/6.1/]
+    max_pages: 1500
+    domain: ess
+    software: qchem
+    version: "6.1"
+    enabled: false
 
   # Molpro online manual (tracks the current release). (URL not checked from the build machine.)
   - name: molpro-manual-web

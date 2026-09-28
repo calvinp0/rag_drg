@@ -222,7 +222,9 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
             c.domain = domain.lower() if isinstance(domain, str) else domain
             c.software = software.lower() if isinstance(software, str) else software
             c.version = version
-            c.doc_type = doc_type
+            # Manual sections the chunker recognised as method background become "theory",
+            # so keyword questions and theory questions can be filtered apart.
+            c.doc_type = "theory" if (c.kind == "theory" and doc_type == "reference") else doc_type
             c.tags = tags
             c.url = url
             c.status = meta.get("status")

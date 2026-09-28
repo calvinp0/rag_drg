@@ -8,8 +8,11 @@
 #PBS -j oe
 
 cd "$PBS_O_WORKDIR"
-module load <gaussian-module>
+# --- software paths (absolute) ---
+export g16root=<abs path to the directory that CONTAINS g16/>   # G09: g09root, g09/bsd/g09.profile, g09/g09
+source $g16root/g16/bsd/g16.profile
+G16=$g16root/g16/g16
 export GAUSS_SCRDIR=${TMPDIR:-/scratch/$USER}/${PBS_JOBID%%.*}
 mkdir -p "$GAUSS_SCRDIR"
-g16 < <job>.gjf > <job>.log
+"$G16" < <job>.gjf > <job>.log
 rm -rf "$GAUSS_SCRDIR"

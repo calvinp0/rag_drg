@@ -11,11 +11,14 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=%x-%j.log
 
-module load <gaussian-module>         # sets g16root / g09root
+# --- software paths (absolute) ---
+export g16root=<abs path to the directory that CONTAINS g16/>   # G09: g09root, g09/bsd/g09.profile, g09/g09
+source $g16root/g16/bsd/g16.profile
+G16=$g16root/g16/g16
 export GAUSS_SCRDIR=${TMPDIR:-/scratch/$USER}/$SLURM_JOB_ID
 mkdir -p "$GAUSS_SCRDIR"
 
 cd "$SLURM_SUBMIT_DIR"
-g16 < <job>.gjf > <job>.log           # or: g09 < <job>.gjf > <job>.log
+"$G16" < <job>.gjf > <job>.log
 
 rm -rf "$GAUSS_SCRDIR"

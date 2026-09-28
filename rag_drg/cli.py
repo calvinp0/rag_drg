@@ -21,10 +21,10 @@ from .config import load_config
 
 
 def _add_filters(p: argparse.ArgumentParser):
-    p.add_argument("--software", "-s", help="orca, gaussian, psi4, molpro, pyscf, arc, slurm, ...")
+    p.add_argument("--software", "-s", help="orca, gaussian, qchem, psi4, molpro, pyscf, arc, slurm, ...")
     p.add_argument("--version", "-v", help="e.g. 6, 16, 2024")
     p.add_argument("--domain", "-d", help="ess, arc, hpc, project, literature")
-    p.add_argument("--doc-type", help="lesson, gotcha, card, template, schema, reference, code, paper")
+    p.add_argument("--doc-type", help="lesson, gotcha, card, template, schema, reference, theory, code, paper")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -63,6 +63,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--version")
     p.add_argument("--evidence")
     p.add_argument("--tag", action="append", dest="tags")
+
+    p = sub.add_parser("level", help="which ESS supports a level of theory and how to write it")
+    p.add_argument("name", nargs="?", default="", help="e.g. wB97X-D, 'DLPNO-CCSD(T)/cc-pVTZ'; empty lists all")
+    p.add_argument("--software", "-s")
 
     sub.add_parser("lint", help="validate front matter of curated cards and lessons (for CI / PR review)")
     sub.add_parser("stats", help="show index contents")
@@ -133,6 +137,12 @@ def main(argv: list[str] | None = None) -> int:
         index_lesson(cfg, st, path)
         st.close()
         print(f"Wrote {path} (status: unreviewed). Commit it and open a PR for review.")
+        return 0
+
+    if args.cmd == "level":
+        from .levels import lookup
+
+        print(lookup(cfg, args.name or None, args.software))
         return 0
 
     if args.cmd == "lint":

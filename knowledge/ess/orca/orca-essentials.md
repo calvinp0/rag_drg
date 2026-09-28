@@ -32,9 +32,10 @@ H   ...
   ORCA can go beyond `%maxcore`, so set it to about **75% of (memory per core)** that you
   ask the scheduler for.
 * `%pal nprocs N end` or `! PAL8` (the `!PALn` form only exists for some n; `%pal` always works).
-* For parallel runs, ORCA must be called with its **full path** (`$(which orca) job.inp > job.out`),
+* For parallel runs, ORCA must be called with its **full (absolute) path** (`/abs/path/orca_6_0_x/orca job.inp > job.out`),
   **never** through `mpirun orca`; ORCA starts its own MPI processes. The OpenMPI version must match
-  the one ORCA was built against (check the release notes for your ORCA build).
+  the one ORCA was built against (check the release notes for your ORCA build); put that
+  OpenMPI's `bin/` on `PATH` and `lib/` on `LD_LIBRARY_PATH` (see `hpc/templates/slurm_orca.sh`).
 
 ## Restarting / reading orbitals and Hessians
 

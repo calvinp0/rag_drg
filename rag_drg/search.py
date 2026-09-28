@@ -29,6 +29,7 @@ TYPE_BOOST = {
     "template": 1.2,
     "schema": 1.2,
     "reference": 1.0,
+    "theory": 0.95,
     "paper": 1.0,
     "code": 0.95,
     "scaffold": 0.6,  # fill-in-the-blanks _TEMPLATE cards
