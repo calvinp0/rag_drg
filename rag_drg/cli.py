@@ -138,18 +138,29 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "lesson":
-        from .lessons import index_lesson, write_lesson
+        from .lessons import find_similar, index_lesson, lesson_text, write_lesson
+        from .search import Searcher
         from .store import Store
+        from .tools.lessons_workflow import submit_lesson
 
+        author = os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
+        st = Store(cfg.index_path)
+        similar = find_similar(
+            cfg, Searcher(cfg, store=st, embedder=False), lesson_text(args.title, args.mistake, args.correction),
+            software=args.software, domain=args.domain,
+        )
         path = write_lesson(
             cfg, title=args.title, mistake=args.mistake, correction=args.correction, domain=args.domain,
             software=args.software, version=args.version, evidence=args.evidence, tags=args.tags,
-            author=os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER"),
+            author=author, similar=[s.path for s in similar],
         )
-        st = Store(cfg.index_path)
         index_lesson(cfg, st, path)
         st.close()
-        print(f"Wrote {path} (status: unreviewed). Commit it and open a PR for review.")
+        print(f"Wrote {path} (status: unreviewed).")
+        if similar:
+            print("possibly duplicates: " + ", ".join(f"{s.path} ({s.score:.2f})" for s in similar))
+        pr = submit_lesson(cfg, path, author=author)
+        print("Commit it and open a PR for review." if pr is None else pr.summary())
         return 0
 
     if args.cmd == "check-pdf":
