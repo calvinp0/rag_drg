@@ -1,0 +1,219 @@
+# rag-drg configuration. Paths are relative to this file.
+#
+#   rag-drg fetch            # clone / download the remote sources below into sources_cache/
+#   rag-drg ingest           # (re)build index/rag_drg.sqlite incrementally
+#   rag-drg serve            # MCP server (stdio); --transport http for a shared group server
+
+index_path: index/rag_drg.sqlite
+cache_dir: sources_cache
+lessons_dir: knowledge/lessons
+
+chunk_size: 1500
+chunk_overlap: 200
+
+embeddings:
+  # none                  -> keyword/BM25 only (no extra deps; already very good for exact keywords)
+  # sentence-transformers -> local model: pip install 'rag-drg[st]'
+  # openai                -> any OpenAI-compatible endpoint, e.g. Ollama:
+  #                          base_url: http://localhost:11434/v1, model: nomic-embed-text
+  provider: none
+  model: BAAI/bge-small-en-v1.5
+  # base_url: http://localhost:11434/v1
+  # api_key_env: OPENAI_API_KEY
+
+sources:
+  # ------------------------------------------------------------------ curated
+  # Hand-written, group-reviewed cards: gotchas, templates, capability matrices,
+  # server notes, project notes. These are ranked above raw manuals.
+  - name: curated
+    type: local
+    path: knowledge
+    doc_type: card
+    doc_type_rules:
+      - {glob: "hpc/templates/**", doc_type: template}
+      - {glob: "**/_TEMPLATE.md", doc_type: scaffold}   # fill-in-the-blanks cards rank low
+
+  # Project literature. Drop PDFs into papers/<project>/ (PDFs are git-ignored;
+  # keep a papers/<project>/notes.md with the key takeaways, which *is* committed).
+  - name: papers
+    type: local
+    path: papers
+    domain: literature
+    doc_type: paper
+
+  # ---------------------------------------------------------------------- ARC
+  - name: arc
+    type: git
+    url: https://github.com/ReactionMechanismGenerator/ARC.git
+    sparse: [/docs/source/, /arc/, /examples/, /README.md]
+    include:
+      - docs/source/*.rst
+      - examples/**/*.yml
+      - arc/schemas/*.json
+      - arc/settings/*.py
+      - arc/*.py
+      - arc/job/**/*.py
+      - arc/species/*.py
+      - arc/reaction/*.py
+      - arc/parser/*.py
+      - arc/statmech/*.py
+      - README.md
+    exclude: ["**/*_test.py", "arc/testing/**"]
+    doc_type_rules:
+      - {glob: "arc/schemas/*.json", doc_type: schema}
+      - {glob: "examples/**", doc_type: template}
+    domain: arc
+    software: arc
+    base_url: https://github.com/ReactionMechanismGenerator/ARC/blob/main
+
+  # ---------------------------------------------------------------------- ESS
+  - name: psi4
+    type: git
+    url: https://github.com/psi4/psi4.git
+    sparse: [/doc/sphinxman/source/, /psi4/src/read_options.cc, /samples/]
+    include:
+      - doc/sphinxman/source/*.rst
+      - psi4/src/read_options.cc      # every module keyword, default and allowed values
+      - samples/*/input.dat
+    exclude: ["doc/sphinxman/source/attic/**", "doc/sphinxman/source/autodoc*"]
+    domain: ess
+    software: psi4
+    base_url: https://github.com/psi4/psi4/blob/master
+
+  - name: pyscf
+    type: git
+    url: https://github.com/pyscf/pyscf.git
+    sparse: [/examples/, /pyscf/gto/mole.py, /pyscf/scf/hf.py, /pyscf/dft/rks.py, /pyscf/lib/misc.py, /pyscf/__config__.py]
+    include: ["examples/**/*.py", "pyscf/**/*.py"]
+    exclude: ["examples/pbc/**"]
+    doc_type_rules:
+      - {glob: "examples/**", doc_type: template}
+    domain: ess
+    software: pyscf
+    base_url: https://github.com/pyscf/pyscf/blob/master
+
+  # ORCA 6 has an HTML manual. (URL not checked from the build machine; check before relying on it.)
+  - name: orca6-manual-web
+    type: url
+    urls: [https://www.faccts.de/docs/orca/6.0/manual/]
+    crawl: true
+    allow_prefix: [https://www.faccts.de/docs/orca/6.0/manual/]
+    max_pages: 600
+    domain: ess
+    software: orca
+    version: "6"
+    enabled: false
+
+  # ORCA manuals are PDFs behind the forum login: download them and drop them here.
+  #   sources/orca/5/orca_manual_5_0_4.pdf, sources/orca/6/orca_manual_6_0_1.pdf
+  # Manual PDFs are split along their bookmarks (chapter > section > subsection), and each
+  # section is labelled doc_type "reference" (keywords/usage) or "theory" (method background).
+  - name: orca5-manual
+    type: local
+    path: sources/orca/5
+    domain: ess
+    software: orca
+    version: "5"
+  - name: orca6-manual
+    type: local
+    path: sources/orca/6
+    domain: ess
+    software: orca
+    version: "6"
+
+  # Gaussian keyword reference pages. The site documents G16; G09-only differences
+  # belong in knowledge/ess/gaussian. (URLs not checked from the build machine.)
+  - name: gaussian-keywords
+    type: url
+    urls:
+      - https://gaussian.com/keywords/
+      - https://gaussian.com/running/
+      - https://gaussian.com/link0/
+      - https://gaussian.com/gpu/
+      - https://gaussian.com/opt/
+      - https://gaussian.com/freq/
+      - https://gaussian.com/irc/
+      - https://gaussian.com/scf/
+      - https://gaussian.com/stable/
+      - https://gaussian.com/guess/
+      - https://gaussian.com/geom/
+      - https://gaussian.com/integral/
+      - https://gaussian.com/scrf/
+      - https://gaussian.com/dft/
+      - https://gaussian.com/basissets/
+      - https://gaussian.com/gen/
+      - https://gaussian.com/empiricaldispersion/
+      - https://gaussian.com/td/
+      - https://gaussian.com/pop/
+      - https://gaussian.com/oniom/
+      - https://gaussian.com/relnotes/
+    domain: ess
+    software: gaussian
+    version: "16"
+    enabled: false
+
+  # Local Gaussian PDFs/HTML, one folder per version so the version filter works.
+  - name: gaussian09-manual
+    type: local
+    path: sources/gaussian/09
+    domain: ess
+    software: gaussian
+    version: "09"
+  - name: gaussian16-manual
+    type: local
+    path: sources/gaussian/16
+    domain: ess
+    software: gaussian
+    version: "16"
+
+  # Q-Chem 6.1: the user manual PDF goes in sources/qchem/6.1/.
+  - name: qchem61-manual
+    type: local
+    path: sources/qchem/6.1
+    domain: ess
+    software: qchem
+    version: "6.1"
+  # Q-Chem online manual. (URL not checked from the build machine; check before relying on it.)
+  - name: qchem61-manual-web
+    type: url
+    urls: [https://manual.q-chem.com/6.1/]
+    crawl: true
+    allow_prefix: [https://manual.q-chem.com/6.1/]
+    max_pages: 1500
+    domain: ess
+    software: qchem
+    version: "6.1"
+    enabled: false
+
+  # Molpro online manual (tracks the current release). (URL not checked from the build machine.)
+  - name: molpro-manual-web
+    type: url
+    urls: [https://www.molpro.net/manual/doku.php]
+    crawl: true
+    allow_prefix: ["https://www.molpro.net/manual/doku.php?id="]
+    deny: ["do=", "&rev=", "?idx=", "media="]
+    max_pages: 800
+    domain: ess
+    software: molpro
+    enabled: false
+
+  # Version-specific Molpro PDF manuals: sources/molpro/2024/*.pdf, sources/molpro/2026/*.pdf
+  - name: molpro2024-manual
+    type: local
+    path: sources/molpro/2024
+    domain: ess
+    software: molpro
+    version: "2024"
+  - name: molpro2026-manual
+    type: local
+    path: sources/molpro/2026
+    domain: ess
+    software: molpro
+    version: "2026"
+
+  # ---------------------------------------------------------------------- HPC
+  # Cluster user guides you export as HTML/PDF/MD (sources/hpc/<cluster>/...).
+  - name: hpc-guides
+    type: local
+    path: sources/hpc
+    domain: hpc
