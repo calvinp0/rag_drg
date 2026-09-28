@@ -41,6 +41,14 @@ Use `lookup_level_of_theory` before translating a method/functional between code
 Results tagged `lesson` or `gotcha` are corrections the group has already made - follow them.
 With a small context window, pass `max_tokens` (e.g. 800) to `search_knowledge` for a compact
 answer (most relevant lines only), then `get_context(chunk_id)` for the full text if needed.
+
+Workflow for a calculation:
+1. `lookup_level_of_theory` / `check_basis` for the method and basis on the target code.
+2. Write the input, then `check_input(content, filename, submit_script_content)` and fix every error.
+3. For cluster jobs, `render_submit_script(server, software, input_file, ...)` instead of writing
+   one by hand; `check_resources` for limits.
+4. When a job fails, `diagnose_output` with the head (~100 lines) and tail (~300 lines) of the
+   output file instead of reading the whole log.
 When a human corrects you on something this knowledge base should have told you, call
 `record_lesson` so the next agent does not repeat the mistake.
 """

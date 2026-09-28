@@ -68,7 +68,9 @@ everyone sees them at once):
 # on the server (see deploy/rag-drg.service and deploy/refresh.sh)
 rag-drg serve --transport http --host 0.0.0.0 --port 8765
 # each member
-claude mcp add --scope user --transport http rag-drg http://<server>:8765/mcp
+rag-drg tokens add <member>            # on the server, once per person; see docs/auth.md
+claude mcp add --scope user --transport http rag-drg http://<server>:8765/mcp \
+    --header "Authorization: Bearer $RAG_DRG_TOKEN"
 ```
 
 Then give agents the habit:
@@ -89,15 +91,48 @@ Local models: see [`integrations/local-models.md`](integrations/local-models.md)
 | `list_documents(domain, software, doc_type)` | Browse what exists (e.g. all HPC templates) |
 | `lookup_level_of_theory(name, software)` | Support/keyword table for a method across Gaussian, ORCA, Q-Chem, Psi4, Molpro, PySCF |
 | `list_knowledge_sources()` | Index statistics: sources, software, versions |
-| `record_lesson(title, mistake, correction, domain, software, version, evidence, tags)` | Write + index a correction (disabled with `serve --readonly`) |
+| `record_lesson(title, mistake, correction, domain, software, version, evidence, tags)` | Write + index a correction; flags near-duplicates and can open a GitHub PR (disabled with `serve --readonly`) |
+| `check_input(content, filename, submit_script_content)` | Check an ESS input (+ submit script) for known mistakes: spin/electron parity, memory/cores vs allocation, section structure, missing aux basis, functional/basis support, cluster limits |
+| `check_basis(basis, elements \| smiles \| xyz)` | Is this basis defined for these elements (Basis Set Exchange)? ECPs, auxiliary sets, spelling |
+| `diagnose_output(content, filename)` | What went wrong in a failed ESS job, and the ordered fixes |
+| `list_servers()`, `server_info(name)` | The group's clusters from `servers.yaml` |
+| `render_submit_script(server, software, input_file, cores, mem_gb, walltime, ...)` | A ready-to-run Slurm/PBS script with the registered absolute paths, checked against partition limits |
+| `check_resources(server, partition, cores, mem_gb, walltime, gpus)` | Does a request fit the partition? |
+| `cluster_query(server, what)` | Read-only live queries (jobs, quota, partitions); off unless enabled |
+
+### Command line
+
+| Command | Purpose | Docs |
+|---|---|---|
+| `rag-drg search "..." [--software X --version V --max-tokens N --json]` | Search from a terminal or a script | |
+| `rag-drg check-input FILE [--submit SCRIPT]`, `--hook` | Input checker; `--hook` is the Claude Code hook mode | [docs/input-checker.md](docs/input-checker.md) |
+| `rag-drg basis NAME --elements C,H,I` | Basis coverage check | [docs/input-checker.md](docs/input-checker.md) |
+| `rag-drg diagnose OUTPUT` | Diagnose a failed job | [docs/diagnose.md](docs/diagnose.md) |
+| `rag-drg level NAME [--software X]` | Level-of-theory support table | |
+| `rag-drg servers list\|show\|validate\|render-cards\|arc-settings\|submit\|check\|query` | Cluster registry | [docs/servers.md](docs/servers.md) |
+| `rag-drg eval`, `rag-drg queries report\|to-qa` | Retrieval test set, query log reports | [docs/evaluation.md](docs/evaluation.md) |
+| `rag-drg lessons report\|pr\|similar\|tidy` | Lesson review workflow | [docs/lessons.md](docs/lessons.md) |
+| `rag-drg zotero sync\|status` | Zotero library sync | [docs/zotero.md](docs/zotero.md) |
+| `rag-drg tokens add\|list\|revoke` | Per-person tokens for the HTTP server | [docs/auth.md](docs/auth.md) |
+| `rag-drg tools-schema --format openai\|ollama` | Tool definitions for local-model frameworks | [integrations/local-models.md](integrations/local-models.md) |
+| `rag-drg check-pdf`, `ingest`, `fetch`, `lint`, `stats`, `sources` | Content management | [sources/README.md](sources/README.md) |
+
+### Automatic input checks in Claude Code
+
+Add the hook from [`integrations/claude-code/hooks.json`](integrations/claude-code/hooks.json) to
+`~/.claude/settings.json` (use the absolute path of the venv's `rag-drg`). Every time an agent
+writes an input file or submit script, it is checked; errors are fed back to the agent, which
+then fixes them before anything is submitted.
 
 ## Growing the knowledge base (the part that matters)
 
 The tool is only as good as what's in it. In order of value:
 
-1. **Fill in the cluster cards.** Copy `knowledge/hpc/servers/_TEMPLATE.md` to one card per
-   cluster: partitions, limits, **absolute install paths of each ESS**, scratch paths, quota
-   commands, ARC `servers` entry.
+1. **Describe your clusters in `servers.yaml`** (copy `servers.example.yaml`; see
+   [docs/servers.md](docs/servers.md)): partitions and limits, **absolute install paths of each
+   ESS**, scratch, storage and quota commands. `rag-drg servers render-cards` then generates the
+   cluster cards, `rag-drg servers arc-settings` the ARC `servers` block, and submit scripts and
+   input checks use the real limits and paths.
 2. **Review the draft cards** in `knowledge/ess/`, `knowledge/arc/`, `knowledge/hpc/`. They
    were written from general knowledge and marked `status: draft`; check each against the
    manual/your experience, fix, and set `status: verified`.
