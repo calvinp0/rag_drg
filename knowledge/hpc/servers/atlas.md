@@ -57,8 +57,25 @@ The job runs in the submit directory (no file transfer). Scratch goes in
 * `servers['local']`: `cluster_soft` HTCondor, `path` `/storage/ce_dana/`, `cpus` 8, `memory` 256.
 * `global_ess_settings`: gaussian, orca and molpro all go to `local`.
 * `default_job_settings`: `job_total_memory_gb` 6, `job_cpu_cores` 8.
-* ARC runs on Atlas itself (the `local` server): it submits its ESS jobs with `condor_submit`.
-  The `screen` aliases suggest ARC is started inside a `screen` session. *To fill in:* whether
-  that is on the login node.
+* **ARC runs on the head node, inside a `screen` session, not as a batch job** (group workflow,
+  confirmed 2026-09-28). This is the opposite of zeus, where ARC runs as a PBS job on n170. Only
+  the ESS jobs that ARC spawns go through HTCondor.
+
+### Running and monitoring ARC on Atlas
+
+1. On the head node, start a named screen: `screen -S <run name>`.
+2. Inside it: `arce` (= `conda activate arc_env`), then `cd /storage/ce_dana/<user>/runs/<run>`
+   (the `runs` alias goes to `/storage/ce_dana/<user>/runs`), then `arc` (=
+   `python $arc_path/ARC.py input.yml`).
+3. Detach with `Ctrl-a d`; ARC keeps running on the head node.
+4. **Is ARC itself still running?** Check the screen: `screen -ls` (alias `sl`) lists the
+   sessions, and `screen -r <run name>` reattaches to see ARC's output.
+5. **ARC's ESS jobs:** they are HTCondor jobs, so use `condor_q` (alias `st` shows status,
+   CPUs, memory, job name and time).
+6. Stop a run: `screen_quit <run name>` (a function in `.bash_aliases`), or `Ctrl-c` inside the
+   screen. Remove the ESS jobs ARC already submitted with `condor_rm`.
+
+Don't write a batch "runner" submit file for ARC on Atlas. `rag-drg arc compose` generates a
+zeus-style PBS runner and does not apply here.
 * `pipe_submit` in the same file is a Slurm (`#SBATCH -p normal`) template left over from another
   cluster; it does not apply to Atlas's HTCondor.
