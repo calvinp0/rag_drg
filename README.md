@@ -155,8 +155,9 @@ The tool is only as good as what's in it. In order of value:
    each person's copy. Web crawls for the ORCA 6 / Gaussian / Molpro online docs are
    pre-configured but `enabled: false`: enable them in `rag_drg.yaml` if the site terms allow it.
    Also fill the `unknown` cells in `knowledge/ess/levels_of_theory.yaml` as you check them.
-4. **Project cards and paper notes**: `knowledge/projects/<project>/` (see the
-   `vae-ess-nn` skeleton) and `papers/<project>/` (PDFs git-ignored, `notes.md` committed).
+4. **Only group-wide knowledge belongs here.** Project-specific protocols and notes stay in each
+   project's own repository (the compose tools accept a protocol file by path);
+   `knowledge/projects/_TEMPLATE.md` is there for anything a project wants to share group-wide.
 5. **Review lessons** that agents record: they arrive as `status: unreviewed` files in
    `knowledge/lessons/`; merge them via PR (verify, or fold into a card).
 
