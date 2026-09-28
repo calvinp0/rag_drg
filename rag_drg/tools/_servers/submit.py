@@ -125,7 +125,10 @@ def check_resources(server: Server | str, partition: str | None, cores: int, mem
             if sw.partitions and part.name not in sw.partitions:
                 out.append(_p("error", f"{software} may only run on partition(s) {', '.join(sw.partitions)} "
                                        f"of {server.name}, not {part.name}"))
-            if _is_gpu_build(sw) and gpus == 0:
+            gpu_only = all((server.partitions[n].gpus_per_node if n in server.partitions else 0) > 0
+                           for n in sw.partitions) if sw.partitions else True
+            if _is_gpu_build(sw) and gpus == 0 and gpu_only:
+                # a GPU build listed for CPU partitions too runs fine there (e.g. zeus's g16-gpu)
                 out.append(_p("warning", f"{software} is a GPU build but no GPUs are requested (pass gpus=N)"))
     return out
 
