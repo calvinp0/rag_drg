@@ -104,6 +104,6 @@ servers:
         max_nodes: 1
         notes: >-
           GPU jobs only; a single node (4 GPUs). qstat lists acl_groups arad_prj, dagan_prj, frankel_prj
-          but acl_group_enable is not set, so the list is not enforced (the group uses this queue)
+          but acl_group_enable is not set, so the list is not enforced: anyone in the group can use it (confirmed by the group, 2026-09-28)
     # software: to fill in - the absolute paths of ORCA, Gaussian, Q-Chem, Psi4, Molpro and PySCF
     # on zeus (see servers.example.yaml for the layout).

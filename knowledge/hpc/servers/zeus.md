@@ -89,13 +89,14 @@ GPU jobs go to `gpu_v100_q` or `mafat_gm_q`. The CPU queues above have no GPUs.
 | Queue | Nodes | Per node | Max walltime | Who may submit |
 |---|---|---|---|---|
 | `gpu_v100_q` | 2: n301, n302 (vnodes zg001, zg002) | 40 cores, ~376 GiB, 4x Tesla V100-SXM2-32GB | 480 h | everyone (`acl_group_enable = False`) |
-| `mafat_gm_q` | 1: n304 (vnode gm002) | 40 cores, ~754 GiB, 4x Tesla V100-SXM2-32GB | none set (3600 h default) | see below |
+| `mafat_gm_q` | 1: n304 (vnode gm002) | 40 cores, ~754 GiB, 4x Tesla V100-SXM2-32GB | none set (3600 h default) | everyone (ACL not enabled; see below) |
 
 * Request GPUs in the select statement:
   `#PBS -l select=1:ncpus=4:ngpus=1:mem=32gb`. zeus's nodes publish `resources_available.ngpus`.
 * NVIDIA driver 580.159.03 with CUDA 13.0 (`nvidia-smi` on n302 and n304, 2026-09-28).
 * `mafat_gm_q`: `qstat -Qf` lists `acl_groups = arad_prj,dagan_prj,frankel_prj`, but
-  `acl_group_enable` is not set, so PBS does not enforce the list. The group does use this queue.
+  `acl_group_enable` is not set, so PBS does not enforce the list: anyone in the group can use
+  this queue (confirmed by the group, 2026-09-28).
 * `gpu_v100_q` has only 8 GPUs in total (2 nodes) and is shared with every zeus user.
 * The group uses only these two GPU queues, not `vkm_gm_q` (n303, 2 GPUs) or `train_gpu_q`.
 
