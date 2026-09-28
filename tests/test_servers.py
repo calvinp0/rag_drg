@@ -85,9 +85,10 @@ def test_validation_errors(mutate, expected, project):
 # ----------------------------------------------------------------- cards
 
 def test_rendered_cards_pass_lint(project, example):
-    written = srv.render_cards({"example": example}, project.root / "knowledge/hpc/servers/generated")
-    assert [p.name for p in written] == ["example.md"]
+    written = srv.render_cards(srv.load_servers(project), project.root / "knowledge/hpc/servers/generated")
+    assert [p.name for p in written] == ["example.md", "example-pbs.md"]
     assert _own_lint(project) == []
+    assert "ARC's `servers` entry is `'local'`" in written[1].read_text()
     text = written[0].read_text()
     meta = yaml.safe_load(text.split("---")[1])
     assert meta["domain"] == "hpc" and meta["software"] == "slurm" and meta["doc_type"] == "card"

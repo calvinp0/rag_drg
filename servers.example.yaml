@@ -141,3 +141,67 @@ servers:
         parallel: threads
     commands:                         # optional overrides of the default read-only commands
       jobs: 'squeue -u $USER -o "%.18i %.9P %.30j %.8T %.10M %.10l %R"'
+
+  # A fake PBS Pro cluster on which ARC itself runs (the group's zeus setup): a runner job in
+  # `group_q`, pinned to node `node01`, runs ARC.py; ARC then submits the ESS jobs with qsub from
+  # there into the `arc.ess_queues`, so in ~/.arc/settings.py this cluster is ARC's 'local' server.
+  # Only group-level facts go here; each person's ARC clone and conda install are per user
+  # (`rag-drg arc compose --arc-path/--conda-env/--conda-sh` or ~/.config/rag-drg/user.yaml).
+  # See docs/arc-run.md.
+  #   rag-drg servers --file servers.example.yaml arc-settings example-pbs
+  #   rag-drg arc compose input.yml --server example-pbs --servers-file servers.example.yaml
+  example-pbs:
+    description: "Fake PBS Pro cluster where ARC runs as a batch job (not a real machine)."
+    scheduler: pbspro
+    host: login.example-pbs.org
+    arc:
+      max_simultaneous_jobs: 20
+      ess_queues: [group_q, long_q, short_q]  # queues ARC may send ESS jobs to; the first is ARC's default
+      runner:                         # the batch job that runs ARC.py itself
+        queue: group_q
+        host: node01                  # pin: ARC always runs (and submits) from this node
+        host_cores: 32                # optional: the pinned node's size (default: the queue's per-node limits)
+        host_mem_gb: 192
+        cores: 1                      # ARC itself is light (in-core xTB/conformers use these cores)
+        mem_gb: 8
+        walltime: "240:00:00"         # optional; default = the queue's max walltime
+        extra_setup: []               # optional group-wide shell lines run before ARC
+    partitions:
+      group_q:
+        max_walltime: "3600:00:00"
+        cores_per_node: 32
+        mem_per_node_gb: 192
+        max_nodes: 8
+        default: true
+        access:
+          groups: [examplegrp]
+          notes: "the group's own nodes"
+      long_q:
+        max_walltime: "168:00:00"
+        cores_per_node: 40
+        mem_per_node_gb: 96
+      short_q:
+        max_walltime: "03:00:00"
+        cores_per_node: 40
+        mem_per_node_gb: 384
+    scratch:
+      path: "/scratch/$USER"
+      node_local: true
+    software:
+      gaussian-16:
+        ess: gaussian
+        version: "C.02"
+        executable: /opt/gaussian/g16-C.02/g16/g16
+        env:
+          g16root: /opt/gaussian/g16-C.02
+        setup:
+          - "source $g16root/g16/bsd/g16.profile"
+        parallel: threads
+      orca-6:
+        ess: orca
+        version: "6.0.1"
+        executable: /opt/orca/orca_6_0_1/orca
+        env:
+          PATH: "/opt/orca/orca_6_0_1:/opt/openmpi-4.1.6/bin:$PATH"
+          LD_LIBRARY_PATH: "/opt/orca/orca_6_0_1:/opt/openmpi-4.1.6/lib:$LD_LIBRARY_PATH"
+        parallel: mpi
