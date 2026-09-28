@@ -1,0 +1,26 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/job_log/memory_exceeded.log (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-8, 85-100
+000 (143499.000.000) 11/12 02:01:47 Job submitted from host: <192.114.101.132:9618?addrs=192.114.101.132-9618+[2001-bf8-900-d-2--84]-9618&noUDP&sock=2301880_cbdb_3>
+...
+001 (143499.000.000) 11/12 02:01:49 Job executing on host: <192.114.101.223:9618?addrs=192.114.101.223-9618&noUDP&sock=9582_0892_3>
+...
+006 (143499.000.000) 11/12 02:01:57 Image size of job updated: 177408
+	105  -  MemoryUsage of job (MB)
+	106776  -  ResidentSetSize of job (KB)
+...
+ [... 76 lines omitted ...]
+006 (143499.000.000) 11/12 06:07:23 Image size of job updated: 10405800
+	7665  -  MemoryUsage of job (MB)
+	7847980  -  ResidentSetSize of job (KB)
+...
+006 (143499.000.000) 11/12 06:12:24 Image size of job updated: 10412200
+	7665  -  MemoryUsage of job (MB)
+	7847980  -  ResidentSetSize of job (KB)
+...
+006 (143499.000.000) 11/12 06:17:24 Image size of job updated: 10420908
+	8128  -  MemoryUsage of job (MB)
+	8322944  -  ResidentSetSize of job (KB)
+...
+012 (143499.000.000) 11/12 06:17:24 Job was held.
+	MEMORY EXCEEDED
+	Code 26 Subcode 0
+...

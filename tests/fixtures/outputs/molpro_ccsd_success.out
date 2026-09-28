@@ -1,0 +1,97 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/sp/H_CCSD.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-75, 300-319
+
+ Working directory              : /gtmp/molpro.ktUcYWm4qU/
+ Global scratch directory       : /gtmp/molpro.ktUcYWm4qU/
+ Wavefunction directory         : /home/alon/wfu/
+ Main file repository           : /gtmp/molpro.ktUcYWm4qU/
+
+ id        : dana
+
+ Nodes     nprocs
+ n131        16
+ GA implementation: MPI file
+ GA implementation (serial work in mppx): MPI file
+
+ Using customized tuning parameters: mindgm=1; mindgv=20; mindgc=4; mindgr=1; noblas=0; minvec=7
+ default implementation of scratch files=sf  
+
+
+ Variables initialized (1025), CPU time= 0.04 sec
+ ***,H
+ memory,Total=6250,m;
+ 
+ geometry={angstrom;
+ H       0.00000000    0.00000000    0.00000000}
+ 
+ gprint,orbitals;
+ 
+ basis=cc-pvdz
+ 
+ 
+ 
+ int;
+ 
+ {hf;
+  maxit,999;
+  wf,spin=1,charge=0;
+ }
+ 
+ uccsd;
+ 
+ 
+ 
+ Commands initialized (840), CPU time= 0.02 sec, 684 directives.
+ Default parameters read. Elapsed time= 0.16 sec
+
+ Checking input...
+ Passed
+1
+
+
+                                         ***  PROGRAM SYSTEM MOLPRO  ***
+                                       Copyright, TTI GmbH Stuttgart, 2015
+                                    Version 2022.3 linked Wed Nov 30 13:40:34 2022
+
+
+ **********************************************************************************************************************************
+ LABEL *   H                                                                             
+  64 bit mpp version                                                                     DATE: 03-Oct-24          TIME: 23:00:14  
+ **********************************************************************************************************************************
+
+ SHA1:             e31ec9a5ea85254ab76f59d122cbdd51c71cf98b
+ **********************************************************************************************************************************
+
+ Memory per process:       293 MW
+ Total memory per node:   6250 MW
+ Total GA space:          1563 MW
+
+ GA preallocation enabled
+ GA check enabled
+
+ Variable memory set to 293.0 MW
+
+
+ Geometry recognized as XYZ
+
+
+ [... 224 lines omitted ...]
+                                         1400     1410     1200     1210     1080     1600     1650     1700   
+                                           T        V       H0       H01     AOSYM     SMH    MOLCAS    OPER   
+
+              2       4        0.35       700     1000      520     2100   
+                                         GEOM     BASIS   MCVARS     RHF  
+
+ PROGRAMS   *        TOTAL     UCCSD    HF-SCF       INT
+ CPU TIMES  *         1.42      0.04      0.49      0.69
+ REAL TIME  *         5.63 SEC
+ DISK USED  *        28.93 MB (local),      478.07 MB (total)
+ SF USED    *         0.00 MB
+ GA USED    *         0.00 MB       (max)       0.00 MB       (current)
+ **********************************************************************************************************************************
+
+ UCCSD/cc-pVDZ energy=     -0.499278403420
+
+           UCCSD          HF-SCF
+     -0.49927840     -0.49927840
+ **********************************************************************************************************************************
+ Molpro calculation terminated

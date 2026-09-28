@@ -772,6 +772,16 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
             data = None
         if is_levels_file(data):
             return dict(data.get("meta") or {}), _sections_to_chunks(levels_sections(data, path.name), rel_path, 4000, 0)
+    if suffix in (".yml", ".yaml") and re.search(r"(?m)^errors:\s*$", text):
+        # ESS error database (knowledge/ess/errors.yaml): one chunk per entry, "ESS errors > <software> > <id>".
+        from .tools.diagnose import errors_sections, is_errors_file
+
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError:
+            data = None
+        if is_errors_file(data):
+            return dict(data.get("meta") or {}), _sections_to_chunks(errors_sections(data), rel_path, 4000, 0)
     if suffix == ".json":
         return meta, _sections_to_chunks(json_sections(text, path.name), rel_path, size, overlap)
     if suffix == ".py":

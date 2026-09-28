@@ -1,0 +1,62 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/trsh/gaussian/l9999.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-5, 56-90, 1365-1383
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /opt/g16/l1.exe "/scratch/alongd/g16/a19817-9707/Gau-4596.inp" -scrdir="/scratch/alongd/g16/a19817-9707/"
+ Entering Link 1 = /opt/g16/l1.exe PID=      4600.
+  
+ [... 50 lines omitted ...]
+ Cite this work as:
+ Gaussian 16, Revision B.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2016.
+ 
+ ******************************************
+ Gaussian 16:  ES64L-G16RevB.01 20-Dec-2017
+                 7-Sep-2019 
+ ******************************************
+ %chk=check.chk
+ %mem=14000mb
+ %NProcShared=8
+ Will use up to    8 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P opt=(tight) ub3lyp/def2tzvp scf=(tight, direct) integral=(grid=ultr
+ afine, Acc2E=12) scf=xqc iop(2/9=2000)
+ ----------------------------------------------------------------------
+ 1/7=10,18=20,19=15,26=4,38=1/1,3;
+ 2/9=2000,12=2,17=6,18=5,40=1/2;
+ 3/5=44,7=101,11=2,25=1,27=12,30=1,71=1,74=-5,75=-5,116=2/1,2,3;
+ 4//1;
+ [... 1274 lines omitted ...]
+              Baa    -0.0031    -1.679    -0.599    -0.560  0.3721 -0.2254  0.9004
+     7 H(1)   Bbb    -0.0024    -1.261    -0.450    -0.421  0.7973 -0.4190 -0.4344
+              Bcc     0.0055     2.940     1.049     0.981  0.4752  0.8796  0.0238
+ 
+
+ ---------------------------------------------------------------------------------
+
+ No NMR shielding tensors so no spin-rotation constants.
+ Leave Link  601 at Sat Sep  7 01:58:23 2019, MaxMem=  1835008000 cpu:               2.9 elap:               0.4
+ (Enter /opt/g16/l9999.exe)
+
+
+ ERROR IS A HARDY PLANT... IT FLOURISHETH IN EVERY SOIL.
+            MARTIN FARQUHAR TUPPER
+ Error termination request processed by link 9999.
+ Error termination via Lnk1e in /opt/g16/l9999.exe at Sat Sep  7 01:58:23 2019.
+ Job cpu time:       0 days  8 hours 15 minutes 38.7 seconds.
+ Elapsed time:       0 days  1 hours 16 minutes 49.6 seconds.
+ File lengths (MBytes):  RWF=     33 Int=      0 D2E=      0 Chk=      5 Scr=      1
