@@ -1,0 +1,304 @@
+# Retrieval test set for `rag-drg eval` (see docs/evaluation.md).
+#
+# Each item is a question as an agent or group member would ask it, and the document(s) that
+# answer it. A question passes if any `expect` entry matches one of the top-k results.
+#   expect:    "source:path/prefix" strings, or {source, path, title_contains} mappings
+#   filters:   optional search filters (software, version, domain, doc_type, source), used only
+#              when the asker would plausibly have passed them
+#   requires:  sources that must be indexed; default = the sources named in `expect`.
+#              Items whose sources are missing are skipped (CI indexes only curated + lessons).
+#   tags:      software/topic tags, plus `paraphrase` for questions that share few or no keywords
+#              with the answer (these measure what embeddings add).
+#
+# Every expectation was checked by hand against the indexed text. Write new questions the way a
+# person would ask them; do not reword a question until it passes.
+
+# ------------------------------------------------------------------------------------ ORCA
+- id: orca-maxcore
+  q: "Is ORCA %maxcore total memory or per core?"
+  filters: {software: orca}
+  expect: ["curated:ess/orca/orca-essentials.md"]
+  tags: [orca, memory]
+
+- id: orca-mpirun
+  q: "Do I need to launch ORCA with mpirun when I use %pal nprocs 16?"
+  expect: ["curated:ess/orca/orca-essentials.md", "curated:hpc/templates/slurm_orca.sh"]
+  tags: [orca, hpc]
+
+- id: orca-moread
+  q: "How do I read orbitals from a previous .gbw file in ORCA?"
+  filters: {software: orca}
+  expect: ["curated:ess/orca/orca-essentials.md"]
+  tags: [orca, restart]
+
+- id: orca-old-grids
+  q: "My old ORCA 4 input with Grid4 FinalGrid5 fails in ORCA 5, what replaced those keywords?"
+  expect: ["curated:ess/orca/orca-essentials.md"]
+  tags: [orca, dft]
+
+# -------------------------------------------------------------------------------- Gaussian
+- id: gaussian-mem-total
+  q: "Is Gaussian %mem per core or for the whole job?"
+  filters: {software: gaussian}
+  expect: ["curated:ess/gaussian/gaussian-essentials.md"]
+  tags: [gaussian, memory]
+
+- id: gaussian-gpucpu
+  q: "How do I set %gpucpu for a Gaussian 16 run on two GPUs?"
+  expect: ["curated:ess/gaussian/gaussian-essentials.md", "curated:hpc/templates/slurm_gaussian_gpu.sh"]
+  tags: [gaussian, gpu]
+
+- id: gaussian-l9999
+  q: "Gaussian job ended with Error termination via Lnk1e in l9999.exe, what does that mean?"
+  expect: ["curated:ess/gaussian/gaussian-essentials.md"]
+  tags: [gaussian, errors]
+
+- id: gaussian-default-grid
+  q: "What is the default integration grid in Gaussian 09 compared to Gaussian 16?"
+  expect: ["curated:ess/gaussian/gaussian-essentials.md"]
+  tags: [gaussian, dft]
+
+- id: gaussian-ts-calcfc
+  q: "Gaussian route line for a TS optimisation that computes force constants at the first step"
+  filters: {software: gaussian}
+  expect: ["curated:ess/gaussian/gaussian-essentials.md"]
+  tags: [gaussian, ts]
+
+# ---------------------------------------------------------------------------------- Q-Chem
+- id: qchem-ts-read-hessian
+  q: "How do I run a Q-Chem TS search that reads the Hessian from a preceding frequency job?"
+  expect: ["curated:ess/qchem/qchem-essentials.md"]
+  tags: [qchem, ts]
+
+- id: qchem-mem-total
+  q: "How do I give Q-Chem more memory? MEM_TOTAL or MEM_STATIC?"
+  expect: ["curated:ess/qchem/qchem-essentials.md"]
+  tags: [qchem, memory]
+
+- id: qchem-smd
+  q: "Q-Chem input for SMD implicit solvation in water"
+  filters: {software: qchem}
+  expect: ["curated:ess/qchem/qchem-essentials.md"]
+  tags: [qchem, solvation]
+
+# ------------------------------------------------------------------------------------ Psi4
+- id: psi4-default-memory
+  q: "What is the default memory in Psi4 and how do I increase it?"
+  filters: {software: psi4}
+  expect: ["curated:ess/psi4/psi4-essentials.md"]
+  tags: [psi4, memory]
+
+- id: psi4-open-shell-reference
+  q: "Which reference should I set in Psi4 for an open-shell doublet with DFT?"
+  expect: ["curated:ess/psi4/psi4-essentials.md"]
+  tags: [psi4, spin]
+
+- id: psi4-d-convergence
+  q: "Psi4 option for the SCF density convergence threshold and its default value"
+  filters: {software: psi4}
+  expect: [{source: psi4, path: psi4/src/read_options.cc, title_contains: "SCF"}]
+  tags: [psi4, options]
+
+- id: psi4-geom-maxiter
+  q: "psi4 optking maximum number of geometry optimization steps"
+  expect: [{source: psi4, path: psi4/src/read_options.cc, title_contains: "OPTKING"},
+           "psi4:doc/sphinxman/source/optking.rst"]
+  tags: [psi4, options]
+
+- id: psi4-dlpno-pno-cutoff
+  q: "What PNO truncation threshold does Psi4 DLPNO-CCSD(T) use by default?"
+  filters: {software: psi4}
+  expect: [{source: psi4, path: psi4/src/read_options.cc, title_contains: "DLPNO"}]
+  tags: [psi4, options]
+
+# ---------------------------------------------------------------------------------- Molpro
+- id: molpro-memory-words
+  q: "In Molpro, does memory,8000,m mean 8 GB?"
+  expect: ["curated:ess/molpro/molpro-essentials.md", "lessons:ess/molpro/"]
+  tags: [molpro, memory]
+
+- id: molpro-wf-spin
+  q: "Is the spin in Molpro's wf card the multiplicity?"
+  expect: ["curated:ess/molpro/molpro-essentials.md", "curated:ess/capabilities.md"]
+  tags: [molpro, spin]
+
+# ----------------------------------------------------------------------------------- PySCF
+- id: pyscf-triplet-spin
+  q: "What value of spin do I pass to gto.M for a triplet in PySCF?"
+  expect: ["curated:ess/pyscf/pyscf-essentials.md", "curated:ess/capabilities.md"]
+  tags: [pyscf, spin]
+
+- id: pyscf-gpu
+  q: "Can PySCF run DFT on a GPU?"
+  expect: ["curated:ess/pyscf/pyscf-essentials.md"]
+  tags: [pyscf, gpu]
+
+- id: pyscf-casscf-example
+  q: "PySCF example: CASSCF with a user-defined active space"
+  filters: {software: pyscf}
+  expect: ["pyscf:examples/mcscf/"]
+  tags: [pyscf, examples]
+
+- id: pyscf-geometric-example
+  q: "How do I optimise a geometry in PySCF with geomeTRIC?"
+  expect: ["pyscf:examples/geomopt/", "curated:ess/pyscf/pyscf-essentials.md"]
+  requires: [pyscf]
+  tags: [pyscf, examples]
+
+- id: pyscf-smd-example
+  q: "PySCF example for SMD solvation"
+  expect: ["pyscf:examples/solvent/"]
+  tags: [pyscf, examples, solvation]
+
+# ------------------------------------------------------------ capabilities + levels table
+- id: cap-b3lyp-vwn
+  q: "Why don't my B3LYP energies from ORCA and Gaussian agree?"
+  expect: ["curated:ess/capabilities.md", {source: curated, path: ess/levels_of_theory.yaml, title_contains: "B3LYP"}]
+  tags: [capabilities, functionals]
+
+- id: cap-qchem-normal-termination
+  q: "What line marks a normal termination in a Q-Chem output file?"
+  expect: ["curated:ess/capabilities.md", "curated:ess/qchem/qchem-essentials.md"]
+  tags: [capabilities, parsing]
+
+- id: lot-dlpno-support
+  q: "Which codes can run DLPNO-CCSD(T)?"
+  expect: [{source: curated, path: ess/levels_of_theory.yaml, title_contains: "DLPNO-CCSD(T)"}]
+  tags: [levels]
+
+- id: lot-wb97mv
+  q: "How do I request wB97M-V in Q-Chem and ORCA?"
+  expect: [{source: curated, path: ess/levels_of_theory.yaml, title_contains: "97M-V"}]
+  tags: [levels, functionals]
+
+- id: lot-smd
+  q: "Which programs support SMD solvation and what is the keyword in each?"
+  expect: [{source: curated, path: ess/levels_of_theory.yaml, title_contains: "SMD"}]
+  tags: [levels, solvation]
+
+# ------------------------------------------------------------------------------------- ARC
+- id: arc-level-keys
+  q: "Which ARC input keys set separate levels of theory for opt, freq and sp?"
+  filters: {software: arc}
+  expect: ["curated:arc/arc-essentials.md", "arc:docs/source/input_reference.rst", "arc:docs/source/advanced.rst"]
+  requires: [curated]
+  tags: [arc, input]
+
+- id: arc-stability
+  q: "How do I turn on wavefunction stability analysis in ARC?"
+  expect: ["curated:arc/arc-essentials.md", "arc:docs/source/input_reference.rst", "arc:docs/source/advanced.rst"]
+  requires: [curated]
+  tags: [arc, input]
+
+- id: arc-ssh-config
+  q: "Does ARC use the ProxyJump from my ~/.ssh/config?"
+  expect: ["curated:arc/arc-essentials.md", "arc:docs/source/remote_submission.rst"]
+  requires: [curated]
+  tags: [arc, servers]
+
+- id: arc-levels-ess
+  q: "How does ARC decide which ESS runs a given method?"
+  expect: ["curated:arc/arc-essentials.md", "arc:arc/settings/settings.py", "arc:docs/source/advanced.rst"]
+  requires: [curated]
+  tags: [arc, settings]
+
+- id: arc-server-settings
+  q: "How do I define a Slurm cluster in the ARC servers dictionary?"
+  expect: ["curated:arc/arc-essentials.md", "arc:arc/settings/settings.py", "arc:docs/source/remote_submission.rst"]
+  requires: [curated]
+  tags: [arc, settings, servers]
+
+- id: arc-output-ts-fields
+  q: "What fields does ARC's output.yml contain for each transition state?"
+  expect: ["arc:arc/schemas/"]
+  tags: [arc, output]
+
+- id: arc-freq-scale-factor
+  q: "Where does output.yml record the frequency scale factor and where it came from?"
+  filters: {software: arc}
+  expect: [{source: arc, path: arc/schemas/, title_contains: "freq_scale_factor"}]
+  tags: [arc, output]
+
+- id: arc-ts-xyz-example
+  q: "Example ARC input for a transition state with a user-supplied xyz guess"
+  filters: {software: arc}
+  expect: ["arc:examples/Stationary/TS_with_xyz/", "arc:examples/Stationary/hydrolysis_TS/"]
+  tags: [arc, examples]
+
+- id: arc-bde-example
+  q: "ARC example input for computing bond dissociation energies"
+  expect: ["arc:examples/Stationary/bde/"]
+  tags: [arc, examples]
+
+- id: arc-restart
+  q: "How do I restart an ARC project after it crashed?"
+  filters: {software: arc}
+  expect: ["arc:docs/source/running.rst", "arc:docs/source/advanced.rst", "curated:arc/arc-essentials.md"]
+  requires: [arc]
+  tags: [arc, restart]
+
+- id: arc-pyscf-queueless
+  q: "Can ARC run PySCF jobs in-core without submitting to a queue?"
+  expect: ["arc:docs/source/running.rst", "curated:arc/arc-essentials.md"]
+  requires: [arc]
+  tags: [arc, pyscf]
+
+# ------------------------------------------------------------------------------------- HPC
+- id: slurm-maxrss
+  q: "How do I see how much memory a finished Slurm job actually used?"
+  expect: ["curated:hpc/slurm-essentials.md"]
+  tags: [hpc, slurm]
+
+- id: slurm-lustre-quota
+  q: "How do I check my quota on a Lustre file system?"
+  expect: ["curated:hpc/slurm-essentials.md"]
+  tags: [hpc, quota]
+
+- id: pbs-torque-select
+  q: "PBS: should I use select=1:ncpus=16 or nodes=1:ppn=16?"
+  expect: ["curated:hpc/pbs-essentials.md"]
+  tags: [hpc, pbs]
+
+- id: template-slurm-molpro
+  q: "Slurm submit script template for Molpro"
+  expect: ["curated:hpc/templates/slurm_molpro.sh"]
+  tags: [hpc, templates, molpro]
+
+- id: template-pbs-gaussian
+  q: "PBS submit script for a Gaussian job"
+  expect: ["curated:hpc/templates/pbs_gaussian.sh"]
+  tags: [hpc, templates, gaussian]
+
+# ------------------------------------------------ paraphrased: little or no keyword overlap
+- id: para-radical-electron-count
+  q: "The Python chemistry library refuses my radical, complaining the number of electrons doesn't fit. What am I getting wrong?"
+  expect: ["curated:ess/pyscf/pyscf-essentials.md", "curated:ess/capabilities.md"]
+  tags: [paraphrase, pyscf, spin]
+
+- id: para-same-functional-different-energy
+  q: "Two programs give different absolute energies for the same molecule with the same hybrid functional and basis. Why?"
+  expect: ["curated:ess/capabilities.md", {source: curated, path: ess/levels_of_theory.yaml, title_contains: "B3LYP"}]
+  tags: [paraphrase, capabilities]
+
+- id: para-batch-job-wrong-folder
+  q: "My batch job on the older cluster can't find the files that are sitting next to the script I submitted."
+  expect: ["curated:hpc/pbs-essentials.md"]
+  tags: [paraphrase, hpc, pbs]
+
+- id: para-multireference-code-choice
+  q: "Which program should I pick for very accurate energies of a molecule with strong static correlation?"
+  expect: ["curated:ess/capabilities.md", {source: curated, path: ess/levels_of_theory.yaml, title_contains: "MRCI"},
+           {source: curated, path: ess/levels_of_theory.yaml, title_contains: "CASPT2"}]
+  tags: [paraphrase, capabilities]
+
+- id: para-workflow-summary-file
+  q: "After the automated thermo/kinetics workflow finishes, which file has all results in one machine-readable place?"
+  expect: ["curated:arc/arc-essentials.md", "arc:docs/source/output.rst", "arc:arc/schemas/"]
+  requires: [curated]
+  tags: [paraphrase, arc, output]
+
+- id: para-saddle-point-curvature
+  q: "My saddle-point search wanders off; how can I give it the exact curvature at the start?"
+  expect: ["curated:ess/orca/orca-essentials.md", "curated:ess/gaussian/gaussian-essentials.md",
+           "curated:ess/qchem/qchem-essentials.md"]
+  tags: [paraphrase, ts]

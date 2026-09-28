@@ -1,0 +1,19 @@
+# MCP query log (rag_drg/tools/querylog.py): every search_knowledge / lookup_level_of_theory /
+# record_lesson call the server answers is appended as one JSON line, with the user (when token
+# auth is on), the arguments and the top 5 results. `rag-drg queries report` and
+# `rag-drg queries to-qa` turn it into missing cards and new eval questions (docs/evaluation.md).
+#
+# Privacy: queries may contain project details (molecules, unpublished results, cluster and
+# user names). The log stays on the machine that runs `rag-drg serve`, under index/ (git-ignored),
+# and is never committed, uploaded or sent anywhere. Only aggregated reports and curated questions
+# (after a person has read and cleaned them) go into the repository.
+# Retention: the file is rotated when it passes `max_mb` (-> .1, keeping `keep` old files, the
+# oldest is deleted), so at most (keep + 1) x max_mb is kept. Delete index/query_log.jsonl* at any
+# time; nothing depends on it. Set `enabled: false` to stop logging entirely.
+query_log:
+  enabled: true
+  path: index/query_log.jsonl
+  max_mb: 20
+  keep: 1
+  # low_score: 0.02            # `queries report` low-confidence threshold (see querylog.py)
+  # curated_sources: [curated, lessons]
