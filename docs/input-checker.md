@@ -69,7 +69,8 @@ or Molpro. Documentation and code files are never treated as inputs.
 | Gaussian | `%mem` without a unit (read as 8-byte words) or with an unknown unit; `%cpu` together with `%nprocshared` | warning |
 | Gaussian | `%gpucpu` control cores missing from `%cpu` (error); GPU/core count mismatch, `%gpucpu` without `%cpu` | error / warning |
 | Gaussian | `wB97XD` + `EmpiricalDispersion` (dispersion counted twice); `Opt=TS` without CalcFC/ReadFC/CalcAll | warning |
-| Gaussian | `Gen`/`GenECP` without a basis block (`****`) after the geometry | error |
+| Gaussian | `Gen`/`GenECP` without a basis block (`****` or an `@/path/basis.gbs/N` include) after the geometry | error (inside `oniom(...)`: warning) |
+| Gaussian | `cc-pVnZ-PP` basis in the route (not built in; needs GenECP) | warning |
 | ORCA | `%maxcore` missing; < 250 (GB meant?); ≥ 32000 with nprocs > 1 (total meant?) | warning |
 | ORCA | `%pal nprocs` and `!PALn` disagree; unclosed `%block … end`; `* xyz c m … *` structure | error |
 | ORCA | DLPNO / RI-MP2 without a `/C` basis (or AutoAux) | error (double hybrids: warning) |
@@ -79,9 +80,11 @@ or Molpro. Documentation and code files are never treated as inputs.
 | Q-Chem | common non-Q-Chem JOBTYPEs (`energy`, `optts`, …); no `MEM_TOTAL`; `DFT_D` with ωB97X-D/-V, ωB97M-V | warning (other unknown JOBTYPE: info) |
 | Molpro | `memory,N,m` ≥ 64 GB **per process** (units are 8-byte words, so GB was probably meant) | warning |
 | Molpro | `wf,nelec,sym,spin` / `set,spin=` parity (spin is 2S) | error |
-| PySCF | `spin=` is 2S: parity with the electron count (with a hint when the multiplicity was given); Python syntax errors | error |
+| PySCF | `spin=` is 2S: parity with the electron count (with a hint when the multiplicity was given), per molecule variable; Python syntax errors | error (molecule re-assigned different atoms/spin/charge: info) |
 | PySCF | `max_memory` not set (default 4000 MB) | info |
 | Psi4 | memory not set (default ~500 MiB); open shell without `reference uhf/uks/rohf` | warning |
+
+Psi4 memory units follow Psi4: `GB`/`MB`/`kB` are SI (`memory 2 GB` = 2·10⁹ bytes), `GiB`/`MiB` are binary.
 
 Checks against a submit script (Slurm `#SBATCH`, PBS/Torque `#PBS`):
 
@@ -96,8 +99,15 @@ Checks against a submit script (Slurm `#SBATCH`, PBS/Torque `#PBS`):
 
 The script parser reads cores (`--ntasks`, `--cpus-per-task`, `--nodes`, `--ntasks-per-node`,
 `select=N:ncpus=:mpiprocs=`, `nodes=N:ppn=`), memory (`--mem`, `--mem-per-cpu`, `mem=`),
-walltime, partition/queue and GPUs (`--gres=gpu:[type:]N`, `--gpus`, `ngpus=`). It also finds the program
-call, expanding simple `VAR=value` assignments and `$(which prog)`.
+walltime (a bare number is minutes for Slurm, seconds for PBS), partition/queue and GPUs (`--gres=gpu:[type:]N`
+per node, `--gpus`, `--gpus-per-node`, `--gpus-per-task` × tasks, `ngpus=`). It also finds the program call,
+expanding simple `VAR=value` assignments and `$(which prog)`. A program counts as called only when it is the
+command word (after `VAR=val` prefixes, `time`/`nohup`/`exec`/`env`, or an MPI launcher), so `which orca`,
+`ldd $(which orca)`, `echo ... orca`, `test -x .../orca` are not calls.
+
+With `servers.yaml`, partition limits are checked **per node**: Slurm `--mem` is per node, `--mem-per-cpu` ×
+the cpus on a node, PBS `select=` chunks per chunk. More nodes than the partition's `max_nodes` is an error when
+`max_nodes` > 1 is set, otherwise a warning.
 
 ### Content mode (MCP)
 
@@ -115,7 +125,9 @@ Python: `check_input(content=..., filename=..., submit_content=...)` or `check_i
 With the hook, Claude Code runs the checker after every `Write`/`Edit`/`MultiEdit`.
 If the edited file is an ESS input or a submit script with errors, the hook exits with code 2 and prints a short
 summary on stderr, which Claude sees and fixes. Warnings exit 0 with a note on stderr.
-Every other file is ignored silently.
+Every other file is ignored silently, including `.inp` files of programs the checker does not know (GAMESS
+`$CONTRL`, CP2K `&GLOBAL`, ...): a `!` line alone does not make a file ORCA. If the hook itself fails
+(unexpected stdin, checker bug) it exits 0.
 
 Add this to `~/.claude/settings.json` (all projects) or `.claude/settings.json` (one project).
 It is also in [`integrations/claude-code/hooks.json`](../integrations/claude-code/hooks.json).
@@ -170,6 +182,7 @@ An exception raised by an extra check becomes an `info` finding and never breaks
   Gaussian `Geom=Check`, Psi4 fragments, PubChem, and PySCF periodic cells.
   In those cases it checks what it can and skips the rest.
 * Only the first job of Gaussian `--Link1--` and ORCA `$new_job` chains is checked for geometry.
+  Geometries inside ORCA `%Compound` steps are not checked.
   Q-Chem `@@@` jobs are each checked for structure.
 * The ORCA block-balance check knows the common sub-blocks (`Constraints`, `Scan`, `NewGTO`, `coords`, …).
   If a sub-block it does not know adds extra `end` lines, it only reports `info`.

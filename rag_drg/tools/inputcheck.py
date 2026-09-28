@@ -203,18 +203,35 @@ def is_checkable(path: Path, content: str | None = None) -> bool:
 
 def hook_main(stdin_text: str, cfg=None, err=None) -> int:
     """Claude Code PostToolUse hook: exit 2 + stderr summary on errors (Claude sees it and fixes
-    the file), exit 0 otherwise (warnings printed to stderr). Non-ESS files: silent exit 0."""
+    the file), exit 0 otherwise (warnings printed to stderr). Non-ESS files: silent exit 0.
+    Any failure of the hook itself (odd stdin, unreadable file, checker bug) exits 0."""
     err = err or sys.stderr
+    try:
+        return _hook(stdin_text, cfg, err)
+    except Exception as e:  # noqa: BLE001 - never block the agent because the hook broke
+        try:
+            print(f"rag-drg check-input: hook skipped ({type(e).__name__})", file=err)
+        except Exception:  # noqa: BLE001
+            pass
+        return 0
+
+
+def _hook(stdin_text: str, cfg, err) -> int:
     try:
         data = json.loads(stdin_text or "{}")
     except json.JSONDecodeError:
         return 0
-    ti = data.get("tool_input") or {}
-    fp = ti.get("file_path") or ti.get("path") or (data.get("tool_response") or {}).get("filePath")
-    if not fp:
+    if not isinstance(data, dict):
+        return 0
+    ti = data.get("tool_input")
+    ti = ti if isinstance(ti, dict) else {}
+    tr = data.get("tool_response")
+    tr = tr if isinstance(tr, dict) else {}
+    fp = ti.get("file_path") or ti.get("path") or tr.get("filePath")
+    if not fp or not isinstance(fp, str):
         return 0
     p = Path(fp)
-    if not p.is_absolute() and data.get("cwd"):
+    if not p.is_absolute() and isinstance(data.get("cwd"), str):
         p = Path(data["cwd"]) / p
     if not is_checkable(p):
         return 0
