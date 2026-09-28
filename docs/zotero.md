@@ -64,14 +64,14 @@ config contains `api_key:`.
 
 ```bash
 sudo install -d -m 700 -o <service-user> /etc/rag-drg
-echo 'ZOTERO_API_KEY=<the key>' | sudo tee /etc/rag-drg/zotero.env >/dev/null
-sudo chown <service-user> /etc/rag-drg/zotero.env && sudo chmod 600 /etc/rag-drg/zotero.env
+echo 'ZOTERO_API_KEY=<the key>' | sudo tee /etc/rag-drg/secrets.env >/dev/null
+sudo chown <service-user> /etc/rag-drg/secrets.env && sudo chmod 600 /etc/rag-drg/secrets.env
 ```
 
-The nightly refresh (`deploy/refresh.sh`, run by cron) needs it in its environment:
+The nightly refresh (`deploy/refresh.sh`, run by cron) loads `/etc/rag-drg/secrets.env` itself:
 
 ```cron
-17 3 * * *  set -a; . /etc/rag-drg/zotero.env; set +a; /opt/rag_drg/deploy/refresh.sh >> /opt/rag_drg/index/refresh.log 2>&1
+17 3 * * *  /opt/rag_drg/deploy/refresh.sh >> /opt/rag_drg/index/refresh.log 2>&1
 ```
 
 (The MCP server itself does not need the key: it only reads the index.)
