@@ -50,8 +50,8 @@ servers = {
     # and submit_scripts['local'].
     'local': {
         'cluster_soft': 'PBS',
-        'cpus': 384,
-        'memory': 1511,
+        'cpus': 16,
+        'memory': 160,
         'queues': {'alon_q': '3600:00:00'},
         'excluded_queues': ['mafat_new_q', 'alon_comb_q', 'zeus_combined_q', 'zeus_long_q', 'zeus_short_q', 'gpu_v100_q', 'mafat_gm_q'],
         # queue 'alon_q' is restricted (groups grinberg-dana_prj, halupovich_prj); drop it if you are not one of them
@@ -94,7 +94,7 @@ Restricted queues (servers.yaml `access:`): only the listed users, or members of
 | `orca-6` | orca | 6.0.0 | `/usr/local/orca-6.0.0/orca` | mpi | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
 | `gaussian-09` | gaussian | 09 | `/usr/local/g09/g09` | threads | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
 | `gaussian-16` | gaussian | 16 | `/usr/local/g16/g16` | threads | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
-| `gaussian-16-gpu` | gaussian | 16 | `/usr/local/g16-gpu/g16/g16` | threads | gpu_v100_q, mafat_gm_q |
+| `gaussian-16-gpu` | gaussian | C.02 | `/usr/local/g16-gpu/g16/g16` | threads | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q, gpu_v100_q, mafat_gm_q |
 | `qchem-6.1` | qchem | 6.1 | `/usr/local/qchem6.1/bin/qchem` | threads | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
 | `molpro-2024` | molpro | 2024 | `/usr/local/molpro-2024/bin/molpro` | mpi | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
 | `molpro-2026` | molpro | 2026 | `/usr/local/molpro-2026/bin/molpro` | mpi | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
@@ -104,24 +104,28 @@ Restricted queues (servers.yaml `access:`): only the listed users, or members of
 ```bash
 export PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/bin:$PATH"
 export LD_LIBRARY_PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+source /usr/local/orca-5.0.4/setup.sh
+source /usr/local/openmpi-4.1.1/setup.sh
 ```
 
-OpenMPI 4.1.1 is the version ORCA 5.0.4 is built for; not yet confirmed with a parallel test job on zeus
+OpenMPI 4.1.1, as in the group's ARC submit.py (DRGScripts)
 
 ### orca-6 environment
 
 ```bash
-export PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/bin:$PATH"
-export LD_LIBRARY_PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/lib:$LD_LIBRARY_PATH"
+export PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+source /usr/local/orca6/setup.sh
+source /usr/local/openmpi-4.1.1/setup.sh
 ```
 
-OpenMPI 4.1.5 is an unconfirmed choice (ORCA 6.0.0 is built with the 4.1 series); check with a parallel test job
+OpenMPI 4.1.1, as in the group's ARC submit.py (DRGScripts); the group's default ORCA
 
 ### gaussian-09 environment
 
 ```bash
 export g09root="/usr/local"
-source $g09root/g09/bsd/g09.profile
+source /usr/local/g09/setup.sh
 ```
 
 readable only by Unix group gaussian
@@ -130,7 +134,7 @@ readable only by Unix group gaussian
 
 ```bash
 export g16root="/usr/local"
-source $g16root/g16/bsd/g16.profile
+source /usr/local/g16/setup.sh
 ```
 
 readable only by Unix group gaussian
@@ -139,16 +143,16 @@ readable only by Unix group gaussian
 
 ```bash
 export g16root="/usr/local/g16-gpu"
-source $g16root/g16/bsd/g16.profile
+source /usr/local/g16-gpu/g16/setup.sh
 ```
 
-GPU build; readable only by Unix group gaussian
+G16 rev C.02 built with GPU support; the group's preferred (faster) G16, run on CPU queues (DRGScripts ARC submit.py). Running it on the GPU queues (gpu_v100_q, mafat_gm_q) is NOT set up or tested by the group yet. Readable only by Unix group gaussian
 
 ### qchem-6.1 environment
 
 ```bash
 export QC="/usr/local/qchem6.1"
-source $QC/qcenv.sh
+source /usr/local/qchem/qcenv.sh
 ```
 
 the group's own licence: readable only by Unix group grinberg-dana_prj
@@ -198,6 +202,8 @@ cd "$WORKDIR"
 # --- orca-5: absolute paths, no environment modules ---
 export PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/bin:$PATH"
 export LD_LIBRARY_PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+source /usr/local/orca-5.0.4/setup.sh
+source /usr/local/openmpi-4.1.1/setup.sh
 ORCA_BIN=/usr/local/orca-5.0.4/orca
 
 # --- per-job scratch ---
@@ -243,8 +249,10 @@ JOBID="${PBS_JOBID%%.*}"
 cd "$WORKDIR"
 
 # --- orca-6: absolute paths, no environment modules ---
-export PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/bin:$PATH"
-export LD_LIBRARY_PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/lib:$LD_LIBRARY_PATH"
+export PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+source /usr/local/orca6/setup.sh
+source /usr/local/openmpi-4.1.1/setup.sh
 ORCA_BIN=/usr/local/orca-6.0.0/orca
 
 # --- per-job scratch ---
@@ -291,7 +299,7 @@ cd "$WORKDIR"
 
 # --- gaussian-09: absolute paths, no environment modules ---
 export g09root="/usr/local"
-source $g09root/g09/bsd/g09.profile
+source /usr/local/g09/setup.sh
 GAUSSIAN=/usr/local/g09/g09
 
 # --- per-job scratch ---
@@ -332,7 +340,7 @@ cd "$WORKDIR"
 
 # --- gaussian-16: absolute paths, no environment modules ---
 export g16root="/usr/local"
-source $g16root/g16/bsd/g16.profile
+source /usr/local/g16/setup.sh
 GAUSSIAN=/usr/local/g16/g16
 
 # --- per-job scratch ---
@@ -356,14 +364,14 @@ Submit with `qsub job.sh`.
 
 ### Submit gaussian-16-gpu
 
-Input lines: %cpu=0-15 | %gpucpu=0=0 | %mem=118GB | (%mem is TOTAL memory, ~88% of the request; each GPU is driven by one of the %cpu cores; GPUs speed up HF/DFT energies, gradients and frequencies only)
+Input lines: %nprocshared=16 | %mem=49GB | (%mem is TOTAL memory, ~88% of the request)
 
 ```bash
 #!/bin/bash
-# gaussian-16-gpu (gaussian 16) on zeus:gpu_v100_q; generated by `rag-drg servers submit` from servers.yaml
+# gaussian-16-gpu (gaussian C.02) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
 #PBS -N job
-#PBS -q gpu_v100_q
-#PBS -l select=1:ncpus=16:mem=135gb:ngpus=1
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mem=56gb
 #PBS -l walltime=24:00:00
 #PBS -j oe
 
@@ -373,7 +381,7 @@ cd "$WORKDIR"
 
 # --- gaussian-16-gpu: absolute paths, no environment modules ---
 export g16root="/usr/local/g16-gpu"
-source $g16root/g16/bsd/g16.profile
+source /usr/local/g16-gpu/g16/setup.sh
 GAUSSIAN=/usr/local/g16-gpu/g16/g16
 
 # --- per-job scratch ---
@@ -389,7 +397,6 @@ trap cleanup EXIT
 trap 'exit 143' TERM INT
 
 export GAUSS_SCRDIR="$SCRATCH"
-echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"; nvidia-smi -L
 cd "$WORKDIR"
 "$GAUSSIAN" < "job.gjf" > "job.log"
 ```
@@ -415,7 +422,7 @@ cd "$WORKDIR"
 
 # --- qchem-6.1: absolute paths, no environment modules ---
 export QC="/usr/local/qchem6.1"
-source $QC/qcenv.sh
+source /usr/local/qchem/qcenv.sh
 QCHEM=/usr/local/qchem6.1/bin/qchem
 
 # --- per-job scratch ---

@@ -18,12 +18,30 @@ servers:
       # ARC sends its ESS jobs to alon_q only (group decision, 2026-09-28). The other CPU queues
       # below are for jobs submitted by hand.
       ess_queues: [alon_q]
+      # The group's working ~/.arc/settings.py and submit.py (DanaResearchGroup/DRGScripts,
+      # Servers/Zeus/ARC/.arc/) cap ARC's jobs below the node size and call PBS from /opt/pbs/bin.
+      cpus: 16                        # servers['local']['cpus']
+      memory_gb: 160                  # servers['local']['memory']
+      default_job_settings:
+        job_total_memory_gb: 32
+        job_cpu_cores: 16
+      commands:
+        submit: /opt/pbs/bin/qsub
+        status: /opt/pbs/bin/qstat
+        delete: /opt/pbs/bin/qdel
+      ess_installs:                   # which install ARC uses per ESS (DRGScripts submit.py)
+        gaussian: gaussian-16-gpu     # the group's faster G16 C.02 build, run on CPU queues too
+        orca: orca-6
+        molpro: molpro-2026
+        qchem: qchem-6.1
       runner:
         queue: alon_q
         host: n170                    # PBS vnode gd004; ARC runs and submits (qsub) from here
         host_cores: 384
         host_mem_gb: 1511
-        notes: "qsub from n170 works (confirmed 2026-09-28); qsub is /usr/local/bin/qsub, ARC's default"
+        cores: 1
+        walltime: "72:00:00"          # DRGScripts Servers/Zeus/ARC/submit.sh
+        notes: "qsub from n170 works (confirmed 2026-09-28); the group's runner script is DRGScripts Servers/Zeus/ARC/submit.sh"
     partitions:
       alon_q:
         max_walltime: "3600:00:00"    # no resources_max.walltime set; 3600 h is the queue default
@@ -118,19 +136,25 @@ servers:
         env:
           PATH: "/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/bin:$PATH"
           LD_LIBRARY_PATH: "/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        setup:
+          - "source /usr/local/orca-5.0.4/setup.sh"
+          - "source /usr/local/openmpi-4.1.1/setup.sh"
         parallel: mpi
         partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
-        notes: "OpenMPI 4.1.1 is the version ORCA 5.0.4 is built for; not yet confirmed with a parallel test job on zeus"
+        notes: "OpenMPI 4.1.1, as in the group's ARC submit.py (DRGScripts)"
       orca-6:
         ess: orca
         version: "6.0.0"
         executable: /usr/local/orca-6.0.0/orca   # also /usr/local/orca6 and /usr/local/orca
         env:
-          PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/bin:$PATH"
-          LD_LIBRARY_PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/lib:$LD_LIBRARY_PATH"
+          PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/bin:$PATH"
+          LD_LIBRARY_PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        setup:
+          - "source /usr/local/orca6/setup.sh"
+          - "source /usr/local/openmpi-4.1.1/setup.sh"
         parallel: mpi
         partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
-        notes: "OpenMPI 4.1.5 is an unconfirmed choice (ORCA 6.0.0 is built with the 4.1 series); check with a parallel test job"
+        notes: "OpenMPI 4.1.1, as in the group's ARC submit.py (DRGScripts); the group's default ORCA"
       gaussian-09:
         ess: gaussian
         version: "09"
@@ -138,7 +162,7 @@ servers:
         env:
           g09root: /usr/local
         setup:
-          - "source $g09root/g09/bsd/g09.profile"
+          - "source /usr/local/g09/setup.sh"
         parallel: threads
         partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
         notes: "readable only by Unix group gaussian"
@@ -149,21 +173,24 @@ servers:
         env:
           g16root: /usr/local
         setup:
-          - "source $g16root/g16/bsd/g16.profile"
+          - "source /usr/local/g16/setup.sh"
         parallel: threads
         partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
         notes: "readable only by Unix group gaussian"
       gaussian-16-gpu:
         ess: gaussian
-        version: "16"
+        version: "C.02"
         executable: /usr/local/g16-gpu/g16/g16
         env:
           g16root: /usr/local/g16-gpu
         setup:
-          - "source $g16root/g16/bsd/g16.profile"
+          - "source /usr/local/g16-gpu/g16/setup.sh"
         parallel: threads
-        partitions: [gpu_v100_q, mafat_gm_q]
-        notes: "GPU build; readable only by Unix group gaussian"
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q, gpu_v100_q, mafat_gm_q]
+        notes: >-
+          G16 rev C.02 built with GPU support; the group's preferred (faster) G16, run on CPU queues
+          (DRGScripts ARC submit.py). Running it on the GPU queues (gpu_v100_q, mafat_gm_q) is NOT set
+          up or tested by the group yet. Readable only by Unix group gaussian
       qchem-6.1:
         ess: qchem
         version: "6.1"
@@ -171,7 +198,7 @@ servers:
         env:
           QC: /usr/local/qchem6.1
         setup:
-          - "source $QC/qcenv.sh"
+          - "source /usr/local/qchem/qcenv.sh"
         parallel: threads
         partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
         notes: "the group's own licence: readable only by Unix group grinberg-dana_prj"

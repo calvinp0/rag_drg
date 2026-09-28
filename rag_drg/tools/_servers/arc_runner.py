@@ -214,8 +214,11 @@ def _env_lines(u: ArcUserEnv, submit: str) -> list[str]:
     if u.arc_path:
         lines.append(f"ARC_PATH={shlex.quote(u.arc_path)}")
     else:
-        lines.append(f'ARC_PATH="${{ARC_PATH:?set ARC_PATH to your ARC clone: export it in ~/.bashrc, '
-                     f'or {submit} -v ARC_PATH ..., or rerun rag-drg arc compose --arc-path DIR}}"')
+        # the group's ~/.bashrc exports lowercase arc_path (DRGScripts Servers/Zeus/.bashrc); a batch
+        # shell has not read it, so read it here when neither name is set
+        lines += ['if [ -z "${ARC_PATH:-}${arc_path:-}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi',
+                  f'ARC_PATH="${{ARC_PATH:-${{arc_path:?set ARC_PATH (or arc_path) to your ARC clone: export it in '
+                  f'~/.bashrc, or {submit} -v ARC_PATH ..., or rerun rag-drg arc compose --arc-path DIR}}}}"']
     if u.conda_sh:
         lines.append(f"CONDA_SH={shlex.quote(u.conda_sh)}")
     else:

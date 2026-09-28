@@ -4,7 +4,7 @@ domain: hpc
 software: pbs
 doc_type: card
 status: draft
-tags: [cluster, server, zeus, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
+tags: [cluster, server, zeus, drgscripts, setup.sh, opt/pbs, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
 ---
 # zeus cluster card
 
@@ -44,8 +44,46 @@ The other CPU queues below are for ESS jobs submitted by hand.
 * The ARC clone path and the conda install (`conda.sh`) are per user. Set them in
   `~/.config/rag-drg/user.yaml` or with `--arc-path` / `--conda-sh`, not in the shared `servers.yaml`.
 * In `~/.arc/settings.py`, zeus is ARC's `local` server (ARC runs on it).
-* `qsub` is `/usr/local/bin/qsub`, which is ARC's default, so `submit_command` needs no override.
-  ARC also assumes `/usr/local/bin/qstat` and `/usr/local/bin/qdel`.
+* PBS commands: the group's `~/.arc/settings.py` calls `/opt/pbs/bin/qsub`, `/opt/pbs/bin/qstat` and
+  `/opt/pbs/bin/qdel`. `command -v qsub` on the login node prints `/usr/local/bin/qsub`, which is
+  ARC's default.
+
+### The group's working ARC setup (DRGScripts)
+
+The group keeps its working zeus scripts in
+[DanaResearchGroup/DRGScripts](https://github.com/DanaResearchGroup/DRGScripts), under
+`Servers/Zeus/`. That repository is indexed too (source `drgscripts`); copy from it rather than
+writing these files from scratch.
+
+* `ARC/submit.sh` (the runner):
+  * `#!/bin/bash -l`, `#PBS -q alon_q`, `#PBS -l select=1:ncpus=1:host=n170`, walltime 72 h;
+  * runs `conda activate arc_env`, then `python $arc_path/ARC.py input.yml`.
+* `.bashrc` exports `arc_path="$HOME/Code/ARC/"`, with RMG-Py and T3 alongside. It also sources
+  `/usr/local/g09/setup.sh` and defines aliases (`arce`, `arc`, `sb='qsub submit.sh'`,
+  `st='qstat -u $USER'`).
+* `ARC/.arc/settings.py`:
+  * `servers['local']` is PBS with `cpus` 16 and `memory` 160, so ARC's jobs stay well below the
+    node size;
+  * `global_ess_settings`: gaussian, orca and molpro all go to `local`;
+  * `default_job_settings`: `job_total_memory_gb` 32, `job_cpu_cores` 16;
+  * scheduler commands in `/opt/pbs/bin`.
+* `ARC/.arc/submit.py` has one PBS template per ESS:
+  * common to all: `#!/bin/bash -l`, `. ~/.bashrc`, `#PBS -q alon_q`,
+    `select=1:ncpus={cpus}:mem={memory}mb:mpiprocs={cpus}`, `-o out.txt -e err.txt`;
+  * each job runs in `/gtmp/{un}/scratch/<program>/$PBS_JOBID`, and a `TERM` trap copies results
+    back and deletes the scratch directory.
+  * Gaussian: `source /usr/local/g16-gpu/g16/setup.sh` ("faster gaussian 16 installation
+    (rev C.02)"), then `g16 < input.gjf > input.log`; `check.chk` is copied in and back.
+  * ORCA: `source /usr/local/orca6/setup.sh` and `source /usr/local/openmpi-4.1.1/setup.sh`
+    (OpenMPI 4.1.1 on PATH and LD_LIBRARY_PATH), then `$OrcaDir/orca input.in > input.log`.
+  * Molpro: `molpro26 -n {cpus} -d "$MOLPRO_SCRDIR" input.in`. The integral files in that directory
+    can be hundreds of GB for CCSD(T) or MRCI; never copy them back.
+  * Q-Chem: `. /usr/local/qchem/qcenv.sh`, `QCSCRATCH=$QCHEM_SCRDIR/scratch`, then
+    `qchem -nt {cpus} input.in output.out`.
+
+`servers.yaml` mirrors these: `arc.cpus`, `arc.memory_gb`, `arc.default_job_settings`,
+`arc.commands`, `arc.ess_installs` and each install's `setup:` lines. `rag-drg arc compose`
+therefore writes settings that match the group's file.
 
 ## Node n170 (`pbsnodes n170`, 2026-09-28)
 
@@ -98,6 +136,7 @@ GPU jobs go to `gpu_v100_q` or `mafat_gm_q`. The CPU queues above have no GPUs.
 | `gpu_v100_q` | 2: n301, n302 (vnodes zg001, zg002) | 40 cores, ~376 GiB, 4x Tesla V100-SXM2-32GB | 480 h | everyone (`acl_group_enable = False`) |
 | `mafat_gm_q` | 1: n304 (vnode gm002) | 40 cores, ~754 GiB, 4x Tesla V100-SXM2-32GB | none set (3600 h default) | everyone (ACL not enabled; see below) |
 
+* Not yet used by the group for ESS jobs (see *Software installation paths*).
 * Request GPUs in the select statement:
   `#PBS -l select=1:ncpus=4:ngpus=1:mem=32gb`. zeus's nodes publish `resources_available.ngpus`.
 * NVIDIA driver 580.159.03 with CUDA 13.0 (`nvidia-smi` on n302 and n304, 2026-09-28).
@@ -137,14 +176,14 @@ which `render_submit_script` / `rag-drg compose` use.
 
 | Program | Executable | Setup | Readable by |
 |---|---|---|---|
-| ORCA 5.0.4 | `/usr/local/orca-5.0.4/orca` (`orca5` is a link) | OpenMPI 4.1.1: `/usr/local/openmpi-4.1.1/{bin,lib}` on PATH / LD_LIBRARY_PATH | everyone |
-| ORCA 6.0.0 | `/usr/local/orca-6.0.0/orca` (`orca6` and `orca` are links) | OpenMPI 4.1.5 (`/usr/local/openmpi-4.1.5`), *not yet confirmed* | everyone |
-| Gaussian 09 | `/usr/local/g09/g09` | `g09root=/usr/local`; `source $g09root/g09/bsd/g09.profile` | Unix group `gaussian` |
-| Gaussian 16 (CPU) | `/usr/local/g16/g16` | `g16root=/usr/local`; `source $g16root/g16/bsd/g16.profile` | Unix group `gaussian` |
-| Gaussian 16 (GPU) | `/usr/local/g16-gpu/g16/g16` | `g16root=/usr/local/g16-gpu`; same profile; GPU queues only | Unix group `gaussian` |
-| Q-Chem 6.1 | `/usr/local/qchem6.1/bin/qchem` (`qchem` is a link) | `QC=/usr/local/qchem6.1`; `source $QC/qcenv.sh` | `grinberg-dana_prj` only (the group's licence) |
+| ORCA 5.0.4 | `/usr/local/orca-5.0.4/orca` (`orca5` is a link) | `source /usr/local/orca-5.0.4/setup.sh`; OpenMPI 4.1.1 | everyone |
+| ORCA 6.0.0 | `/usr/local/orca-6.0.0/orca` (`orca6` and `orca` are links) | `source /usr/local/orca6/setup.sh`; `source /usr/local/openmpi-4.1.1/setup.sh` (OpenMPI 4.1.1) | everyone |
+| Gaussian 09 | `/usr/local/g09/g09` | `source /usr/local/g09/setup.sh` | Unix group `gaussian` |
+| Gaussian 16 | `/usr/local/g16/g16` | `source /usr/local/g16/setup.sh` | Unix group `gaussian` |
+| Gaussian 16 C.02, GPU build | `/usr/local/g16-gpu/g16/g16` | `source /usr/local/g16-gpu/g16/setup.sh`; **the group's preferred G16, run on CPU queues** | Unix group `gaussian` |
+| Q-Chem 6.1 | `/usr/local/qchem6.1/bin/qchem` (`qchem` is a link) | `. /usr/local/qchem/qcenv.sh` | `grinberg-dana_prj` only (the group's licence) |
 | Molpro 2024 | `/usr/local/molpro-2024/bin/molpro` (`/usr/local/bin/molpro` points here) | none | Unix group `molpro` |
-| Molpro 2026 | `/usr/local/molpro-2026/bin/molpro` | none | Unix group `molpro` |
+| Molpro 2026 | `/usr/local/molpro-2026/bin/molpro` (the group's ARC calls it as `molpro26`) | none | Unix group `molpro` |
 | Molpro 2022 | `/usr/local/molpro-2022` | not in `servers.yaml` | Unix group `molpro` |
 | xTB 6.5.1 | `/usr/local/xtb-6.5.1/bin/xtb` (`/usr/local/xtb` is a link) | none | everyone |
 
@@ -152,5 +191,6 @@ which `render_submit_script` / `rag-drg compose` use.
   submit script must activate the user's env. Ask the user which env to use (`conda env list`),
   or create one.
 * Gaussian, Molpro and Q-Chem need membership of the Unix group shown (`id` lists your groups).
-* ORCA's OpenMPI pairing is not yet confirmed with a parallel job. To see which libmpi an ORCA
-  binary links to, run `ldd /usr/local/orca-6.0.0/orca_scf_mpi | grep -i mpi`.
+* **GPU runs are not set up yet.** The group runs the `g16-gpu` build on CPU queues only. Running
+  Gaussian (or any ESS) on `gpu_v100_q` / `mafat_gm_q` has not been set up or tested; don't
+  present a GPU submit script as known to work.
