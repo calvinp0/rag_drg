@@ -44,7 +44,9 @@ answer (most relevant lines only), then `get_context(chunk_id)` for the full tex
 
 Workflow for a calculation:
 1. `lookup_level_of_theory` / `check_basis` for the method and basis on the target code.
-2. Write the input, then `check_input(content, filename, submit_script_content)` and fix every error.
+2. Prefer `compose_ess_job(spec)` (checked input + submit script); if you write the input yourself,
+   run `check_input(content, filename, submit_script_content)` and fix every error.
+   ARC: `check_arc_input` for input.yml, `compose_arc_run` for the runner job and ARC settings.
 3. For cluster jobs, `render_submit_script(server, software, input_file, ...)` instead of writing
    one by hand; `check_resources` for limits.
 4. When a job fails, `diagnose_output` with the head (~100 lines) and tail (~300 lines) of the
