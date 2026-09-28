@@ -7,7 +7,8 @@ Run locally over stdio (one process per agent session)::
 or once for the whole group over HTTP (recommended: one writer, shared lessons)::
 
     rag-drg serve --transport http --host 0.0.0.0 --port 8765
-    claude mcp add --transport http rag-drg http://<host>:8765/mcp
+    claude mcp add --transport http rag-drg http://<host>:8765/mcp \
+        --header "Authorization: Bearer $RAG_DRG_TOKEN"      # token from `rag-drg tokens add <name>`
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import threading
 from .config import Config
 from .ingest import embed_missing
 from .levels import lookup
+from .plugins import ServerContext, plugin_modules
 from .lessons import index_lesson, write_lesson
 from .search import Searcher, format_hits
 from .store import Store, dumps
@@ -37,6 +39,16 @@ Pass `software` (orca, gaussian, qchem, psi4, molpro, pyscf, arc) and `version` 
 Use `doc_type="reference"` for keywords/syntax and `doc_type="theory"` for method background.
 Use `lookup_level_of_theory` before translating a method/functional between codes.
 Results tagged `lesson` or `gotcha` are corrections the group has already made - follow them.
+With a small context window, pass `max_tokens` (e.g. 800) to `search_knowledge` for a compact
+answer (most relevant lines only), then `get_context(chunk_id)` for the full text if needed.
+
+Workflow for a calculation:
+1. `lookup_level_of_theory` / `check_basis` for the method and basis on the target code.
+2. Write the input, then `check_input(content, filename, submit_script_content)` and fix every error.
+3. For cluster jobs, `render_submit_script(server, software, input_file, ...)` instead of writing
+   one by hand; `check_resources` for limits.
+4. When a job fails, `diagnose_output` with the head (~100 lines) and tail (~300 lines) of the
+   output file instead of reading the whole log.
 When a human corrects you on something this knowledge base should have told you, call
 `record_lesson` so the next agent does not repeat the mistake.
 """
@@ -68,6 +80,8 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
     else:
         mcp = server_cls("rag-drg", instructions=INSTRUCTIONS, host=host, port=port)
     mcp._rag_drg_sdk_major = sdk_major  # used by serve()
+    ctx = ServerContext(cfg=cfg, store=store, searcher=searcher, lock=lock, readonly=readonly)
+    mcp._rag_drg_ctx = ctx
 
     @mcp.tool()
     def search_knowledge(
@@ -77,6 +91,7 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
         domain: str | None = None,
         doc_type: str | None = None,
         k: int = 6,
+        max_tokens: int | None = None,
     ) -> str:
         """Search the group knowledge base (hybrid keyword + semantic).
 
@@ -91,13 +106,28 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
             doc_type: lesson | gotcha | card | template | schema | reference (keywords/usage) |
                 theory (method background from manuals) | code | paper
             k: Number of results (default 6, max 20).
+            max_tokens: Answer budget for small-context models (about 4 characters per token).
+                When set, curated lessons/gotchas/cards come first and each result is cut to
+                its most relevant lines, keeping citations. Default: full results.
         """
+        from .search import make_reranker
+
+        if max_tokens is not None:
+            max_tokens = max(50, int(max_tokens))
         with lock:
             hits = searcher.search(
                 query, k=max(1, min(int(k), 20)), domain=domain, software=software,
-                version=version, doc_type=doc_type,
+                version=version, doc_type=doc_type, rerank=make_reranker(cfg),
             )
-        return format_hits(hits)
+        ctx.emit({
+            "tool": "search_knowledge",
+            "args": {"query": query, "software": software, "version": version, "domain": domain,
+                     "doc_type": doc_type, "k": k, "max_tokens": max_tokens},
+            "n_results": len(hits),
+            "results": [{"source": h.chunk.source, "path": h.chunk.path, "title": h.chunk.title,
+                         "doc_type": h.chunk.doc_type, "score": round(h.score, 5)} for h in hits],
+        })
+        return format_hits(hits, query=query, max_tokens=max_tokens)
 
     @mcp.tool()
     def get_context(chunk_id: int, neighbors: int = 2) -> str:
@@ -168,7 +198,10 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
             software: Only show this code's row (gaussian, orca, qchem, psi4, molpro, pyscf),
                 plus which other codes support it as-is.
         """
-        return lookup(cfg, name or None, software)
+        out = lookup(cfg, name or None, software)
+        ctx.emit({"tool": "lookup_level_of_theory", "args": {"name": name, "software": software},
+                  "n_results": 0 if out.startswith(("No ", "'")) else 1})
+        return out
 
     @mcp.tool()
     def list_knowledge_sources() -> str:
@@ -199,17 +232,28 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 title: One line, e.g. "ORCA 6: use %maxcore per core in MB, not total".
                 mistake: What was done/assumed wrongly (include the wrong snippet).
                 correction: The correct approach (include the right snippet).
-                domain: ess | arc | hpc | project
+                domain: ess | arc | hpc | project | literature (ess requires `software`)
                 software: orca | gaussian | psi4 | molpro | pyscf | arc | slurm | pbs | ...
                 version: Version it applies to, if specific (e.g. "6", "16", "2024").
                 evidence: Manual section, URL, error message or who confirmed it.
                 tags: Extra keywords that will help retrieval.
             """
-            author = os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
+            from .lessons import check_lesson_meta, find_similar, lesson_text
+            from .tools.lessons_workflow import submit_lesson
+
+            try:
+                check_lesson_meta(domain, software)
+            except ValueError as e:
+                return f"error: {e}"
+            author = ctx.current_user() or os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
             with lock:
+                similar = find_similar(
+                    cfg, searcher, lesson_text(title, mistake, correction), software=software, domain=domain,
+                )
                 path = write_lesson(
                     cfg, title=title, mistake=mistake, correction=correction, domain=domain,
                     software=software, version=version, evidence=evidence, tags=tags, author=author,
+                    similar=[s.path for s in similar],
                 )
                 index_lesson(cfg, store, path)
                 try:
@@ -217,10 +261,26 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 except Exception:  # noqa: BLE001 - keyword search still finds it
                     pass
             rel = path.relative_to(cfg.root) if path.is_relative_to(cfg.root) else path
-            return (
-                f"Lesson saved to {rel} (status: unreviewed) and indexed. "
-                "Ask the user to commit it and open a PR so the group can review it."
-            )
+            # Git/GitHub work happens outside the index lock and never raises.
+            pr = submit_lesson(cfg, path, author=author)
+            ctx.emit({"tool": "record_lesson", "args": {"title": title, "domain": domain, "software": software,
+                                                        "version": version, "tags": tags},
+                      "path": str(rel), "n_results": 1, "similar": [s.path for s in similar],
+                      "pr": pr.pr_url if pr else None, "pr_error": pr.error if pr else None})
+            out = f"Lesson saved to {rel} (status: unreviewed) and indexed."
+            if similar:
+                out += "\npossibly duplicates: " + ", ".join(f"{s.path} ({s.score:.2f})" for s in similar)
+                out += ("\nIf one of these already says the same thing, tell the user; the reviewer can merge them "
+                        "(they are listed in the lesson's `similar:` front matter).")
+            if pr is None:
+                out += "\nAsk the user to commit it and open a PR so the group can review it."
+            else:
+                out += "\n" + pr.summary()
+            return out
+
+    for mod in plugin_modules():
+        if hasattr(mod, "register_mcp"):
+            mod.register_mcp(mcp, ctx)
 
     return mcp
 
@@ -231,12 +291,51 @@ def _lessons(cfg: Config):
     return lessons_source(cfg)
 
 
-def serve(cfg: Config, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8765, readonly: bool = False):
-    mcp = build_server(cfg, readonly=readonly, host=host, port=port)
-    kwargs = {"host": host, "port": port} if mcp._rag_drg_sdk_major >= 2 else {}
-    if transport in ("http", "streamable-http"):
-        mcp.run(transport="streamable-http", **kwargs)
-    elif transport == "sse":
-        mcp.run(transport="sse", **kwargs)
+def serve(
+    cfg: Config,
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    readonly: bool = False,
+    auth: str = "token",
+    allowed_hosts: list[str] | None = None,
+    allow_unauthenticated: bool = False,
+    ssl_certfile: str | None = None,
+    ssl_keyfile: str | None = None,
+):
+    """Run the server. stdio: plain MCP. http/sse: MCP + REST API (/api) on one uvicorn server,
+    behind bearer-token auth unless `auth="none"` (see docs/auth.md)."""
+    if transport not in ("http", "streamable-http", "sse"):
+        build_server(cfg, readonly=readonly, host=host, port=port).run()
+        return
+
+    from .auth import TokenStore, is_loopback, tokens_path
+    from .http_app import attach_user, run_http
+
+    auth_cfg = cfg.extra.get("auth") or {}
+    hosts = list(auth_cfg.get("allowed_hosts") or []) + list(allowed_hosts or [])
+    token_store = None
+    if auth == "token":
+        token_store = TokenStore(tokens_path(cfg))
+        if not token_store.entries():
+            raise SystemExit(
+                f"No API tokens in {token_store.path}. Create one with `rag-drg tokens add <name>`, "
+                "or run with `--auth none` (loopback only, or add --allow-unauthenticated)."
+            )
+    elif auth == "none":
+        if not is_loopback(host) and not allow_unauthenticated:
+            raise SystemExit(
+                f"Refusing to serve licensed manual text without authentication on {host}. "
+                "Use token auth (default), bind 127.0.0.1, or pass --allow-unauthenticated."
+            )
     else:
-        mcp.run()
+        raise SystemExit(f"Unknown auth mode {auth!r} (token | none)")
+
+    # A shared HTTP server runs as a service account: never treat its own Unix identity as the
+    # requesting user's for queue-access rules (clients send theirs; see docs/remote-client.md).
+    # Set only once all start-up checks have passed, just before the server is built.
+    os.environ.setdefault("RAG_DRG_SERVER_MODE", "1")
+    mcp = build_server(cfg, readonly=readonly, host=host, port=port)
+    attach_user(mcp)  # events (and lessons) carry the token owner's name
+    run_http(mcp, "sse" if transport == "sse" else "http", host, port, hosts, token_store,
+             ssl_certfile=ssl_certfile, ssl_keyfile=ssl_keyfile)

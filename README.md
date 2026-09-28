@@ -31,7 +31,7 @@ so a mistake only has to be fixed once.
 | ESS | **Level-of-theory support table**: which code supports each method/functional/dispersion/solvation model and how each one writes it | `knowledge/ess/levels_of_theory.yaml` (`lookup_level_of_theory`, `rag-drg level`) |
 | ESS | Psi4 manual + **every Psi4 keyword with default/allowed values** (parsed from `read_options.cc`) | Psi4 GitHub (auto-fetched) |
 | ESS | PySCF `examples/` (idiomatic usage for every module) | PySCF GitHub (auto-fetched) |
-| ESS | ORCA / Gaussian / Q-Chem / Molpro manuals, split along the PDF bookmarks and labelled `reference` (keywords/usage) or `theory` | PDFs you drop in `sources/<code>/<version>/` (licensed), or optional web crawls |
+| ESS | ORCA / Gaussian / Q-Chem / Molpro manuals as PDFs **or many HTML pages** (saved, wget-mirrored or crawled), split by bookmarks/headings and labelled `reference` (keywords/usage) or `theory`; books via `_meta.yaml` (e.g. one Gaussian book tagged for 09 and 16) | `sources/<code>/<version>/` (licensed, git-ignored), or built-in crawls |
 | ARC | Input reference, examples, settings, source code, and the **`output.yml` JSON schema** (one chunk per field) | ARC GitHub (auto-fetched) + `knowledge/arc/` |
 | HPC | Slurm/PBS essentials (submit, query, quota), submit templates for each ESS (programs called by absolute path, no `module load`), one card per cluster with the install paths | `knowledge/hpc/` |
 | Projects | Per-project protocol/convention cards, paper notes, paper PDFs | `knowledge/projects/`, `papers/` |
@@ -68,7 +68,9 @@ everyone sees them at once):
 # on the server (see deploy/rag-drg.service and deploy/refresh.sh)
 rag-drg serve --transport http --host 0.0.0.0 --port 8765
 # each member
-claude mcp add --scope user --transport http rag-drg http://<server>:8765/mcp
+rag-drg tokens add <member>            # on the server, once per person; see docs/auth.md
+claude mcp add --scope user --transport http rag-drg http://<server>:8765/mcp \
+    --header "Authorization: Bearer $RAG_DRG_TOKEN"
 ```
 
 Then give agents the habit:
@@ -89,22 +91,66 @@ Local models: see [`integrations/local-models.md`](integrations/local-models.md)
 | `list_documents(domain, software, doc_type)` | Browse what exists (e.g. all HPC templates) |
 | `lookup_level_of_theory(name, software)` | Support/keyword table for a method across Gaussian, ORCA, Q-Chem, Psi4, Molpro, PySCF |
 | `list_knowledge_sources()` | Index statistics: sources, software, versions |
-| `record_lesson(title, mistake, correction, domain, software, version, evidence, tags)` | Write + index a correction (disabled with `serve --readonly`) |
+| `record_lesson(title, mistake, correction, domain, software, version, evidence, tags)` | Write + index a correction; flags near-duplicates and can open a GitHub PR (disabled with `serve --readonly`) |
+| `check_input(content, filename, submit_script_content)` | Check an ESS input (+ submit script) for known mistakes: spin/electron parity, memory/cores vs allocation, section structure, missing aux basis, functional/basis support, cluster limits |
+| `check_basis(basis, elements \| smiles \| xyz)` | Is this basis defined for these elements (Basis Set Exchange)? ECPs, auxiliary sets, spelling |
+| `diagnose_output(content, filename)` | What went wrong in a failed ESS job, and the ordered fixes |
+| `list_servers()`, `server_info(name)` | The group's clusters from `servers.yaml` |
+| `render_submit_script(server, software, input_file, cores, mem_gb, walltime, ...)` | A ready-to-run Slurm/PBS script with the registered absolute paths, checked against partition limits |
+| `check_resources(server, partition, cores, mem_gb, walltime, gpus)` | Does a request fit the partition? |
+| `cluster_query(server, what)` | Read-only live queries (jobs, quota, partitions); off unless enabled |
+
+### Command line
+
+| Command | Purpose | Docs |
+|---|---|---|
+| `rag-drg search "..." [--software X --version V --max-tokens N --json]` | Search from a terminal or a script | |
+| `rag-drg check-input FILE [--submit SCRIPT]`, `--hook` | Input checker; `--hook` is the Claude Code hook mode | [docs/input-checker.md](docs/input-checker.md) |
+| `rag-drg basis NAME --elements C,H,I` | Basis coverage check | [docs/input-checker.md](docs/input-checker.md) |
+| `rag-drg diagnose OUTPUT` | Diagnose a failed job | [docs/diagnose.md](docs/diagnose.md) |
+| `rag-drg level NAME [--software X]` | Level-of-theory support table | |
+| `rag-drg servers list\|show\|validate\|render-cards\|arc-settings\|submit\|check\|query` | Cluster registry | [docs/servers.md](docs/servers.md) |
+| `rag-drg eval`, `rag-drg queries report\|to-qa` | Retrieval test set, query log reports | [docs/evaluation.md](docs/evaluation.md) |
+| `rag-drg lessons report\|pr\|similar\|tidy` | Lesson review workflow | [docs/lessons.md](docs/lessons.md) |
+| `rag-drg zotero sync\|status` | Zotero library sync | [docs/zotero.md](docs/zotero.md) |
+| `rag-drg tokens add\|list\|revoke` | Per-person tokens for the HTTP server | [docs/auth.md](docs/auth.md) |
+| `rag-drg tools-schema --format openai\|ollama` | Tool definitions for local-model frameworks | [integrations/local-models.md](integrations/local-models.md) |
+| `rag-drg check-pdf`, `ingest`, `fetch`, `lint`, `stats`, `sources` | Content management | [sources/README.md](sources/README.md) |
+
+### Using the shared server without installing anything
+
+Group members only need one file: [`integrations/rag-drg-remote`](integrations/rag-drg-remote)
+(standard-library Python) plus their token. It checks inputs, diagnoses outputs and searches via
+the server, and works as the Claude Code hook. What runs where (shared server vs. your machine
+vs. a per-user install for live cluster queries) is explained in
+[docs/remote-client.md](docs/remote-client.md).
+
+### Automatic input checks in Claude Code
+
+Add the hook from [`integrations/claude-code/hooks.remote.json`](integrations/claude-code/hooks.remote.json)
+(thin client, no install) or [`integrations/claude-code/hooks.json`](integrations/claude-code/hooks.json)
+(local install) to `~/.claude/settings.json`, using the absolute path of the command. Every time an agent
+writes an input file or submit script, it is checked; errors are fed back to the agent, which
+then fixes them before anything is submitted.
 
 ## Growing the knowledge base (the part that matters)
 
 The tool is only as good as what's in it. In order of value:
 
-1. **Fill in the cluster cards.** Copy `knowledge/hpc/servers/_TEMPLATE.md` to one card per
-   cluster: partitions, limits, **absolute install paths of each ESS**, scratch paths, quota
-   commands, ARC `servers` entry.
+1. **Describe your clusters in `servers.yaml`** (copy `servers.example.yaml`; see
+   [docs/servers.md](docs/servers.md)): partitions and limits, **absolute install paths of each
+   ESS**, scratch, storage and quota commands. `rag-drg servers render-cards` then generates the
+   cluster cards, `rag-drg servers arc-settings` the ARC `servers` block, and submit scripts and
+   input checks use the real limits and paths.
 2. **Review the draft cards** in `knowledge/ess/`, `knowledge/arc/`, `knowledge/hpc/`. They
    were written from general knowledge and marked `status: draft`; check each against the
    manual/your experience, fix, and set `status: verified`.
 3. **Add the licensed manuals**, one PDF per manual and version, no manual splitting needed
    (see [`sources/README.md`](sources/README.md)): ORCA in `sources/orca/{5,6}/`, Gaussian in
    `sources/gaussian/{09,16}/`, Q-Chem in `sources/qchem/6.1/`, Molpro in
-   `sources/molpro/{2024,2026}/`, exported cluster
+   `sources/molpro/{2024,2026}/`. HTML manuals (ORCA 6, Gaussian keyword pages) can be saved,
+   wget-mirrored or crawled; books go in e.g. `sources/gaussian/book/` with a `_meta.yaml`;
+   run `rag-drg check-pdf` to see whether a PDF needs OCR first. Exported cluster
    docs in `sources/hpc/<cluster>/`. These are git-ignored, so they go on the shared server or
    each person's copy. Web crawls for the ORCA 6 / Gaussian / Molpro online docs are
    pre-configured but `enabled: false`: enable them in `rag_drg.yaml` if the site terms allow it.

@@ -1,0 +1,91 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/irc/cyano_irc_1.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-5, 56-90, 1330-1355, 29240-29260
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /gpfs/apps/medsci/stacks/noOS/software/gaussian/g16.a03.avx2/g16/l1.exe "/localscratch/grinba/g16/a36192-534653/Gau-232068.inp" -scrdir="/localscratch/grinba/g16/a36192-534653/"
+ Default is to use a total of  40 processors:
+                               40 via shared-memory
+ [... 50 lines omitted ...]
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 16, Revision A.03,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2016.
+ 
+ ******************************************
+ Gaussian 16:  ES64L-G16RevA.03 25-Dec-2016
+                19-Feb-2020 
+ ******************************************
+ %chk=check.chk
+ %mem=14336mb
+ %NProcShared=40
+ Will use up to   40 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P irc=(CalcAll,forward,maxpoints=50,stepsize=7) guess=read SCRF=(pcm,
+ Solvent=water) b3lyp/cbsb7 scf=xqc iop(2/9=2000)
+ ----------------------------------------------------------------------
+ [... 1239 lines omitted ...]
+      PEZero:  N= 6 I= 4 D=  3.78D-04 Err=  1.31D-05
+      PEZero:  N= 6 I= 3 D=  6.30D-04 Err=  1.53D-02
+    Cycle     6 NS=   256 Truncation Error =  0.000013091
+      PEZero:  N= 7 I= 6 D=  1.26D-04 Err=  1.69D-04
+      PEZero:  N= 7 I= 5 D=  2.52D-04 Err=  2.20D-06
+      PEZero:  N= 7 I= 4 D=  5.04D-04 Err=  4.35D-06
+    Cycle     7 NS=   384 Truncation Error =  0.000002201
+ BS completed in    7 cycles and    1168 integration steps.
+ Maximum DWI energy   std dev =  0.000000152 at pt     1
+ Maximum DWI gradient std dev =  0.172074054 at pt    56
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =  -363.100366
+   Old End Point Energy       =  -363.100366
+   Corrected End Point Energy =  -363.100366
+   Predictor End-Start Dist.  =     0.193502
+   Old End-Start Dist.        =     0.193502
+   New End-Start Dist.        =     0.191520
+   New End-Old End Dist.      =     0.019838
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence NOT Met
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Wed Feb 19 11:13:35 2020, MaxMem=  1879048192 cpu:              23.4 elap:               1.0
+ (Enter /gpfs/apps/medsci/stacks/noOS/software/gaussian/g16.a03.avx2/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ [... 27884 lines omitted ...]
+ Hexadecapole moment (field-independent basis, Debye-Ang**3):
+ XXXX=           -763.9690 YYYY=           -312.1389 ZZZZ=           -360.0128 XXXY=            -24.7783
+ XXXZ=            -45.5440 YYYX=            -37.6324 YYYZ=             52.2030 ZZZX=             -1.3846
+ ZZZY=             89.5222 XXYY=           -192.0491 XXZZ=           -204.7031 YYZZ=           -118.3960
+ XXYZ=             43.1749 YYXZ=             -1.8302 ZZXY=            -18.9206
+ N-N= 2.823544116431D+02 E-N=-1.414815837392D+03  KE= 3.618494420853D+02
+  Exact polarizability:   0.000   0.000   0.000   0.000   0.000   0.000
+ Approx polarizability:  66.715  -2.528  82.737  -0.779 -15.667  94.005
+ No NMR shielding tensors so no spin-rotation constants.
+ Leave Link  601 at Wed Feb 19 11:36:01 2020, MaxMem=  1879048192 cpu:               4.3 elap:               0.1
+ (Enter /gpfs/apps/medsci/stacks/noOS/software/gaussian/g16.a03.avx2/g16/l9999.exe)
+
+ This type of calculation cannot be archived.
+
+
+ My opinions may have changed, but not the fact that I am right.
+                       -- Ashleigh Brilliant
+ Job cpu time:       0 days 14 hours 58 minutes 20.4 seconds.
+ Elapsed time:       0 days  0 hours 23 minutes 13.0 seconds.
+ File lengths (MBytes):  RWF=    117 Int=      0 D2E=      0 Chk=     13 Scr=      1
+ Normal termination of Gaussian 16 at Wed Feb 19 11:36:01 2020.

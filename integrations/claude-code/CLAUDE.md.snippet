@@ -7,3 +7,7 @@
 - On our clusters, programs are called by absolute path (no `module load`); take the paths
   from the cluster card (`list_documents(domain="hpc")`).
 - When I correct you on any of these, call `record_lesson` so the next agent does not repeat it.
+- After writing an ESS input or submit script, run `check_input` (MCP) or `rag-drg check-input`
+  and fix every error before submitting. Use `render_submit_script` for cluster jobs.
+- When a job fails, call `diagnose_output` with the head and tail of the output file instead of
+  reading the whole log.

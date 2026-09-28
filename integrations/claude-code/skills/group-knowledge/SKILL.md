@@ -25,6 +25,15 @@ ESS manuals and cluster notes.
    matching submit template instead of writing a script from scratch. Programs are called by
    absolute path (no `module load`); take the paths from the cluster card.
 
+## Before submitting, and after a failure
+
+* Run `check_input(content, filename, submit_script_content)` on every input you write or edit and
+  fix all errors (spin/electron parity, memory vs allocation, missing `/C` basis, blank-line
+  structure...). `check_basis` checks basis coverage for the elements, including ECPs.
+* Generate cluster scripts with `render_submit_script` (real paths and limits from `servers.yaml`).
+* A job failed? `diagnose_output` with the first ~100 and last ~300 lines of the output gives the
+  error's meaning and the fixes in order. Do not read multi-MB logs into context.
+
 ## When you are corrected
 
 If the user corrects you on ESS syntax/capabilities, ARC usage, HPC usage or project

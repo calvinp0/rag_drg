@@ -219,8 +219,15 @@ __marimo__/
 
 # --- rag-drg ---
 index/
-sources_cache/
+sources_cache
 sources/**/*.pdf
 sources/**/*.html
 sources/**/*.htm
 papers/**/*.pdf
+
+# Claude Code agent worktrees
+.claude/worktrees/
+
+# Per-machine overrides (e.g. enabling live cluster queries), never committed
+conf.d/*.local.yaml
+conf.d/zz-local.yaml

@@ -1,0 +1,16 @@
+# Lesson review workflow (rag_drg/tools/lessons_workflow.py, docs/lessons.md).
+lessons:
+  pr:
+    mode: none              # none | branch | github
+    remote: origin          # git remote of the serving checkout to push lesson branches to
+    base: main              # branch the lesson branches start from and PRs target
+    repo: calvinp0/rag_drg  # github mode: lessons are PRs against this same repository
+    token_env: GITHUB_TOKEN # github mode: env var holding the token (never put the token here)
+    batch: per-lesson       # per-lesson: one branch+PR per lesson | daily: one PR collecting the day's lessons
+    labels: []              # optional, e.g. [lesson]; set on new PRs (the label must exist in the repo)
+    draft: false            # open PRs as drafts
+    # api_url: https://api.github.com   # GitHub Enterprise: https://<host>/api/v3
+  similar:
+    threshold: 0.35         # 0-1; see find_similar in rag_drg/lessons.py for how the score is computed
+    max: 5                  # at most this many `similar` entries per lesson
+    sources: [curated]      # indexed sources to compare with, besides the lessons themselves
