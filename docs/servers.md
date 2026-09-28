@@ -36,8 +36,11 @@ and write `servers.yaml` with the real values:
 4. **Scratch**: where per-job scratch goes (node-local disk or `$TMPDIR`, or shared scratch).
 5. **Storage**: home/project/group areas with quota, backup status, and the command that shows
    usage (`quota -s`, `lfs quota -h -u $USER /lustre`, `df -h /data/...`, `mmlsquota`, ...).
-6. Optional: ARC `path` (remote base dir, usually `/home`) and `max_simultaneous_jobs`;
-   `commands:` overrides if a cluster needs different read-only query commands.
+6. Optional: ARC `path` (remote base dir, usually `/home`), `max_simultaneous_jobs`,
+   `ess_queues` (the queues ARC may send ESS jobs to, first = default) and, when ARC itself runs on
+   the cluster as a batch job, `arc.runner` (queue, node, default cores/memory/walltime; see
+   [`arc-run.md`](arc-run.md)); `commands:` overrides if a cluster needs different read-only
+   query commands.
 
 Then:
 
@@ -64,7 +67,7 @@ Everything is under one command, `rag-drg servers`. `--file F` uses another file
 | `servers show NAME` | the full card (same text as the generated file) |
 | `servers validate` | validation problems of `servers.yaml` |
 | `servers render-cards [--out DIR]` | write one card per cluster |
-| `servers arc-settings [NAME ...]` | Python `servers = {...}` and a suggested `global_ess_settings` for `~/.arc/settings.py`, plus the **required** `submit_scripts = {...}` stubs for `~/.arc/submit.py` (see below) |
+| `servers arc-settings [NAME ...] [--local NAME \| --no-local]` | Python `servers = {...}` and a suggested `global_ess_settings` for `~/.arc/settings.py`, plus the **required** `submit_scripts = {...}` stubs for `~/.arc/submit.py` (see below); a server with `arc.runner` becomes ARC's `'local'` server |
 | `servers submit SERVER SOFTWARE INPUT [--cores N --mem GB --time T --partition P --gpus G --job-name J -o FILE]` | submit script on stdout (or `-o`), notes (input lines, warnings) on stderr |
 | `servers check SERVER [PARTITION] --cores N --mem GB --time T [--gpus G --software KEY]` | check a request against the limits (exit 1 on errors) |
 | `servers query SERVER {jobs,job,history,partitions,quota,fairshare,queue_access} [JOB_ID]` | read-only live query (disabled by default, see below) |
@@ -72,6 +75,9 @@ Everything is under one command, `rag-drg servers`. `--file F` uses another file
 | `servers discover-pbs --from-file qstat_Qf.txt [--pbsnodes nodes.txt]` | print a DRAFT `partitions:` block from saved `qstat -Qf` (+ `pbsnodes -a`/`-aSj`) output |
 
 `servers check` and `servers submit` also take `--user U --groups G1,G2` for restricted queues.
+
+To run ARC itself on a cluster (runner job + `'local'` ARC settings + input.yml checks), use
+`rag-drg arc compose input.yml --server NAME` (MCP `compose_arc_run`); see [`arc-run.md`](arc-run.md).
 
 Example:
 
@@ -117,6 +123,7 @@ They mirror `knowledge/hpc/templates/*.sh`:
 | `render_submit_script(server, software, input_file, job_name, cores, mem_gb, walltime, partition, gpus, user, groups)` | script + input lines, or the limit violations |
 | `check_resources(server, partition, cores, mem_gb, walltime, gpus, software, user, groups)` | JSON list of `{severity, message}` (`[]` = fits) |
 | `queue_access(server, partition, user, groups)` | JSON list of `{partition, allowed: true/false/null, reason, notes}` |
+| `compose_arc_run(input_content, server, input_file, arc_path, conda_env, conda_sh, user, groups)` | JSON `{submit_sh, arc_settings_py, arc_submit_py, findings, notes}` for ARC running on the cluster ([`arc-run.md`](arc-run.md)) |
 | `cluster_query(server, what, job_id)` | read-only live query; only registered when enabled and the server is not `--readonly` |
 
 Python (for other plugins, e.g. an input checker):
@@ -208,9 +215,13 @@ everyone, are left out with a comment; an ACL with nothing left gives no `access
 ### ARC settings and submit scripts
 
 `rag-drg servers arc-settings` prints three blocks. `servers` and `global_ess_settings` go into
-`~/.arc/settings.py`. `queues` lists the default partition first and leaves out restricted
-(`access:`) and GPU partitions (ARC's queue troubleshooting may move a job to any listed queue, and
-ARC never requests GPUs); a comment names each excluded one. The third block, `submit_scripts`,
+`~/.arc/settings.py`. `queues` is `arc.ess_queues` when given; otherwise it lists the default
+partition first and leaves out restricted (`access:`) and GPU partitions (ARC's queue
+troubleshooting may move a job to any listed queue, and ARC never requests GPUs); a comment names
+each excluded one. A server with an `arc.runner` block (ARC runs on it) is emitted as
+`servers['local']` (no address/key; `excluded_queues` = the partitions not in `queues`;
+`cpus`/`memory` of the first queue's node) with `global_ess_settings` and `submit_scripts` keyed
+`'local'` - see [`arc-run.md`](arc-run.md). The third block, `submit_scripts`,
 goes into `~/.arc/submit.py` and is **required**: ARC reads `submit_scripts[server][job_adapter]`
 when it writes a job and fails with `KeyError` for a server that has no entry. Each template is the
 same script as `servers submit` (newest non-GPU install of each ESS ARC supports: Gaussian, ORCA,

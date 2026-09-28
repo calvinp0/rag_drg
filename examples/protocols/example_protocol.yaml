@@ -1,0 +1,38 @@
+# GENERIC EXAMPLE protocol for `rag-drg compose` / the compose_ess_job MCP tool.
+#
+# It only shows the format. The method/basis choices below are placeholders, NOT a
+# recommendation and NOT any project's protocol. Keep your real protocol in YOUR project
+# repository (not in the shared knowledge base) and pass it explicitly:
+#
+#   rag-drg compose --protocol path/to/my_protocol.yaml --step opt \
+#       --charge 0 --mult 1 --xyz mol.xyz --server example
+#
+# Precedence (lowest first): top-level defaults < steps.<step> < spec file < CLI options.
+# A `null` in a step or in the spec removes an inherited value (e.g. `dispersion: null`).
+# Fields: see docs/compose.md.
+
+description: "Generic two-step example: DFT geometry + frequencies, then a single point."
+
+program: orca
+version: "6"
+scf:
+  convergence: tight
+resources:
+  server: example          # a name from servers.yaml (servers.example.yaml has the fake 'example')
+  cores: 8
+  mem_gb: 32
+  walltime: "12:00:00"
+
+steps:
+  opt:
+    job: opt+freq
+    method: B3LYP
+    basis: def2-SVP
+    dispersion: D3BJ
+  sp:
+    job: sp
+    method: B3LYP
+    basis: def2-TZVP
+    dispersion: D3BJ
+    scf:
+      convergence: verytight

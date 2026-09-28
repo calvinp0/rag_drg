@@ -44,7 +44,9 @@ answer (most relevant lines only), then `get_context(chunk_id)` for the full tex
 
 Workflow for a calculation:
 1. `lookup_level_of_theory` / `check_basis` for the method and basis on the target code.
-2. Write the input, then `check_input(content, filename, submit_script_content)` and fix every error.
+2. Prefer `compose_ess_job(spec)` (checked input + submit script); if you write the input yourself,
+   run `check_input(content, filename, submit_script_content)` and fix every error.
+   ARC: `check_arc_input` for input.yml, `compose_arc_run` for the runner job and ARC settings.
 3. For cluster jobs, `render_submit_script(server, software, input_file, ...)` instead of writing
    one by hand; `check_resources` for limits.
 4. When a job fails, `diagnose_output` with the head (~100 lines) and tail (~300 lines) of the
@@ -70,20 +72,35 @@ def _server_class():
         raise SystemExit("The MCP server needs `pip install 'rag-drg[mcp]'`") from e
 
 
-def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", port: int = 8765):
+def resolve_profile(cfg: Config, profile: str | None = None) -> str:
+    """--profile > $RAG_DRG_PROFILE > `mcp: {profile: ...}` in the config > "full"."""
+    return (profile or os.environ.get("RAG_DRG_PROFILE") or (cfg.extra.get("mcp") or {}).get("profile")
+            or "full").strip().lower()
+
+
+def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", port: int = 8765,
+                 profile: str | None = None):
+    """Build the MCP server. `profile` "full" exposes every tool; "minimal" exposes only
+    search_knowledge, find_tool and run_tool (see rag_drg/toolbox.py)."""
+    from .toolbox import MINIMAL_INSTRUCTIONS, MINIMAL_SEARCH_DESCRIPTION, ToolRegistrar, register_discovery_tools, tool_hints
+
+    profile = resolve_profile(cfg, profile)
+    instructions = MINIMAL_INSTRUCTIONS if profile == "minimal" else INSTRUCTIONS
     server_cls, sdk_major = _server_class()
     store = Store(cfg.index_path, readonly=readonly)
     searcher = Searcher(cfg, store=store)
     lock = threading.Lock()
     if sdk_major >= 2:
-        mcp = server_cls("rag-drg", instructions=INSTRUCTIONS)
+        server = server_cls("rag-drg", instructions=instructions)
     else:
-        mcp = server_cls("rag-drg", instructions=INSTRUCTIONS, host=host, port=port)
-    mcp._rag_drg_sdk_major = sdk_major  # used by serve()
+        server = server_cls("rag-drg", instructions=instructions, host=host, port=port)
+    mcp = ToolRegistrar(server, profile)  # every tool registration goes through the profile filter
+    server._rag_drg_sdk_major = sdk_major  # used by serve()
     ctx = ServerContext(cfg=cfg, store=store, searcher=searcher, lock=lock, readonly=readonly)
-    mcp._rag_drg_ctx = ctx
+    server._rag_drg_ctx = ctx
+    server._rag_drg_tools = mcp
 
-    @mcp.tool()
+    @mcp.tool(description=MINIMAL_SEARCH_DESCRIPTION if profile == "minimal" else None)
     def search_knowledge(
         query: str,
         software: str | None = None,
@@ -127,7 +144,12 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
             "results": [{"source": h.chunk.source, "path": h.chunk.path, "title": h.chunk.title,
                          "doc_type": h.chunk.doc_type, "score": round(h.score, 5)} for h in hits],
         })
-        return format_hits(hits, query=query, max_tokens=max_tokens)
+        out = format_hits(hits, query=query, max_tokens=max_tokens)
+        hints = tool_hints(query, set(mcp.specs))
+        if hints:
+            how = "run_tool(name, args) (find_tool shows the arguments)" if profile == "minimal" else "the tool"
+            out += "\n\nTool hint: " + "; ".join(hints) + f". Call it via {how}."
+        return out
 
     @mcp.tool()
     def get_context(chunk_id: int, neighbors: int = 2) -> str:
@@ -281,8 +303,9 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
     for mod in plugin_modules():
         if hasattr(mod, "register_mcp"):
             mod.register_mcp(mcp, ctx)
+    register_discovery_tools(mcp, ctx)
 
-    return mcp
+    return server
 
 
 def _lessons(cfg: Config):
@@ -302,11 +325,12 @@ def serve(
     allow_unauthenticated: bool = False,
     ssl_certfile: str | None = None,
     ssl_keyfile: str | None = None,
+    profile: str | None = None,
 ):
     """Run the server. stdio: plain MCP. http/sse: MCP + REST API (/api) on one uvicorn server,
     behind bearer-token auth unless `auth="none"` (see docs/auth.md)."""
     if transport not in ("http", "streamable-http", "sse"):
-        build_server(cfg, readonly=readonly, host=host, port=port).run()
+        build_server(cfg, readonly=readonly, host=host, port=port, profile=profile).run()
         return
 
     from .auth import TokenStore, is_loopback, tokens_path
@@ -333,9 +357,10 @@ def serve(
 
     # A shared HTTP server runs as a service account: never treat its own Unix identity as the
     # requesting user's for queue-access rules (clients send theirs; see docs/remote-client.md).
-    # Set only once all start-up checks have passed, just before the server is built.
-    os.environ.setdefault("RAG_DRG_SERVER_MODE", "1")
-    mcp = build_server(cfg, readonly=readonly, host=host, port=port)
+    # Set only once all start-up checks have passed, just before the server is built. Forced (not
+    # setdefault): an inherited empty/0 value must not turn the shared server into a local one.
+    os.environ["RAG_DRG_SERVER_MODE"] = "1"
+    mcp = build_server(cfg, readonly=readonly, host=host, port=port, profile=profile)
     attach_user(mcp)  # events (and lessons) carry the token owner's name
     run_http(mcp, "sse" if transport == "sse" else "http", host, port, hosts, token_store,
              ssl_certfile=ssl_certfile, ssl_keyfile=ssl_keyfile)

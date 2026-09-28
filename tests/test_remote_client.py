@@ -140,3 +140,24 @@ def test_queue_access_uses_the_requesting_users_identity(client, project, monkey
     assert not [f for f in access("carol", ["gpuusers"]) if f["severity"] in ("error", "warning")]
     # No identity sent: the server must not fall back to its own account -> at most "unknown" info.
     assert all(f["severity"] == "info" for f in access(None, None))
+
+
+def test_rest_compose_respects_requesting_users_queue_access(client, project, monkeypatch):
+    pytest.importorskip("rdkit")
+    cli, _ = client
+    shutil.copy(ROOT / "servers.example.yaml", project.root / "servers.yaml")
+    shutil.copy(ROOT / "knowledge" / "ess" / "levels_of_theory.yaml",
+                project.root / "knowledge" / "ess" / "levels_of_theory.yaml")
+    monkeypatch.setenv("RAG_DRG_SERVER_MODE", "1")
+    # servers.example.yaml: the `gpu` partition is restricted to user alice or group gpuusers,
+    # and only the Gaussian 16 GPU build may run there.
+    spec = {"program": "gaussian", "version": "16", "job": "sp", "method": "B3LYP", "basis": "def2-SVP",
+            "molecule": {"smiles": "C"},
+            "resources": {"server": "example", "cores": 4, "mem_gb": 8, "walltime": "1:00:00",
+                          "partition": "gpu", "software": "gaussian-16-gpu"}}
+    denied = cli._request("POST", "compose", body={"spec": spec, "client_user": "bob", "client_groups": ["chem"]})
+    assert not denied["ok"] and any("gpu" in e and ("access" in e or "may not" in e or "not allowed" in e)
+                                    for e in denied["errors"]), denied["errors"]
+    ok = cli._request("POST", "compose", body={"spec": spec, "client_user": "carol", "client_groups": ["gpuusers"]})
+    assert ok["ok"], ok.get("errors")
+    assert "B3LYP" in ok["input_text"]

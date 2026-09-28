@@ -43,6 +43,9 @@ __all__ = ["Finding", "ParsedInput", "ParsedSubmit", "Atom", "Executable", "EXTR
            "parse_input", "parse_submit", "detect_program", "format_findings", "hook_main"]
 
 EXTRA_CHECKS: list[Callable[[ParsedInput, "ParsedSubmit | None", object], list[Finding]]] = []
+# Plugins that check other kinds of input files (e.g. ARC input.yml: tools/arc_input.py) register
+# fn(filename, content) -> checker | None, with checker(content, filename, cfg) -> list[Finding].
+INPUT_ROUTERS: list[Callable[[str | None, str], Callable | None]] = []
 
 SEV_ORDER = {"error": 0, "warning": 1, "info": 2}
 
@@ -60,6 +63,20 @@ def parse_input(content: str, filename: str | None = None, path: Path | None = N
         findings = [Finding("info", "parser-error", f"The {prog} parser failed ({type(e).__name__}: {e}); "
                             "input not fully checked.")]
     return inp, findings
+
+
+def _routed(filename: str | None, content: str):
+    from ..plugins import plugin_modules
+
+    plugin_modules()
+    for fn in list(INPUT_ROUTERS):
+        try:
+            checker = fn(filename, content)
+        except Exception:  # noqa: BLE001 - a broken router must not break the ESS checker
+            checker = None
+        if checker is not None:
+            return checker
+    return None
 
 
 def _load_cfg(cfg):
@@ -118,6 +135,8 @@ def check_input(path: str | Path | None = None, content: str | None = None, file
 
     if prog is None and detect_submit(filename, content):
         return _check_submit_file(content, filename, p, cfg)
+    if prog is None and (routed := _routed(filename, content)) is not None:
+        return _finish(routed(content, filename, cfg))
     if prog is None:
         return [Finding("info", "unknown-program", f"Could not tell which program {filename or 'this input'} is for; "
                         "not checked.")]
@@ -198,7 +217,8 @@ def is_checkable(path: Path, content: str | None = None) -> bool:
             content = path.read_text(errors="replace")
     except OSError:
         return False
-    return detect_program(path.name, content) is not None or detect_submit(path.name, content)
+    return (detect_program(path.name, content) is not None or detect_submit(path.name, content)
+            or _routed(path.name, content) is not None)
 
 
 def hook_main(stdin_text: str, cfg=None, err=None) -> int:
