@@ -151,17 +151,25 @@ def test_user_env_conda_prefix_and_bad_values(monkeypatch):
         resolve_arc_user_env(conda_env="arc env")
 
 
-def test_unresolved_paths_fail_loudly_in_the_script(pbs):
+def test_unresolved_paths_fail_loudly_in_the_script(pbs, tmp_path):
     script, notes = srv.render_arc_runner_script(pbs)
-    assert 'ARC_PATH="${ARC_PATH:?set ARC_PATH to your ARC clone' in script
+    assert 'ARC_PATH="${ARC_PATH:-${arc_path:?set ARC_PATH (or arc_path) to your ARC clone' in script
+    assert 'then . ~/.bashrc; fi' in script  # the group's ~/.bashrc exports arc_path
     assert 'CONDA_SH="$(conda info --base)/etc/profile.d/conda.sh"' in script
     assert "#PBS -V" not in script
     assert any("unknown here" in n for n in notes)
     _bash_n(script)
     if shutil.which("bash"):  # the job stops before ARC with the message when ARC_PATH is unset
+        home = tmp_path / "home"
+        home.mkdir()
         run = subprocess.run(["bash", "-c", script.split("CONDA_SH=")[0]], text=True, capture_output=True,
-                             env={"PATH": "/usr/bin:/bin"})
-        assert run.returncode != 0 and "set ARC_PATH to your ARC clone" in run.stderr
+                             env={"PATH": "/usr/bin:/bin", "HOME": str(home)})
+        assert run.returncode != 0 and "set ARC_PATH (or arc_path) to your ARC clone" in run.stderr
+        # ... and picks up arc_path from ~/.bashrc, as the group's .bashrc exports it
+        (home / ".bashrc").write_text('export arc_path="/home/me/Code/ARC/"\n')
+        run = subprocess.run(["bash", "-c", script.split("CONDA_SH=")[0] + 'echo "ARC=$ARC_PATH"'], text=True,
+                             capture_output=True, env={"PATH": "/usr/bin:/bin", "HOME": str(home)})
+        assert run.returncode == 0 and "ARC=/home/me/Code/ARC/" in run.stdout
 
 
 # ----------------------------------------------------------------- runner script
@@ -485,4 +493,76 @@ def test_mcp_compose_tool(project, monkeypatch):
     monkeypatch.setenv("RAG_DRG_SERVER_MODE", "1")
     monkeypatch.setenv("ARC_PATH", "/srv/service-account/ARC")
     out = json.loads(tool(INPUT, "example-pbs"))
-    assert "/srv/service-account" not in out["submit_sh"] and "${ARC_PATH:?" in out["submit_sh"]
+    assert "/srv/service-account" not in out["submit_sh"] and "${arc_path:?" in out["submit_sh"]
+
+
+# ----------------------------------------------------------------- arc: local overrides (zeus)
+
+
+def _with_arc(**extra):
+    raw = _raw()
+    raw["servers"]["example-pbs"]["arc"].update(extra)
+    return raw
+
+
+def test_arc_local_overrides_render_like_the_groups_settings():
+    raw = _with_arc(cpus=16, memory_gb=160,
+                    default_job_settings={"job_total_memory_gb": 32, "job_cpu_cores": 16},
+                    commands={"submit": "/opt/pbs/bin/qsub", "status": "/opt/pbs/bin/qstat",
+                              "delete": "/opt/pbs/bin/qdel"},
+                    ess_installs={"gaussian": "gaussian-16"})
+    s = _servers(raw)
+    settings, submit = srv.arc_settings_parts(s, ["example-pbs"], local="example-pbs")
+    ns: dict = {}
+    exec(compile(ast.parse(settings.replace("__import__('getpass').getuser()", "'me'")), "s", "exec"), ns)
+    local = ns["servers"]["local"]
+    assert (local["cpus"], local["memory"]) == (16, 160)
+    assert ns["default_job_settings"] == {"job_total_memory_gb": 32, "job_cpu_cores": 16}
+    assert ns["submit_command"] == {"PBS": "/opt/pbs/bin/qsub"}
+    assert ns["check_status_command"] == {"PBS": "/opt/pbs/bin/qstat"}
+    assert ns["delete_command"] == {"PBS": "/opt/pbs/bin/qdel"}
+    assert "/opt/gaussian/g16-C.02/g16/g16" in submit
+
+
+def test_arc_ess_installs_can_pick_a_gpu_build():
+    raw = _with_arc(ess_installs={"gaussian": "gaussian-16-gpu"})
+    raw["servers"]["example-pbs"]["software"]["gaussian-16-gpu"] = {
+        "ess": "gaussian", "version": "C.02", "executable": "/opt/g16-gpu/g16/g16", "parallel": "threads"}
+    s = _servers(raw)["example-pbs"]
+    from rag_drg.tools._servers.render import arc_ess_install
+
+    assert arc_ess_install(s, "gaussian").key == "gaussian-16-gpu"
+    assert arc_ess_install(_servers(_raw())["example-pbs"], "gaussian").key == "gaussian-16"
+
+
+def test_arc_job_request_uses_the_overrides():
+    from rag_drg.tools.compose_arc import arc_job_request
+
+    s = _servers(_with_arc(cpus=16, memory_gb=160,
+                           default_job_settings={"job_cpu_cores": 16}))["example-pbs"]
+    req = arc_job_request(s, 200, [s.partitions["group_q"]])
+    assert req["cores"] == 16 and req["arc_memory"] == 160 and req["capped"]
+
+
+@pytest.mark.parametrize("extra, problem", [
+    ({"cpus": 0}, "arc.cpus"),
+    ({"memory_gb": "lots"}, "arc.memory_gb"),
+    ({"commands": {"submit": "qsub"}}, "arc.commands.submit"),
+    ({"commands": {"launch": "/opt/pbs/bin/qsub"}}, "arc.commands.launch"),
+    ({"ess_installs": {"gaussian": "nope"}}, "arc.ess_installs.gaussian"),
+    ({"ess_installs": {"gaussian": "orca-6"}}, "arc.ess_installs.gaussian"),
+    ({"default_job_settings": {"job_cpu_cores": "many"}}, "arc.default_job_settings"),
+])
+def test_arc_local_overrides_are_validated(extra, problem):
+    problems = validate_data(_with_arc(**extra))
+    assert any(problem in p for p in problems), problems
+
+
+def test_gpu_build_on_a_cpu_partition_is_not_flagged():
+    raw = _raw()
+    raw["servers"]["example-pbs"]["software"]["gaussian-16-gpu"] = {
+        "ess": "gaussian", "version": "C.02", "executable": "/opt/g16-gpu/g16/g16", "parallel": "threads",
+        "partitions": ["group_q"]}
+    s = _servers(raw)["example-pbs"]
+    probs = srv.check_resources(s, "group_q", 8, 32, 24, 0, software="gaussian-16-gpu", check_access=False)
+    assert not any("GPU build" in p["message"] for p in probs)

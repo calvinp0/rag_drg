@@ -75,12 +75,19 @@ def _num(v, default: float) -> float | None:
 
 def arc_job_request(server: Server, job_mem: float, queues: list) -> dict:
     """What ARC asks the scheduler for per ESS job (arc/job/adapter.py set_cpu_and_mem):
-    cores = min(8, servers['local']['cpus']); memory capped at 95% of servers['local']['memory'],
+    cores = min(job_cpu_cores (8), servers['local']['cpus']); memory capped at 95% of servers['local']['memory'],
     requested as ceil(GB x 1024 x 1.10) MiB (x 1.05 when capped). `queues`: the ESS queues in
     servers['local']['queues'] order; cpus/memory come from the first (arc_local_entry)."""
     first = queues[0] if queues else None
     arc_mem = float(first.mem_per_node_gb) if first else None
-    cores = min(ARC_DEFAULT_JOB_CPUS, first.cores_per_node if first else ARC_DEFAULT_JOB_CPUS)
+    node_cpus = first.cores_per_node if first else None
+    # servers.yaml arc.cpus / arc.memory_gb override the node size (what arc_local_entry writes)
+    if server.arc.get("cpus") is not None:
+        node_cpus = int(server.arc["cpus"])
+    if server.arc.get("memory_gb") is not None:
+        arc_mem = float(server.arc["memory_gb"])
+    want = _num((server.arc.get("default_job_settings") or {}).get("job_cpu_cores"), ARC_DEFAULT_JOB_CPUS)
+    cores = int(min(want, node_cpus)) if node_cpus else int(want)
     capped = arc_mem is not None and job_mem > ARC_MAX_NODE_MEMORY_FRACTION * arc_mem
     eff = ARC_MAX_NODE_MEMORY_FRACTION * arc_mem if capped else job_mem
     overhead = ARC_CAPPED_MEMORY_OVERHEAD if capped else ARC_MEMORY_OVERHEAD
@@ -288,7 +295,9 @@ def compose_arc_run(input_content: str, server: Server | str, input_file: str = 
                      + (f"; after a walltime kill its queue troubleshooting may move it to "
                         f"{', '.join(p.name for p in usable_q[1:])}" if len(usable_q) > 1 else ""))
     if queues:
-        mem = _num(data.get("job_memory"), ARC_DEFAULT_JOB_MEMORY_GB)
+        default_mem = _num((server.arc.get("default_job_settings") or {}).get("job_total_memory_gb"),
+                           ARC_DEFAULT_JOB_MEMORY_GB)
+        mem = _num(data.get("job_memory"), default_mem)
         if mem is None or mem <= 0:
             findings.append(_f("error", "arc-job-memory", f"job_memory {data.get('job_memory')!r} must be a positive number (GB)"))
         t = _num(data.get("max_job_time"), ARC_DEFAULT_MAX_JOB_TIME_H)
@@ -301,7 +310,7 @@ def compose_arc_run(input_content: str, server: Server | str, input_file: str = 
         if mem is not None and mem > 0 and t is not None:
             findings += _fit_findings(server, queues, mem, t, user, groups)
             req = arc_job_request(server, mem, usable_q)
-            notes.append(f"ARC gives each ESS job {req['cores']} cores (min(8, servers['local']['cpus'])) and "
+            notes.append(f"ARC gives each ESS job {req['cores']} cores (min(job_cpu_cores, servers['local']['cpus'])) and "
                          f"requests {req['memory_mib']} MiB")
     else:
         findings.append(_f("error", "arc-no-queues", f"{server.name} has no queue ARC could submit ESS jobs to"))

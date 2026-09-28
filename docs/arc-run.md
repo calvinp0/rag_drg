@@ -167,13 +167,13 @@ MCP: `compose_arc_run(input_content, server, input_file="input.yml", arc_path=No
 conda_sh=None, user=None, groups=None)` returns the same dict as JSON. Pass the user's paths; the
 shared server never uses its own.
 
-## For zeus (to fill in)
+## The group's cluster
 
-Confirmed: `qsub` works from node00 (so ARC can submit its ESS jobs from the runner node). The
-group's facts are in `knowledge/hpc/servers/zeus.md`. Still open: the path of `qsub` on node00
-(`command -v qsub`; ARC assumes `/usr/local/bin/qsub`).
+The entry for the group's own cluster (queues ARC uses, the runner node, the installs) is in the
+private site repository: `site/servers.yaml` and `site/knowledge/hpc/servers/` (see
+[site.md](site.md)).
 
-`servers.yaml` needs, from `rag-drg servers discover-pbs` and the group: the partitions `alon_q`
-(max walltime 3600 h, multi-node), `mafat_new_q`, `zeus_long_q`, `zeus_short_q`, `zeus_comb_q`,
-`alon_comb_q` with their per-node cores/memory and `access:`; `arc.ess_queues` in the order ARC
-should prefer; `arc.runner` with `queue: alon_q`, `host: node00` and node00's `host_cores`/`host_mem_gb`.
+To refresh the entry after the cluster changes, save `qstat -Qf` and
+`pbsnodes -a | grep -E '^[a-z]|resources_available\.(host|ncpus|mem|ngpus|qlist) '`, then run
+`rag-drg servers discover-pbs --from-file qstat.txt --pbsnodes nodes.txt`, review the draft,
+update `servers.yaml` and run `rag-drg servers render-cards`.

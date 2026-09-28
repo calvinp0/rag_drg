@@ -65,6 +65,20 @@ sources:
     software: arc
     base_url: https://github.com/ReactionMechanismGenerator/ARC/blob/main
 
+  # ---------------------------------------------------------- group scripts
+  # The group's working cluster setup: ARC runner + ~/.arc/settings.py and submit.py per ESS,
+  # RMG / T3 submit scripts and the .bashrc they rely on (DanaResearchGroup/DRGScripts, public).
+  # These are what actually runs on zeus; servers.yaml mirrors them.
+  - name: drgscripts
+    type: git
+    url: https://github.com/DanaResearchGroup/DRGScripts.git
+    sparse: [/Servers/]
+    include: ["Servers/**"]
+    domain: hpc
+    doc_type: template
+    tags: [group scripts, zeus, submit script, arc settings]
+    base_url: https://github.com/DanaResearchGroup/DRGScripts/blob/main
+
   # ---------------------------------------------------------------------- ESS
   - name: psi4
     type: git
