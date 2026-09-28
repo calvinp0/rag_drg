@@ -180,6 +180,15 @@ zeus-style PBS runner and does not apply here.
   * software: G09, ORCA 5.0.4, Molpro 2022.2.3, Q-Chem 6.1.1;
   * scratch in `/storage/ce_dana/$USER/scratch`.
 * `check_resources` works (e.g. a 100 h request is refused).
-* **Submit-file generation for HTCondor is not implemented**: `render_submit_script` and
-  `compose_ess_job --server atlas` refuse with a clear error. Write the group's `submit.sub` +
-  `job.sh` pair (DRGScripts `.arc/submit.py` templates), or compose only the input (no `server`).
+* **Submit files:** `rag-drg servers submit atlas <software> <input> --out-dir DIR` (MCP
+  `render_submit_script`) and `rag-drg compose ... --server atlas` write the group's pair.
+  * `submit.sub`: vanilla universe, `executable = job.sh`, no file transfer, `getenv = True`,
+    `request_cpus`, `request_memory` in MB, `out.txt` / `err.txt` / `job.log`.
+  * `job.sh` (made executable): the absolute install paths from `servers.yaml`, scratch in
+    `/storage/ce_dana/$USER/scratch/<cluster.proc>`, and a TERM trap that copies results back and
+    cleans up.
+  * Submit with `chmod u+x job.sh && condor_submit submit.sub` (alias `sb`).
+  * The default memory is 2 GB per core, because of the `WastingMemory` rule. Pass the job's real
+    need. The 72 h limit is checked.
+  * Not yet run on Atlas: the bash `job.sh` differs from the group's csh `g09.login` jobs (it
+    sources `g09.profile` for Gaussian). Check the first jobs.

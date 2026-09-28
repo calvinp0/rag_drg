@@ -86,7 +86,7 @@ def test_validation_errors(mutate, expected, project):
 
 def test_rendered_cards_pass_lint(project, example):
     written = srv.render_cards(srv.load_servers(project), project.root / "knowledge/hpc/servers/generated")
-    assert [p.name for p in written] == ["example.md", "example-pbs.md"]
+    assert [p.name for p in written] == ["example.md", "example-pbs.md", "example-condor.md"]
     assert _own_lint(project) == []
     assert "ARC's `servers` entry is `'local'`" in written[1].read_text()
     text = written[0].read_text()
@@ -414,11 +414,72 @@ def test_card_for_scheduler_without_submit_renderer_says_so():
     from rag_drg.tools._servers.render import render_card
 
     s = _parse_server("condor", {
-        "scheduler": "htcondor", "host": "ui.example.org",
+        "scheduler": "sge", "host": "ui.example.org",
         "partitions": {"vanilla": {"max_walltime": "72:00:00", "cores_per_node": 42, "mem_per_node_gb": 251,
                                    "default": True}},
         "software": {"orca-5": {"ess": "orca", "version": "5.0.4", "executable": "/opt/orca/orca",
                                 "parallel": "mpi"}}})
     card = render_card(s)
-    assert "cannot generate htcondor submit files" in card
+    assert "cannot generate sge submit files" in card
     assert "Cannot render an example" not in card and "rag-drg servers submit condor" not in card
+
+
+# ----------------------------------------------------------------- HTCondor (submit.sub + job.sh)
+
+
+@pytest.fixture
+def condor(project):
+    shutil.copy(EXAMPLE, project.root / "servers.yaml")
+    return srv.load_servers(project)["example-condor"]
+
+
+def test_htcondor_job_is_submit_sub_plus_job_sh(condor):
+    files, notes, meta = srv.render_submit_files(condor, "orca-5", "ts1.inp", cores=8, mem_gb=16, walltime="24:00:00")
+    assert list(files) == ["submit.sub", "job.sh"] and meta["main"] == "submit.sub"
+    sub, job = files["submit.sub"], files["job.sh"]
+    for line in ("universe              = vanilla", "executable            = job.sh",
+                 "request_cpus          = 8", "request_memory        = 16384MB",
+                 "should_transfer_files = NO", 'environment           = "CONDOR_JOBID=$(Cluster).$(Process)"',
+                 '+JobName              = "ts1"', "queue"):
+        assert line in sub
+    assert "request_gpus" not in sub and "longer than 72:00:00" in sub
+    assert job.startswith("#!/bin/bash") and 'JOBID="${CONDOR_JOBID:-$$}"' in job
+    assert 'SCRATCH="/storage/example/$USER/scratch/$JOBID"' in job and "/opt/orca_5_0_4/orca" in job
+    if shutil.which("bash"):
+        assert subprocess.run(["bash", "-n"], input=job, text=True).returncode == 0
+    assert meta["submit_command"] == "chmod u+x job.sh && condor_submit submit.sub"
+    assert any("%pal nprocs 8 end" in n for n in notes)
+
+
+def test_htcondor_limits_and_modest_default_memory(condor):
+    with pytest.raises(srv.SubmitError, match="72:00:00"):
+        srv.render_submit_files(condor, "orca-5", "a.inp", cores=8, mem_gb=16, walltime="100:00:00")
+    files, notes, meta = srv.render_submit_files(condor, "orca-5", "a.inp", cores=8)
+    assert meta["mem_gb"] == 16 and "request_memory        = 16384MB" in files["submit.sub"]
+    assert any("2 GB per core on HTCondor" in n for n in notes)
+    # single-file schedulers still give one script named after the input
+    pbs = _pbs(condor)
+    files, _, meta = srv.render_submit_files(pbs, "orca-5", "a.inp", cores=8, mem_gb=16)
+    assert list(files) == ["a.sh"] and meta["main"] == "a.sh"
+
+
+def test_cli_htcondor_out_dir(project, condor, tmp_path, capsys):
+    from rag_drg.cli import main
+
+    cfg_file = str(project.root / "rag_drg.yaml")
+    out = tmp_path / "job"
+    assert main(["-c", cfg_file, "servers", "submit", "example-condor", "orca-5", "a.inp", "--cores", "4",
+                 "--mem", "8", "--out-dir", str(out)]) == 0
+    assert (out / "submit.sub").is_file() and (out / "job.sh").stat().st_mode & 0o100
+    assert main(["-c", cfg_file, "servers", "submit", "example-condor", "orca-5", "a.inp", "-o",
+                 str(tmp_path / "x.sh")]) == 2
+    capsys.readouterr()
+    assert main(["-c", cfg_file, "servers", "submit", "example-condor", "orca-5", "a.inp"]) == 0
+    printed = capsys.readouterr().out
+    assert "=== submit.sub ===" in printed and "=== job.sh ===" in printed
+
+
+def test_card_shows_both_htcondor_files(condor):
+    card = srv.render_card(condor)
+    assert "`submit.sub`:" in card and "`job.sh`:" in card
+    assert "condor_submit submit.sub" in card and "Cannot render" not in card

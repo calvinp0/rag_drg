@@ -479,3 +479,16 @@ def test_mcp_tool_never_reads_files(cfg, tmp_path):
     out = json.loads(tool(spec=spec("orca", "sp")))
     assert out["ok"] is True and out["input_text"].startswith("#")
     assert ctx.events[-1]["tool"] == "compose_ess_job"
+
+
+@needs_bse
+def test_compose_on_htcondor_gives_submit_sub_and_job_sh(cfg):
+    s = spec("orca", "sp", version="5")
+    s["resources"] = {"server": "example-condor", "cores": 4, "mem_gb": 8, "walltime": "12:00:00"}
+    res = compose_ess_job(s, cfg=cfg)
+    assert res["ok"], res["errors"]
+    assert res["submit_name"] == "submit.sub" and "request_cpus          = 4" in res["submit_text"]
+    assert list(res["extra_files"]) == ["job.sh"] and "/opt/orca_5_0_4/orca" in res["extra_files"]["job.sh"]
+    assert "%pal nprocs 4 end" in res["input_text"]
+    # the regular schedulers keep a single script and no extra files
+    assert compose_ess_job(spec("orca", "sp"), cfg=cfg)["extra_files"] == {}

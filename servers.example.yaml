@@ -205,3 +205,30 @@ servers:
           PATH: "/opt/orca/orca_6_0_1:/opt/openmpi-4.1.6/bin:$PATH"
           LD_LIBRARY_PATH: "/opt/orca/orca_6_0_1:/opt/openmpi-4.1.6/lib:$LD_LIBRARY_PATH"
         parallel: mpi
+
+  # A fake HTCondor pool (the group's Atlas layout): no queues, so one pseudo-partition carries the
+  # pool's run-time limit and the smallest machine. Jobs are two files: submit.sub + job.sh.
+  #   rag-drg servers --file servers.example.yaml submit example-condor orca-5 job.inp --cores 8 --mem 16
+  example-condor:
+    description: "Fake HTCondor pool (not a real machine)."
+    scheduler: htcondor
+    host: ui.example-condor.org
+    partitions:
+      vanilla:
+        max_walltime: "72:00:00"
+        cores_per_node: 42
+        mem_per_node_gb: 251
+        max_nodes: 1
+        default: true
+    scratch:
+      path: "/storage/example/$USER/scratch"
+      node_local: false
+    software:
+      orca-5:
+        ess: orca
+        version: "5.0.4"
+        executable: /opt/orca_5_0_4/orca
+        env:
+          PATH: "/opt/orca_5_0_4:/opt/openmpi-4.1.1/bin:$PATH"
+          LD_LIBRARY_PATH: "/opt/orca_5_0_4:/opt/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        parallel: mpi

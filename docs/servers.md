@@ -102,7 +102,7 @@ They mirror `knowledge/hpc/templates/*.sh`:
   `molpro -n N -d $SCRATCH`; Psi4 `PSI_SCRATCH` and `psi4 -n N` (or the env's `python` for a `.py`
   input); PySCF `PYSCF_TMPDIR` and `OMP_NUM_THREADS`.
 * **Schedulers**: Slurm, PBS Pro/OpenPBS (`pbs`, `pbspro`: `select=1:ncpus=...`), Torque
-  (`nodes=1:ppn=...`), and `local` (plain bash). SGE and HTCondor clusters can be registered
+  (`nodes=1:ppn=...`), HTCondor (two files, see below), and `local` (plain bash). SGE clusters can be registered
   (cards, ARC settings) but have no submit-script renderer yet.
 * **Defaults**: the software's default/allowed partition, `min(16, cores/node)` cores, 90% of
   the proportional share of node memory, `min(24 h, max walltime)`.
@@ -265,3 +265,29 @@ e.g. by adding an untracked `conf.d/zz-local.yaml` with `cluster_commands: {enab
 clone (per-machine overrides, `zz-*.yaml` and `*.local.yaml`, are merged after the shared
 `conf.d/` files and win; they are git-ignored, so they never block `git pull`). BatchMode means it never
 prompts: your key must already be loaded in an agent or be passphrase-less.
+
+## HTCondor clusters (e.g. Atlas)
+
+HTCondor has no queues and no walltime request. In `servers.yaml` one pseudo-partition (e.g.
+`vanilla`) carries the pool's run-time limit and the smallest machine's cores and memory. A job is
+two files, the group's Atlas layout:
+
+* `submit.sub`:
+  * `universe = vanilla`, `executable = job.sh`, `should_transfer_files = NO` (shared file system);
+  * `getenv = True`, and `environment = "CONDOR_JOBID=$(Cluster).$(Process)"` so the job knows its
+    id;
+  * `request_cpus`, `request_memory` (MB), `request_gpus` if needed;
+  * output files `job.log`, `out.txt`, `err.txt`.
+* `job.sh`: the same body as the Slurm/PBS scripts (absolute paths, per-job scratch
+  `<scratch.path>/<cluster.proc>`, a TERM trap that copies results back and cleans up).
+
+`rag-drg servers submit <cluster> <software> <input> --out-dir DIR` writes both, with `job.sh`
+executable. Without `--out-dir` it prints both; `-o FILE` works only for single-file schedulers.
+Submit with `chmod u+x job.sh && condor_submit submit.sub`.
+
+* In Python: `render_submit_files()` returns `({name: text}, notes, meta)` for every scheduler.
+  `render_submit_script()` returns just the script, which for HTCondor is `job.sh`.
+* `compose_ess_job` returns `submit.sub` as `submit_text`, and `job.sh` in `extra_files`.
+* The default memory on HTCondor is 2 GB per core, not the node share. Pools such as Atlas hold
+  jobs that use far less memory than they request, so set `mem_gb` to the job's real need.
+

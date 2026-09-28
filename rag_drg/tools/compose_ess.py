@@ -128,7 +128,7 @@ def _ess_lines(sw, cores: int, mem_gb: float, input_name: str) -> list[str]:
 def _resources(spec: Spec, cfg, input_name: str, job_name: str) -> dict:
     """cores, mem_gb, in-input memory/cores lines, and (with a server) the submit script."""
     from ._servers.model import ServersConfigError, SoftwareInstall, load_servers
-    from ._servers.submit import SubmitError, render_submit_script
+    from ._servers.submit import SubmitError, render_submit_files
 
     r = spec.resources
     notes: list[str] = []
@@ -142,7 +142,8 @@ def _resources(spec: Spec, cfg, input_name: str, job_name: str) -> dict:
                "pyscf": f"python {input_name}"}[spec.program]
         notes.append(f"standalone input (no server): {cores} cores, {mem_gb:g} GB; no submit script. Run: {run}")
         return {"cores": cores, "mem_gb": mem_gb, "lines": _ess_lines(sw, cores, mem_gb, input_name),
-                "submit_name": None, "submit_text": None, "software": None, "notes": notes}
+                "submit_name": None, "submit_text": None, "extra_files": {}, "job_script": None,
+                "software": None, "notes": notes}
     try:
         servers = load_servers(cfg)
     except ServersConfigError as e:
@@ -158,13 +159,18 @@ def _resources(spec: Spec, cfg, input_name: str, job_name: str) -> dict:
 
     user, groups = client_identity()
     try:
-        script, snotes = render_submit_script(server, key, input_name, job_name=job_name, cores=r.get("cores"),
-                                              mem_gb=r.get("mem_gb"), walltime=r.get("walltime"),
-                                              partition=r.get("partition"), user=user, groups=groups)
+        files, snotes, meta = render_submit_files(server, key, input_name, job_name=job_name, cores=r.get("cores"),
+                                                  mem_gb=r.get("mem_gb"), walltime=r.get("walltime"),
+                                                  partition=r.get("partition"), user=user, groups=groups)
     except SubmitError as e:
         raise ComposeError([f"submit script: {p['message']}" for p in e.problems if p["severity"] == "error"]
                            or [str(e)]) from None
-    cores, mem_gb = r.get("cores"), r.get("mem_gb")
+    # the main file (Slurm/PBS script, or HTCondor's submit.sub) plus any others (HTCondor's job.sh)
+    main = meta["main"]
+    script = files[main]
+    extra = {k: v for k, v in files.items() if k != main}
+    job_script = next((v for k, v in files.items() if k.endswith(".sh")), script)
+    cores, mem_gb = meta.get("cores", r.get("cores")), meta.get("mem_gb", r.get("mem_gb"))
     for n in snotes:
         m = re.match(r"cores: (\d+) \(default\)", n)
         if m and cores is None:
@@ -189,8 +195,8 @@ def _resources(spec: Spec, cfg, input_name: str, job_name: str) -> dict:
     notes += [f"submit script: {n}" for n in snotes[1:]]
     notes.insert(0, f"server {name}: software {key} ({sw.ess} {sw.version or ''}".rstrip() + f"), {cores} cores, "
                  f"{mem_gb:g} GB; input memory/cores lines come from the same render_submit_script call")
-    return {"cores": int(cores), "mem_gb": float(mem_gb), "lines": lines, "submit_name": f"{Path(input_name).stem}.sh",
-            "submit_text": script, "software": key, "notes": notes}
+    return {"cores": int(cores), "mem_gb": float(mem_gb), "lines": lines, "submit_name": main,
+            "submit_text": script, "extra_files": extra, "job_script": job_script, "software": key, "notes": notes}
 
 
 # ------------------------------------------------------------------ main entry point
@@ -202,11 +208,13 @@ def compose_ess_job(spec: dict, protocol: dict | None = None, step: str | None =
     `protocol` is a dict (a parsed protocol YAML) merged UNDER `spec`; `step` selects one of its
     `steps`. `allow_files=True` (local CLI / Python only) lets `molecule.xyz_file` be read.
 
-    Returns {"ok", "input_name", "input_text", "submit_name", "submit_text", "findings", "notes",
-    "errors", "spec"}. On any problem `ok` is False, `errors` says why and no file text is returned.
+    Returns {"ok", "input_name", "input_text", "submit_name", "submit_text", "extra_files",
+    "findings", "notes", "errors", "spec"}. `extra_files` ({name: text}) holds any further files the
+    job needs (HTCondor: job.sh next to submit.sub). On any problem `ok` is False, `errors` says why
+    and no file text is returned.
     """
     out = {"ok": False, "input_name": None, "input_text": None, "submit_name": None, "submit_text": None,
-           "findings": [], "notes": [], "errors": [], "spec": None}
+           "extra_files": {}, "findings": [], "notes": [], "errors": [], "spec": None}
     notes: list[str] = out["notes"]
     try:
         cfg = _load_cfg(cfg)
@@ -276,7 +284,8 @@ def compose_ess_job(spec: dict, protocol: dict | None = None, step: str | None =
 
         from .inputcheck import check_input
 
-        findings = check_input(content=text, filename=input_name, submit_content=res["submit_text"], cfg=cfg,
+        # the script that runs the program (HTCondor: job.sh, whose requests live in submit.sub)
+        findings = check_input(content=text, filename=input_name, submit_content=res["job_script"], cfg=cfg,
                                program=s.program)
         out["findings"] = [f.to_dict() for f in findings]
         errs = [f for f in findings if f.severity == "error"]
@@ -286,7 +295,7 @@ def compose_ess_job(spec: dict, protocol: dict | None = None, step: str | None =
         if errs:
             raise ComposeError([f"check_input error [{f.code}]: {f.message}" for f in errs])
         out.update(ok=True, input_name=input_name, input_text=text, submit_name=res["submit_name"],
-                   submit_text=res["submit_text"])
+                   submit_text=res["submit_text"], extra_files=res["extra_files"])
     except ComposeError as e:
         out["errors"] = e.errors
     return out
@@ -313,6 +322,8 @@ def format_result(res: dict) -> str:
     parts = [f"=== {res['input_name']} ===", res["input_text"].rstrip("\n") + "\n"]
     if res["submit_text"]:
         parts += [f"=== {res['submit_name']} ===", res["submit_text"]]
+    for fname, text in (res.get("extra_files") or {}).items():
+        parts += [f"=== {fname} ===", text]
     info = [f for f in res["findings"] if f["severity"] == "info"]
     parts.append("Notes:\n" + "\n".join(f"- {n}" for n in res["notes"]))
     if info:
@@ -429,6 +440,7 @@ def _cli(args, cfg) -> int:
         files = [(res["input_name"], res["input_text"])]
         if res["submit_text"]:
             files.append((res["submit_name"], res["submit_text"]))
+        files += list((res.get("extra_files") or {}).items())
         clash = [n for n, _ in files if (d / n).exists()]
         if clash and not args.force:
             res["ok"] = False
@@ -436,6 +448,8 @@ def _cli(args, cfg) -> int:
         else:
             for n, t in files:
                 (d / n).write_text(t)
+                if n.endswith(".sh"):
+                    (d / n).chmod(0o755)
                 written.append(str(d / n))
     if args.json:
         print(json.dumps({**res, "written": written}, indent=2))
@@ -457,8 +471,9 @@ def register_mcp(mcp, ctx) -> None:
         matching submit script from an explicit spec, instead of writing the input by hand. The
         result is validated with check_input; on any error no files are returned.
 
-        Returns JSON: {ok, input_name, input_text, submit_name, submit_text, notes, findings, errors}.
-        Write input_text/submit_text to files yourself; read `notes` (auxiliary basis choices, ECPs,
+        Returns JSON: {ok, input_name, input_text, submit_name, submit_text, extra_files, notes,
+        findings, errors}. Write input_text/submit_text (and each extra_files entry, e.g. HTCondor's
+        job.sh, made executable) to files yourself; read `notes` (auxiliary basis choices, ECPs,
         rough SMILES geometry, unverified choices).
 
         Args:
