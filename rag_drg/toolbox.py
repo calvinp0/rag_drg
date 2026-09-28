@@ -27,7 +27,7 @@ TASK_WORDS: dict[str, list[str]] = {
                         "sp", "optimization", "optimisation", "frequency", "job"],
     "check_input": ["check", "validate", "verify", "lint", "input", "gjf", "inp", "submit", "script", "before submitting"],
     "check_arc_input": ["arc", "input.yml", "check", "validate", "yaml"],
-    "compose_arc_run": ["arc", "run", "submit", "launch", "input.yml", "settings", "zeus"],
+    "compose_arc_run": ["arc", "run", "launch", "input.yml", "settings"],
     "diagnose_output": ["failed", "crash", "error", "log", "output", "diagnose", "why", "died", "termination"],
     "check_basis": ["basis", "element", "ecp", "coverage", "auxiliary"],
     "lookup_level_of_theory": ["functional", "method", "level", "theory", "supported", "spelling", "translate", "which code"],
@@ -57,6 +57,13 @@ TASK_PATTERNS: dict[str, re.Pattern] = {
     "queue_access": re.compile(r"\b(can i use|allowed|access to)\b.*\b(queue|partition)|"
                                r"\b(queue|partition)\b.*\b(access|allowed|can i use|may i use)", re.I),
     "record_lesson": re.compile(r"\b(corrected|correction|lesson|remember (this|that)|was wrong|got it wrong)\b", re.I),
+}
+
+
+# Tools that only make sense when the task mentions their subject (else they are skipped).
+TASK_REQUIRES: dict[str, re.Pattern] = {
+    "compose_arc_run": re.compile(r"\barc\b|input\.yml", re.I),
+    "check_arc_input": re.compile(r"\barc\b|input\.yml", re.I),
 }
 
 
@@ -156,6 +163,9 @@ class ToolRegistrar:
         scored = []
         for spec in self.specs.values():
             if spec.name in ("find_tool", "run_tool"):
+                continue
+            need = TASK_REQUIRES.get(spec.name)
+            if need is not None and not need.search(task):
                 continue
             hay = set(re.findall(r"[a-z0-9_.]+", f"{spec.name.replace('_', ' ')} {spec.summary}".lower()))
             score = len(words & hay) * 1.0
