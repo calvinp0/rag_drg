@@ -4,30 +4,79 @@ domain: hpc
 software: htcondor
 doc_type: card
 status: draft
-tags: [cluster, server, atlas, htcondor, condor_submit, condor_q, ce_dana, arc, drgscripts, submit.sub]
+tags: [cluster, server, atlas, htcondor, condor_submit, condor_q, tech-ui02, ce_dana, storage, screen, arc, drgscripts, submit.sub, held, wastingmemory]
 ---
 # Atlas cluster card
 
-Facts here come from the group's scripts in
-[DanaResearchGroup/DRGScripts](https://github.com/DanaResearchGroup/DRGScripts) (`Servers/Atlas/`,
-indexed as source `drgscripts`). Items marked *to fill in* are not known yet; don't guess them.
-Atlas is not in `servers.yaml` yet, because the machine sizes and the login host are still missing.
+Sources:
+* the group's Atlas wiki page (2026-09-28);
+* `condor_status` / `condor_config_val` / `ls /Local/ce_dana` output from `tech-ui02` (2026-09-28);
+* the group's scripts in [DanaResearchGroup/DRGScripts](https://github.com/DanaResearchGroup/DRGScripts)
+  (`Servers/Atlas/`, indexed as source `drgscripts`).
 
-## Access and scheduler
+Items marked *to fill in* are not known yet; don't guess them. Atlas is part of the Technion's share
+of the ATLAS experiment computing, and **its admin is very strict**: follow the rules below exactly.
 
-* The scheduler is **HTCondor**, not PBS or Slurm:
-  * submit with `condor_submit submit.sub` (alias `sb`);
-  * list jobs with `condor_q` (alias `st`, which prints job status, CPUs, memory, name and time).
-  * HTCondor has no queues: a submit description asks for `request_cpus` / `request_memory`, and
-    HTCondor matches the job to a machine.
-* *To fill in:* the login host name, and the machine sizes (cores and memory; `condor_status`).
-* Shared group area: `/Local/ce_dana/` holds the software, the group conda
-  (`/Local/ce_dana/anaconda3`) and group code clones (`/Local/ce_dana/Code/{ARC,RMG-Py,RMG-database,T3,TCKDB}`).
-  Runs and scratch live on `/storage/ce_dana/<user>/`.
-* `.bash_aliases` (DRGScripts) initialises that conda, exports `arc_path`, `rmgpy_path`, `t3_path`,
-  `tckdb_path` and aliases (`arce`, `rmge`, `t3e`, `arc`, `rmg`, `runs`, `sl` = `screen -ls`).
+## Rules (from the group wiki)
 
-## Submit descriptions (HTCondor)
+* **Do not install any software, and do not create conda environments.** The only exception is
+  cloning git repositories you actively develop (e.g. to run a specific branch), into `~/Code`.
+  If in doubt, ask an experienced group member first.
+* **Run jobs only from Storage** (`/storage/ce_dana/<user>/runs/...`), never from Home.
+* **No compute- or memory-intensive work on the login nodes.** Use
+  `condor_submit -interactive job.sub` for interactive work, and close that job when done. ARC
+  itself is the group's accepted exception (see *ARC on Atlas*).
+* Any `job.sh` an HTCondor submit file runs must be executable: `chmod u+x job.sh`.
+
+## Access and file systems
+
+* Login: `ssh <user>@tech-ui02.hep.technion.ac.il`. The wiki notes `tech-ui02` is usually the less
+  busy login node. The first login uses a temporary LDAP password, which must be changed with
+  `passwd` within a week. Set up SSH-key login (`ssh-keygen`, `ssh-copy-id`).
+
+| Area | Path | Quota | Backed up | Use |
+|---|---|---|---|---|
+| Home | `/srv01/technion/<user>` | 10 GB (hard 12 GB), ~625k files | yes | `~/Code` git clones, `~/.arc`, dotfiles |
+| Storage | `/storage/ce_dana/<user>` | group `ce_dana`: 5 TB; **per user: ~149,000 files (hard 150,000)** | **no** | runs (`runs/`), scratch (`scratch/`) |
+| Local | `/Local/ce_dana` | read-only for users | - | the group's software, conda and code (installed by the admin / one designated member) |
+
+* The login message shows your quotas. The **file-count limit on Storage** is the one people hit:
+  ARC and Gaussian runs create many files, so clean up old runs and scratch.
+* Storage is not backed up: copy important results elsewhere.
+
+## Scheduler: HTCondor
+
+* HTCondor is a high-throughput system. There are no queues or partitions: a submit description
+  asks for `request_cpus` / `request_memory`, and HTCondor matches the job to a machine slot
+  (partitionable slots).
+* Commands:
+  * `condor_submit submit.sub` (alias `sb`);
+  * `condor_q` (alias `st`);
+  * `condor_q -better-analyze <job id>` to see why a job doesn't start;
+  * `condor_rm <job id>` to remove a job.
+* **Machines** (`condor_status`, 2026-09-28): about 200 worker nodes `tech-wnNNN`.
+
+  | Nodes | Cores | Memory |
+  |---|---|---|
+  | most | 58 | 256 GB |
+  | wn049-wn072 | 76 | 256 GB |
+  | wn077-wn100, wn161-wn176 | 42 | 256 GB |
+  | wn210 | 72 | 251 GB |
+  | wn249 | 154 | 256 GB |
+  | wn188, wn217-wn220 | 58 | **1 TB** |
+
+  A job that fits on every machine: at most 42 cores and about 250 GB.
+
+* **Jobs are held (`condor_q` status H) automatically** (`SYSTEM_PERIODIC_HOLD`) when:
+  * they use more memory than requested (`MEMORY_EXCEEDED`);
+  * they run too long (`TIME_EXCEEDED`; *to fill in:* the limit);
+  * **they use less than 20% of the memory they requested** (`WastingMemory`).
+
+  **Held jobs are removed after 24 h** (`SYSTEM_PERIODIC_REMOVE`). So request memory close to
+  what the job really uses: both too little and far too much get the job held and then deleted.
+  This matters for ARC's `job_memory`.
+
+### Submit descriptions
 
 The group's pattern (DRGScripts `.arc/submit.py`, `RMG/submit.sub`) is two files:
 1. **`submit.sub`**, which sets:
@@ -36,46 +85,70 @@ The group's pattern (DRGScripts `.arc/submit.py`, `RMG/submit.sub`) is two files
    * `request_cpus = N`, `request_memory = <MB>MB`;
    * `getenv = True`, and `environment = "VAR=value ..."` for scratch paths;
    * and ends with `queue`.
-2. **`job.sh`**, the script that runs the program.
+2. **`job.sh`**, the script that runs the program. It must be executable.
 
 The job runs in the submit directory (no file transfer). Scratch goes in
-`/storage/ce_dana/<user>/scratch/<program>/<job name>/` and the job script deletes it at the end.
+`/storage/ce_dana/<user>/scratch/<program>/<job name>/`; the wiki says to create
+`scratch/g09` and `scratch/orca` there before running ARC with Gaussian. The job script deletes
+the scratch directory at the end.
 
-## Software (from DRGScripts `.arc/submit.py`)
+## Software (`ls /Local/ce_dana`, 2026-09-28)
 
-| Program | Path / setup |
-|---|---|
-| Gaussian 09 | `g09root=/Local/ce_dana`; `source /Local/ce_dana/g09/bsd/g09.login` (csh); `/Local/ce_dana/g09/g09 < input.gjf > output.out`; `GAUSS_SCRDIR` under `/storage/ce_dana/<user>/scratch/g09/` |
-| ORCA 5.0.4 | `/Local/ce_dana/orca_5_0_4_linux_x86-64_shared_openmpi411/orca` with OpenMPI 4.1.1 in `/Local/ce_dana/openmpi-4.1.1` (`bin` on PATH, `lib` on LD_LIBRARY_PATH) |
-| Molpro | the job runs `/Local/ce_dana/molpro-mpp-2022.2.3/bin/molpro -n N -t 1 -d $MOLPRO_SCRDIR`, but the submit file puts `molpro-mpp-2021.2.1/bin` on PATH. *To fill in:* which version is meant |
-| Q-Chem | `QC=/Local/ce_dana/Q-Chem`; `/Local/ce_dana/Q-Chem/bin/qchem -nt N input.in output.out`; `QCSCRATCH` under `/storage/ce_dana/<user>/scratch/qchem/`. *To fill in:* the version |
+| Program | Install | Used by the group's scripts |
+|---|---|---|
+| Gaussian 09 | `/Local/ce_dana/g09` (readable by group `ce_dana` only): `g09root=/Local/ce_dana`, `source /Local/ce_dana/g09/bsd/g09.login` (csh), `/Local/ce_dana/g09/g09` | yes (ARC) |
+| Gaussian 16 | **not installed** (`/Local/ce_dana/g16` does not exist) | the `g16` in DRGScripts `incore_commands` is stale |
+| ORCA 5.0.4 | `/Local/ce_dana/orca_5_0_4_linux_x86-64_shared_openmpi411/orca`, OpenMPI 4.1.1 in `/Local/ce_dana/openmpi-4.1.1` | yes (ARC) |
+| ORCA 4.0.1.2 | `/Local/ce_dana/orca_4_0_1_2_linux_x86-64_openmpi202`, OpenMPI 2.0.2 in `/Local/ce_dana/openmpi-2.0.2` | no |
+| Molpro | `/Local/ce_dana/molpro-mpp-2020.2.1`, `-2021.2.1`, `-2022.2.3` | ARC's job runs `molpro-mpp-2022.2.3/bin/molpro -n N -t 1 -d $MOLPRO_SCRDIR` (its submit file still puts 2021.2.1 on PATH) |
+| Q-Chem | `/Local/ce_dana/Q-Chem` (`QC=`; `bin/qchem -nt N`). *To fill in:* the version | ARC template exists |
+| Also | CFOUR v2.00beta (serial), CREST 2.12 and 3.0.2, Julia 1.8.0 (RMS), NVIDIA HPC SDK, group conda `/Local/ce_dana/anaconda3` | |
 
-* `incore_commands` in the same file calls `g16`. *To fill in:* whether Gaussian 16 is installed on Atlas.
+Psi4 and PySCF are not in `/Local/ce_dana`.
 
-## ARC on Atlas (DRGScripts `.arc/settings.py`)
+## Environment (`.bash_aliases`, from the wiki / DRGScripts)
 
-* `servers['local']`: `cluster_soft` HTCondor, `path` `/storage/ce_dana/`, `cpus` 8, `memory` 256.
-* `global_ess_settings`: gaussian, orca and molpro all go to `local`.
-* `default_job_settings`: `job_total_memory_gb` 6, `job_cpu_cores` 8.
-* **ARC runs on the head node, inside a `screen` session, not as a batch job** (group workflow,
-  confirmed 2026-09-28). This is the opposite of zeus, where ARC runs as a PBS job on n170. Only
-  the ESS jobs that ARC spawns go through HTCondor.
+* In `~/.bashrc`:
+  * comment out `[ -z "$PS1" ] && return`, so the file also works inside jobs;
+  * enable the `~/.bash_aliases` block.
+* `.bash_aliases`:
+  * initialises the group conda;
+  * exports `arc_path`, `rmgpy_path`, `rmgdb_path`, `t3_path`, `tckdb_path`, which point at the
+    shared clones in `/Local/ce_dana/Code/`. Only developers repoint them to `~/Code`.
+  * sets up Julia for RMS.
+  * defines aliases: `arce` / `rmge` / `t3e` / `tcke` / `rmse` (activate the conda envs), `arc`,
+    `rmg`, `arkane`, `t3`, `sb`, `st`, `runs`.
+* The group maintains the shared ARC and RMG clones and `arc_env`. Ask Alon for updates.
+
+## ARC on Atlas
+
+* **ARC runs on the head (login) node, inside a `screen` session, not as a batch job** (wiki;
+  confirmed by the group). This is the opposite of zeus, where ARC runs as a PBS job on n170.
+  Only the ESS jobs that ARC spawns go through HTCondor.
+* `~/.arc/settings.py` (wiki):
+  * `servers['local'] = {'path': '/storage/ce_dana/', 'cluster_soft': 'HTCondor', 'un': '<user>',
+    'cpus': 8, 'memory': 40}`;
+  * `global_ess_settings`: gaussian, orca and molpro all go to `local`;
+  * `supported_ess = ['gaussian', 'molpro', 'orca']`.
+
+  DRGScripts' copy has `'memory': 256` and `default_job_settings = {'job_total_memory_gb': 6,
+  'job_cpu_cores': 8}`. *To fill in:* which of the two is current.
+* `~/.arc/submit.py`: the HTCondor templates from DRGScripts (`Servers/Atlas/.arc/submit.py`).
+  Its `pipe_submit` is a Slurm template left over from another cluster and does not apply here.
 
 ### Running and monitoring ARC on Atlas
 
-1. On the head node, start a named screen: `screen -S <run name>`.
-2. Inside it: `arce` (= `conda activate arc_env`), then `cd /storage/ce_dana/<user>/runs/<run>`
-   (the `runs` alias goes to `/storage/ce_dana/<user>/runs`), then `arc` (=
-   `python $arc_path/ARC.py input.yml`).
-3. Detach with `Ctrl-a d`; ARC keeps running on the head node.
-4. **Is ARC itself still running?** Check the screen: `screen -ls` (alias `sl`) lists the
-   sessions, and `screen -r <run name>` reattaches to see ARC's output.
-5. **ARC's ESS jobs:** they are HTCondor jobs, so use `condor_q` (alias `st` shows status,
-   CPUs, memory, job name and time).
-6. Stop a run: `screen_quit <run name>` (a function in `.bash_aliases`), or `Ctrl-c` inside the
-   screen. Remove the ESS jobs ARC already submitted with `condor_rm`.
+1. Make a project folder on Storage, e.g. `/storage/ce_dana/<user>/runs/ARC/<run>/`, and put
+   `input.yml` there.
+2. Start a named screen on the head node: `screen -S <run>`.
+3. Inside it: `arce`, then `arc`. `arc` runs `python $arc_path/ARC.py input.yml` and tees
+   `stdout.log` / `stderr.log`.
+4. Detach with `Ctrl-a d`; ARC keeps running on the head node.
+5. **Is ARC itself still running?** `screen -ls` lists the sessions, and `screen -r <run>`
+   reattaches to show ARC's output.
+6. **ARC's ESS jobs** are HTCondor jobs: check them with `condor_q` / `st`, and with
+   `condor_q -better-analyze <id>` for held or idle ones.
+7. Stop a run: `screen -X -S <run> quit`, then `condor_rm` any ESS jobs it left behind.
 
 Don't write a batch "runner" submit file for ARC on Atlas. `rag-drg arc compose` generates a
 zeus-style PBS runner and does not apply here.
-* `pipe_submit` in the same file is a Slurm (`#SBATCH -p normal`) template left over from another
-  cluster; it does not apply to Atlas's HTCondor.
