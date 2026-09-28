@@ -117,10 +117,19 @@ Local models: see [`integrations/local-models.md`](integrations/local-models.md)
 | `rag-drg tools-schema --format openai\|ollama` | Tool definitions for local-model frameworks | [integrations/local-models.md](integrations/local-models.md) |
 | `rag-drg check-pdf`, `ingest`, `fetch`, `lint`, `stats`, `sources` | Content management | [sources/README.md](sources/README.md) |
 
+### Using the shared server without installing anything
+
+Group members only need one file: [`integrations/rag-drg-remote`](integrations/rag-drg-remote)
+(standard-library Python) plus their token. It checks inputs, diagnoses outputs and searches via
+the server, and works as the Claude Code hook. What runs where (shared server vs. your machine
+vs. a per-user install for live cluster queries) is explained in
+[docs/remote-client.md](docs/remote-client.md).
+
 ### Automatic input checks in Claude Code
 
-Add the hook from [`integrations/claude-code/hooks.json`](integrations/claude-code/hooks.json) to
-`~/.claude/settings.json` (use the absolute path of the venv's `rag-drg`). Every time an agent
+Add the hook from [`integrations/claude-code/hooks.remote.json`](integrations/claude-code/hooks.remote.json)
+(thin client, no install) or [`integrations/claude-code/hooks.json`](integrations/claude-code/hooks.json)
+(local install) to `~/.claude/settings.json`, using the absolute path of the command. Every time an agent
 writes an input file or submit script, it is checked; errors are fed back to the agent, which
 then fixes them before anything is submitted.
 

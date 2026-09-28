@@ -8,6 +8,10 @@ Mounted under ``/api`` on the same HTTP server as the MCP endpoint (``rag-drg se
     GET /api/level?name=wb97xd/def2tzvp&software=orca
     GET /api/context?chunk_id=123&neighbors=1
     GET /api/health
+    POST /api/check_input   {"content", "filename", "submit_content"?, "submit_filename"?,
+                             "client_user"?, "client_groups"?}   -> findings (+ "text")
+    POST /api/diagnose      {"content", "filename"?, "software"?}  -> diagnosis (+ "text")
+    POST /api/check_basis   {"basis", "elements"? | "smiles"? | "xyz"?, "software"?}
 
 Search results are JSON (``{"query", "results": [...], "text"?}``); with ``max_tokens`` the
 results are the compact selection (curated knowledge first, each text trimmed to its most
@@ -16,6 +20,9 @@ that text as ``text/plain``.
 """
 
 from __future__ import annotations
+
+import contextlib
+import json
 
 from typing import Any
 
@@ -120,6 +127,78 @@ def build_rest_app(ctx) -> Any:
         rows = [c.to_dict() for c in chunks]
         return JSONResponse({"chunk_id": cid, "chunks": rows})
 
+    async def _json_body(request: Request) -> dict:
+        raw = await request.body()
+        if len(raw) > MAX_BODY:
+            raise _BadRequest(f"request body larger than {MAX_BODY // 1_000_000} MB; send the head and tail only")
+        try:
+            data = json.loads(raw or b"{}")
+        except ValueError as e:
+            raise _BadRequest(f"body is not JSON: {e}") from e
+        if not isinstance(data, dict):
+            raise _BadRequest("body must be a JSON object")
+        return data
+
+    async def check_input_ep(request: Request):
+        try:
+            data = await _json_body(request)
+        except _BadRequest as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        content, filename = data.get("content"), data.get("filename")
+        if not isinstance(content, str) or not isinstance(filename, str) or not filename:
+            return JSONResponse({"error": "need string fields 'content' and 'filename'"}, status_code=400)
+        from .inputcheck import check_input, format_findings
+
+        groups = data.get("client_groups")
+        identity = (data.get("client_user") or None,
+                    [str(g) for g in groups] if isinstance(groups, list) else None)
+        with client_identity(identity):
+            findings = check_input(content=content, filename=filename,
+                                   submit_content=data.get("submit_content") or None, cfg=ctx.cfg)
+        n = {sev: sum(1 for f in findings if f.severity == sev) for sev in ("error", "warning", "info")}
+        ctx.emit({"tool": "check_input", "transport": "rest", "args": {"filename": filename},
+                  "n_results": len(findings), "errors": n["error"], "warnings": n["warning"]})
+        return JSONResponse({"filename": filename, "counts": n,
+                             "findings": [f.to_dict() for f in findings],
+                             "text": format_findings(findings, filename)})
+
+    async def diagnose_ep(request: Request):
+        try:
+            data = await _json_body(request)
+        except _BadRequest as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        content = data.get("content")
+        if not isinstance(content, str) or not content.strip():
+            return JSONResponse({"error": "need a non-empty string field 'content'"}, status_code=400)
+        from .diagnose import diagnose_output
+
+        d = diagnose_output(content=content, filename=data.get("filename") or None,
+                            software=data.get("software") or None, cfg=ctx.cfg)
+        body = json.loads(json.dumps(d.to_dict(), default=str))
+        body["text"] = d.format_text()
+        ctx.emit({"tool": "diagnose_output", "transport": "rest", "args": {"filename": data.get("filename")},
+                  "n_results": len(body.get("errors") or []), "status": body.get("status")})
+        return JSONResponse(body)
+
+    async def check_basis_ep(request: Request):
+        try:
+            data = await _json_body(request) if request.method == "POST" else dict(request.query_params)
+        except _BadRequest as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        basis = data.get("basis")
+        if not basis:
+            return JSONResponse({"error": "missing 'basis'"}, status_code=400)
+        from .basis import check_basis, format_report
+
+        try:
+            res = check_basis(basis, elements=data.get("elements"), smiles=data.get("smiles"),
+                              xyz=data.get("xyz"), software=data.get("software"))
+        except Exception as e:  # noqa: BLE001 - e.g. BSE / RDKit not installed on the server
+            return JSONResponse({"error": str(e)}, status_code=422)
+        res = dict(res)
+        res["text"] = format_report(res)
+        return JSONResponse(json.loads(json.dumps(res, default=str)))
+
     def health(request: Request):
         return JSONResponse({"status": "ok", "readonly": bool(ctx.readonly)})
 
@@ -128,4 +207,26 @@ def build_rest_app(ctx) -> Any:
         Route("/level", level, methods=["GET"]),
         Route("/context", context, methods=["GET"]),
         Route("/health", health, methods=["GET"]),
+        Route("/check_input", check_input_ep, methods=["POST"]),
+        Route("/diagnose", diagnose_ep, methods=["POST"]),
+        Route("/check_basis", check_basis_ep, methods=["GET", "POST"]),
     ])
+
+
+MAX_BODY = 8_000_000
+
+
+@contextlib.contextmanager
+def client_identity(identity: tuple[str | None, list[str] | None]):
+    """Tell the cluster checks who the *requesting* user is (the server process is a service
+    account). Uses rag_drg.tools.cluster_limits.CLIENT_IDENTITY when that plugin provides it."""
+    try:
+        from .cluster_limits import CLIENT_IDENTITY  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 - older plugin without identity support
+        yield
+        return
+    token = CLIENT_IDENTITY.set(identity if any(identity) else None)
+    try:
+        yield
+    finally:
+        CLIENT_IDENTITY.reset(token)
