@@ -17,6 +17,14 @@ tags:
 - scratch
 - quota
 - submit script
+- orca-5
+- orca-6
+- gaussian-09
+- gaussian-16
+- gaussian-16-gpu
+- qchem-6.1
+- molpro-2024
+- molpro-2026
 ---
 # zeus cluster card
 
@@ -29,7 +37,7 @@ Technion zeus cluster (PBS). ARC runs as a batch job on n170 in alon_q.
 * Scheduler: pbspro
 * Login host: `zeus.technion.ac.il`
 * User: your own account ($USER); log in with SSH keys or an agent (no passwords)
-* Environment modules: not used; programs are called by the absolute paths below
+* Environment modules: available; programs are called by the absolute paths below
 * ARC runs on this cluster: a runner job in queue `alon_q` on node `n170` runs your own `$ARC_PATH/ARC.py` in your conda env, and ARC submits the ESS jobs from there (`rag-drg arc compose input.yml --server zeus` writes submit.sh and the settings; see docs/arc-run.md). ARC's `servers` entry is `'local'`:
 
 ```python
@@ -44,11 +52,14 @@ servers = {
         'cluster_soft': 'PBS',
         'cpus': 384,
         'memory': 1511,
-        'queues': {'alon_q': '3600:00:00', 'mafat_new_q': '3600:00:00', 'alon_comb_q': '24:00:00', 'zeus_combined_q': '24:00:00', 'zeus_long_q': '336:00:00', 'zeus_short_q': '03:00:00', 'zeus_comb_short': '03:00:00'},
-        'excluded_queues': ['gpu_v100_q', 'mafat_gm_q'],
+        'queues': {'alon_q': '3600:00:00'},
+        'excluded_queues': ['mafat_new_q', 'alon_comb_q', 'zeus_combined_q', 'zeus_long_q', 'zeus_short_q', 'gpu_v100_q', 'mafat_gm_q'],
         # queue 'alon_q' is restricted (groups grinberg-dana_prj, halupovich_prj); drop it if you are not one of them
-        # queue 'mafat_new_q' is restricted (groups amouyal_prj, arad_prj, ben-gida_prj, bitton_prj, cukurel_prj, eichen_prj, frankel_prj, freydin_prj, grinberg-dana_prj, grisaro_prj, halupovich_prj, jacobi_prj, karpas_prj, lahav_prj, manor_prj, michaels_prj, pollini_prj, shmulevich_prj, tartakovsky_prj, yuvallevy_prj); drop it if you are not one of them
-        # queue 'alon_comb_q' is restricted (groups grinberg-dana_prj, halupovich_prj); drop it if you are not one of them
+        # queue 'mafat_new_q' excluded: not in arc.ess_queues
+        # queue 'alon_comb_q' excluded: not in arc.ess_queues
+        # queue 'zeus_combined_q' excluded: not in arc.ess_queues
+        # queue 'zeus_long_q' excluded: not in arc.ess_queues
+        # queue 'zeus_short_q' excluded: not in arc.ess_queues
         # queue 'gpu_v100_q' excluded: not in arc.ess_queues
         # queue 'mafat_gm_q' excluded: not in arc.ess_queues
         'un': __import__('getpass').getuser(),  # ARC runs as you on the cluster
@@ -66,7 +77,6 @@ servers = {
 | `zeus_combined_q` | `24:00:00` | 80 | 377 | 0 | 1 | no | everyone | open to all zeus users; priority 80; 400 queued jobs and 600 cores running per user |
 | `zeus_long_q` | `336:00:00` | 80 | 377 | 0 | 1 | no | everyone | open to all zeus users; only 10 queued and 20 running jobs per user (ARC can exceed this quickly); 1120 cores running in total |
 | `zeus_short_q` | `03:00:00` | 80 | 377 | 0 | 1 | no | everyone | open to all zeus users; 600 jobs and 600 cores running per user |
-| `zeus_comb_short` | `03:00:00` | 80 | 377 | 0 | 1 | no | everyone | open to all zeus users; priority 80; 1000 jobs and 600 cores running per user |
 | `gpu_v100_q` | `480:00:00` | 40 | 376 | 4 x V100-SXM2-32GB | 2 | no | everyone | GPU jobs only; open to all zeus users (acl_group_enable = False); 8 GPUs and 80 cores in the whole queue; request GPUs with select=...:ngpus=N; default_chunk.ncpus = 1 |
 | `mafat_gm_q` | `3600:00:00` | 40 | 754 | 4 x V100-SXM2-32GB | 1 | no | everyone | GPU jobs only; a single node (4 GPUs). qstat lists acl_groups arad_prj, dagan_prj, frankel_prj but acl_group_enable is not set, so the list is not enforced: anyone in the group can use it (confirmed by the group, 2026-09-28) |
 
@@ -80,13 +90,427 @@ Restricted queues (servers.yaml `access:`): only the listed users, or members of
 
 | Key | ESS | Version | Executable | Parallel | Partitions |
 |---|---|---|---|---|---|
+| `orca-5` | orca | 5.0.4 | `/usr/local/orca-5.0.4/orca` | mpi | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
+| `orca-6` | orca | 6.0.0 | `/usr/local/orca-6.0.0/orca` | mpi | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
+| `gaussian-09` | gaussian | 09 | `/usr/local/g09/g09` | threads | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
+| `gaussian-16` | gaussian | 16 | `/usr/local/g16/g16` | threads | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
+| `gaussian-16-gpu` | gaussian | 16 | `/usr/local/g16-gpu/g16/g16` | threads | gpu_v100_q, mafat_gm_q |
+| `qchem-6.1` | qchem | 6.1 | `/usr/local/qchem6.1/bin/qchem` | threads | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
+| `molpro-2024` | molpro | 2024 | `/usr/local/molpro-2024/bin/molpro` | mpi | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
+| `molpro-2026` | molpro | 2026 | `/usr/local/molpro-2026/bin/molpro` | mpi | alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q |
+
+### orca-5 environment
+
+```bash
+export PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+```
+
+OpenMPI 4.1.1 is the version ORCA 5.0.4 is built for; not yet confirmed with a parallel test job on zeus
+
+### orca-6 environment
+
+```bash
+export PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/lib:$LD_LIBRARY_PATH"
+```
+
+OpenMPI 4.1.5 is an unconfirmed choice (ORCA 6.0.0 is built with the 4.1 series); check with a parallel test job
+
+### gaussian-09 environment
+
+```bash
+export g09root="/usr/local"
+source $g09root/g09/bsd/g09.profile
+```
+
+readable only by Unix group gaussian
+
+### gaussian-16 environment
+
+```bash
+export g16root="/usr/local"
+source $g16root/g16/bsd/g16.profile
+```
+
+readable only by Unix group gaussian
+
+### gaussian-16-gpu environment
+
+```bash
+export g16root="/usr/local/g16-gpu"
+source $g16root/g16/bsd/g16.profile
+```
+
+GPU build; readable only by Unix group gaussian
+
+### qchem-6.1 environment
+
+```bash
+export QC="/usr/local/qchem6.1"
+source $QC/qcenv.sh
+```
+
+the group's own licence: readable only by Unix group grinberg-dana_prj
+
+### molpro-2024 environment
+
+No environment setup needed; call the executable by its absolute path.
+
+readable only by Unix group molpro
+
+### molpro-2026 environment
+
+No environment setup needed; call the executable by its absolute path.
+
+readable only by Unix group molpro
 
 ## Storage, scratch and quotas
 
 | Area | Path | Quota (GB) | Backed up | Check usage with |
 |---|---|---|---|---|
-| scratch | - | - | no | - |
+| home | `$HOME` | - | - | `quota -vs` |
+| scratch | `/gtmp/$USER` | - | no | - |
+
+whether /gtmp is shared or node-local is not recorded yet
 
 ## How to submit
 
 Generate a filled-in script with `rag-drg servers submit zeus <software-key> <input> [--cores N --mem GB --time HH:MM:SS --partition P --gpus G]` (MCP: `render_submit_script`). It checks the partition limits and prints the matching memory/core lines for the input. Examples with default resources:
+
+### Submit orca-5
+
+Input lines: %pal nprocs 16 end | %maxcore 2688 | (%maxcore is MB PER CORE, ~75% of the memory per core; ORCA itself starts the MPI processes - never run it through mpirun)
+
+```bash
+#!/bin/bash
+# orca-5 (orca 5.0.4) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mpiprocs=16:mem=56gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- orca-5: absolute paths, no environment modules ---
+export PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+ORCA_BIN=/usr/local/orca-5.0.4/orca
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    # copy back everything useful, then clean scratch
+    if cd "$SCRATCH" 2>/dev/null; then
+        cp -f *.gbw *.hess *.xyz *.engrad *property.txt "$WORKDIR"/ 2>/dev/null
+    fi
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+INPUT="job.inp"
+cp "$WORKDIR/job.inp" "$SCRATCH"/
+# for MORead / InHess also copy: cp "$WORKDIR"/*.gbw "$WORKDIR"/*.hess "$SCRATCH"/ 2>/dev/null
+cd "$SCRATCH"
+"$ORCA_BIN" "$INPUT" > "$WORKDIR/job.out"
+```
+
+Submit with `qsub job.sh`.
+
+### Submit orca-6
+
+Input lines: %pal nprocs 16 end | %maxcore 2688 | (%maxcore is MB PER CORE, ~75% of the memory per core; ORCA itself starts the MPI processes - never run it through mpirun)
+
+```bash
+#!/bin/bash
+# orca-6 (orca 6.0.0) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mpiprocs=16:mem=56gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- orca-6: absolute paths, no environment modules ---
+export PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/lib:$LD_LIBRARY_PATH"
+ORCA_BIN=/usr/local/orca-6.0.0/orca
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    # copy back everything useful, then clean scratch
+    if cd "$SCRATCH" 2>/dev/null; then
+        cp -f *.gbw *.hess *.xyz *.engrad *property.txt "$WORKDIR"/ 2>/dev/null
+    fi
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+INPUT="job.inp"
+cp "$WORKDIR/job.inp" "$SCRATCH"/
+# for MORead / InHess also copy: cp "$WORKDIR"/*.gbw "$WORKDIR"/*.hess "$SCRATCH"/ 2>/dev/null
+cd "$SCRATCH"
+"$ORCA_BIN" "$INPUT" > "$WORKDIR/job.out"
+```
+
+Submit with `qsub job.sh`.
+
+### Submit gaussian-09
+
+Input lines: %nprocshared=16 | %mem=49GB | (%mem is TOTAL memory, ~88% of the request)
+
+```bash
+#!/bin/bash
+# gaussian-09 (gaussian 09) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mem=56gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- gaussian-09: absolute paths, no environment modules ---
+export g09root="/usr/local"
+source $g09root/g09/bsd/g09.profile
+GAUSSIAN=/usr/local/g09/g09
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+export GAUSS_SCRDIR="$SCRATCH"
+cd "$WORKDIR"
+"$GAUSSIAN" < "job.gjf" > "job.log"
+```
+
+Submit with `qsub job.sh`.
+
+### Submit gaussian-16
+
+Input lines: %nprocshared=16 | %mem=49GB | (%mem is TOTAL memory, ~88% of the request)
+
+```bash
+#!/bin/bash
+# gaussian-16 (gaussian 16) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mem=56gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- gaussian-16: absolute paths, no environment modules ---
+export g16root="/usr/local"
+source $g16root/g16/bsd/g16.profile
+GAUSSIAN=/usr/local/g16/g16
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+export GAUSS_SCRDIR="$SCRATCH"
+cd "$WORKDIR"
+"$GAUSSIAN" < "job.gjf" > "job.log"
+```
+
+Submit with `qsub job.sh`.
+
+### Submit gaussian-16-gpu
+
+Input lines: %cpu=0-15 | %gpucpu=0=0 | %mem=118GB | (%mem is TOTAL memory, ~88% of the request; each GPU is driven by one of the %cpu cores; GPUs speed up HF/DFT energies, gradients and frequencies only)
+
+```bash
+#!/bin/bash
+# gaussian-16-gpu (gaussian 16) on zeus:gpu_v100_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q gpu_v100_q
+#PBS -l select=1:ncpus=16:mem=135gb:ngpus=1
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- gaussian-16-gpu: absolute paths, no environment modules ---
+export g16root="/usr/local/g16-gpu"
+source $g16root/g16/bsd/g16.profile
+GAUSSIAN=/usr/local/g16-gpu/g16/g16
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+export GAUSS_SCRDIR="$SCRATCH"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"; nvidia-smi -L
+cd "$WORKDIR"
+"$GAUSSIAN" < "job.gjf" > "job.log"
+```
+
+Submit with `qsub job.sh`.
+
+### Submit qchem-6.1
+
+Input lines: MEM_TOTAL 50462 | ($rem section; MB, TOTAL for the job, ~88% of the request; threads are set by `qchem -nt 16` in the script)
+
+```bash
+#!/bin/bash
+# qchem-6.1 (qchem 6.1) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mem=56gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- qchem-6.1: absolute paths, no environment modules ---
+export QC="/usr/local/qchem6.1"
+source $QC/qcenv.sh
+QCHEM=/usr/local/qchem6.1/bin/qchem
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+export QCSCRATCH="$SCRATCH"
+export QCLOCALSCR="$QCSCRATCH/local"
+mkdir -p "$QCLOCALSCR"
+cd "$WORKDIR"
+"$QCHEM" -nt 16 "job.in" "job.out"
+```
+
+Submit with `qsub job.sh`.
+
+### Submit molpro-2024
+
+Input lines: memory,413,m | (mega-WORDS of 8 bytes PER PROCESS: 16 x 413 Mw x 8 B ~ 53 GB of the 56 GB requested; the script runs `molpro -n 16`)
+
+```bash
+#!/bin/bash
+# molpro-2024 (molpro 2024) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mpiprocs=16:mem=56gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- molpro-2024: absolute paths, no environment modules ---
+MOLPRO=/usr/local/molpro-2024/bin/molpro
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+cd "$WORKDIR"
+"$MOLPRO" -n 16 -d "$SCRATCH" "job.in"      # writes job.out
+```
+
+Submit with `qsub job.sh`.
+
+### Submit molpro-2026
+
+Input lines: memory,413,m | (mega-WORDS of 8 bytes PER PROCESS: 16 x 413 Mw x 8 B ~ 53 GB of the 56 GB requested; the script runs `molpro -n 16`)
+
+```bash
+#!/bin/bash
+# molpro-2026 (molpro 2026) on zeus:alon_q; generated by `rag-drg servers submit` from servers.yaml
+#PBS -N job
+#PBS -q alon_q
+#PBS -l select=1:ncpus=16:mpiprocs=16:mem=56gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+WORKDIR="$PBS_O_WORKDIR"
+JOBID="${PBS_JOBID%%.*}"
+cd "$WORKDIR"
+
+# --- molpro-2026: absolute paths, no environment modules ---
+MOLPRO=/usr/local/molpro-2026/bin/molpro
+
+# --- per-job scratch ---
+SCRATCH="/gtmp/$USER/$JOBID"
+mkdir -p "$SCRATCH"
+
+# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up
+cleanup() {
+    cd "$WORKDIR" || true
+    rm -rf "$SCRATCH"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT
+
+cd "$WORKDIR"
+"$MOLPRO" -n 16 -d "$SCRATCH" "job.in"      # writes job.out
+```
+
+Submit with `qsub job.sh`.

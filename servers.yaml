@@ -13,10 +13,11 @@ servers:
     scheduler: pbspro
     host: zeus.technion.ac.il
     user: null                        # your own $USER
+    modules_available: true           # Lmod (/usr/local/modules); we still call programs by absolute path
     arc:
-      # Queues ARC may send ESS jobs to; the first is ARC's default. zeus_long_q is late in the
-      # list because it accepts only 10 queued jobs per user.
-      ess_queues: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q, zeus_comb_short]
+      # ARC sends its ESS jobs to alon_q only (group decision, 2026-09-28). The other CPU queues
+      # below are for jobs submitted by hand.
+      ess_queues: [alon_q]
       runner:
         queue: alon_q
         host: n170                    # PBS vnode gd004; ARC runs and submits (qsub) from here
@@ -78,12 +79,6 @@ servers:
         mem_per_node_gb: 377
         gpus_per_node: 0
         notes: "open to all zeus users; 600 jobs and 600 cores running per user"
-      zeus_comb_short:
-        max_walltime: "03:00:00"
-        cores_per_node: 80            # 72 nodes, 80-384 cores; 80 / 377 fits all of them
-        mem_per_node_gb: 377
-        gpus_per_node: 0
-        notes: "open to all zeus users; priority 80; 1000 jobs and 600 cores running per user"
       # GPU queues: the group runs GPU jobs only here. Not in arc.ess_queues (ARC's ESS jobs are CPU jobs).
       gpu_v100_q:
         max_walltime: "480:00:00"
@@ -105,5 +100,92 @@ servers:
         notes: >-
           GPU jobs only; a single node (4 GPUs). qstat lists acl_groups arad_prj, dagan_prj, frankel_prj
           but acl_group_enable is not set, so the list is not enforced: anyone in the group can use it (confirmed by the group, 2026-09-28)
-    # software: to fill in - the absolute paths of ORCA, Gaussian, Q-Chem, Psi4, Molpro and PySCF
-    # on zeus (see servers.example.yaml for the layout).
+    scratch:
+      path: "/gtmp/$USER"             # ESS scratch goes under /gtmp (group rule); a per-job directory is made below it
+      node_local: false
+      notes: "whether /gtmp is shared or node-local is not recorded yet"
+    storage:
+      - name: home
+        path: "$HOME"
+        quota_command: "quota -vs"
+    # Installs from `ls -l /usr/local` on zeus (2026-09-28). Psi4 and PySCF are not installed
+    # system-wide: they live in each user's own conda envs.
+    software:
+      orca-5:
+        ess: orca
+        version: "5.0.4"
+        executable: /usr/local/orca-5.0.4/orca   # also /usr/local/orca5
+        env:
+          PATH: "/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/bin:$PATH"
+          LD_LIBRARY_PATH: "/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "OpenMPI 4.1.1 is the version ORCA 5.0.4 is built for; not yet confirmed with a parallel test job on zeus"
+      orca-6:
+        ess: orca
+        version: "6.0.0"
+        executable: /usr/local/orca-6.0.0/orca   # also /usr/local/orca6 and /usr/local/orca
+        env:
+          PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/bin:$PATH"
+          LD_LIBRARY_PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.5/lib:$LD_LIBRARY_PATH"
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "OpenMPI 4.1.5 is an unconfirmed choice (ORCA 6.0.0 is built with the 4.1 series); check with a parallel test job"
+      gaussian-09:
+        ess: gaussian
+        version: "09"
+        executable: /usr/local/g09/g09
+        env:
+          g09root: /usr/local
+        setup:
+          - "source $g09root/g09/bsd/g09.profile"
+        parallel: threads
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group gaussian"
+      gaussian-16:
+        ess: gaussian
+        version: "16"
+        executable: /usr/local/g16/g16
+        env:
+          g16root: /usr/local
+        setup:
+          - "source $g16root/g16/bsd/g16.profile"
+        parallel: threads
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group gaussian"
+      gaussian-16-gpu:
+        ess: gaussian
+        version: "16"
+        executable: /usr/local/g16-gpu/g16/g16
+        env:
+          g16root: /usr/local/g16-gpu
+        setup:
+          - "source $g16root/g16/bsd/g16.profile"
+        parallel: threads
+        partitions: [gpu_v100_q, mafat_gm_q]
+        notes: "GPU build; readable only by Unix group gaussian"
+      qchem-6.1:
+        ess: qchem
+        version: "6.1"
+        executable: /usr/local/qchem6.1/bin/qchem   # also /usr/local/qchem
+        env:
+          QC: /usr/local/qchem6.1
+        setup:
+          - "source $QC/qcenv.sh"
+        parallel: threads
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "the group's own licence: readable only by Unix group grinberg-dana_prj"
+      molpro-2024:
+        ess: molpro
+        version: "2024"
+        executable: /usr/local/molpro-2024/bin/molpro   # /usr/local/bin/molpro points here
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group molpro"
+      molpro-2026:
+        ess: molpro
+        version: "2026"
+        executable: /usr/local/molpro-2026/bin/molpro
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group molpro"

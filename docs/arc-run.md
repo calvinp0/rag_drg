@@ -173,11 +173,11 @@ The `zeus` entry in `servers.yaml` holds the queues ARC uses, from `qstat -Qf` a
 (2026-09-28):
 * the runner is `alon_q` pinned to n170 (vnode gd004), with 384 cores and about 1511 GiB;
 * `qsub` works from n170 and is at `/usr/local/bin/qsub` (ARC's default);
-* `arc.ess_queues` is `alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q,
-  zeus_short_q, zeus_comb_short`.
+* `arc.ess_queues` is `[alon_q]`: ARC sends every ESS job to `alon_q` (group rule), and the
+  generated `servers['local']` excludes every other queue.
 
-The group's notes and gotchas are in `knowledge/hpc/servers/zeus.md`. Still to fill in: the
-software install paths on zeus (`software:`).
+The group's notes and gotchas are in `knowledge/hpc/servers/zeus.md`. The installs (ORCA 5/6,
+Gaussian 09/16 and the 16 GPU build, Q-Chem 6.1, Molpro 2024/2026) are in `software:`.
 
 To refresh the entry after the cluster changes, save `qstat -Qf` and
 `pbsnodes -a | grep -E '^[a-z]|resources_available\.(host|ncpus|mem|ngpus|qlist) '`, then run

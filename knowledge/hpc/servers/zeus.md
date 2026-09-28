@@ -4,7 +4,7 @@ domain: hpc
 software: pbs
 doc_type: card
 status: draft
-tags: [cluster, server, zeus, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, zeus_comb_short, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
+tags: [cluster, server, zeus, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
 ---
 # zeus cluster card
 
@@ -16,8 +16,13 @@ in `servers.yaml` (card: `generated/zeus.md`); `rag-drg arc compose`, `render_su
 ## Access
 
 * Login host: `zeus.technion.ac.il`. The scheduler is PBS (`qsub`, `qstat`, `qdel`, `pbsnodes`).
-* Programs are called by absolute path. The group does not use environment modules; this is not
-  yet checked on zeus with `module avail`.
+* Programs are called by absolute path. zeus does have environment modules (Lmod, `module avail`:
+  `/usr/local/modules`, with OpenMPI, CUDA, GCC and Intel oneAPI). The group's scripts don't need them.
+* Storage: check your quota with `quota -vs`.
+* Scratch for ESS jobs goes under `/gtmp/` (group rule). Generated scripts use `/gtmp/$USER/<job id>`
+  and remove it when the job ends. It is not recorded yet whether `/gtmp` is shared or local to each node.
+* Conda is available to every user, but conda envs are per user: list yours with `conda env list`
+  on the login node.
 
 ## Running ARC on zeus
 
@@ -31,6 +36,10 @@ ARC does not run on the login node itself; it runs as a batch job:
 
 ARC runs only on `n170`, because it submits its own ESS jobs with `qsub` from there.
 Submitting with `qsub` from n170 works (confirmed by the group, 2026-09-28).
+
+**ARC sends its ESS jobs to `alon_q` only** (group rule). In `~/.arc/settings.py` the `local`
+server's `queues` is `{'alon_q': '3600:00:00'}`, and every other queue is in `excluded_queues`.
+The other CPU queues below are for ESS jobs submitted by hand.
 
 * The ARC clone path and the conda install (`conda.sh`) are per user. Set them in
   `~/.config/rag-drg/user.yaml` or with `--arc-path` / `--conda-sh`, not in the shared `servers.yaml`.
@@ -46,7 +55,7 @@ Submitting with `qsub` from n170 works (confirmed by the group, 2026-09-28).
 | Cores | 384 (`resources_available.ncpus`) |
 | Memory | 1584807020 kB, about 1511 GiB (`resources_available.mem`) |
 | GPUs | none listed |
-| Queues it serves | `alon_q`, `zeus_combined_q`, `zeus_comb_short` (`resources_available.qlist`) |
+| Queues it serves | `alon_q`, plus `zeus_combined_q` and `zeus_comb_short` (`resources_available.qlist`) |
 
 ARC's own runner job needs few cores, but other `alon_q`, `zeus_combined_q` and `zeus_comb_short`
 jobs can share n170 with it.
@@ -68,19 +77,17 @@ maximum set, PBS enforces no walltime limit.
 | `zeus_long_q` | 336 h | none set | 1120 running (all users) | **10 jobs queued, 20 running** | everyone |
 | `zeus_short_q` | 3 h | 3 h | 1360 running (all users) | 600 jobs, 600 cores running | everyone |
 | `zeus_combined_q` | 24 h | 24 h | none set | 400 jobs queued, 600 jobs or 600 cores running | everyone |
-| `zeus_comb_short` | 3 h | 3 h | none set | 1000 jobs, 600 cores running | everyone |
 
 Rules and gotchas:
 
-* **`zeus_long_q` accepts only 10 queued jobs per user.** ARC can submit dozens of conformer and
-  TS jobs at once, so sending ARC's ESS jobs to `zeus_long_q` quickly hits this limit. Prefer
-  `alon_q` or `mafat_new_q` for ARC.
+* **`zeus_long_q` accepts only 10 queued jobs per user.** Keep that in mind when submitting many
+  jobs by hand.
 * Queue priority: `alon_q` is 148. `zeus_long_q`, `zeus_short_q` and `alon_comb_q` are 100.
-  `zeus_combined_q` and `zeus_comb_short` are 80. `mafat_new_q` has none set.
+  `zeus_combined_q` is 80. `mafat_new_q` has none set.
 * `zeus_long_q`'s per-user core limit is written `[u:PBS_PBS_GENERIC=600]` in its configuration,
   not the usual `PBS_GENERIC`. It may not be enforced; ask the admins before relying on it.
-* There is no queue called `zeus_comb_q`: the combined queues are `zeus_combined_q` (24 h) and
-  `zeus_comb_short` (3 h).
+* "zeus_comb_q" means `zeus_combined_q` (24 h). `zeus_comb_short` (3 h) is a different queue,
+  and the group doesn't use it.
 
 ## GPU queues
 
@@ -113,7 +120,6 @@ overlap.
 | `zeus_long_q` | 15: n034-n040, n057-n064 | 80 | 377 GiB | 1200 |
 | `zeus_short_q` | 17: n017-n033 | 80 | 377 GiB | 1360 |
 | `zeus_combined_q` | 100, mixed | 80-384 | 377-1512 GiB | 14824 |
-| `zeus_comb_short` | 72, mixed | 80-384 | 377-1512 GiB | 9672 |
 
 * A single ESS job must fit on one node: at most 80 cores and about 377 GiB on `zeus_long_q`,
   `zeus_short_q` and `alon_comb_q`, and up to 384 cores and about 1.5 TB on `alon_q`.
@@ -121,11 +127,30 @@ overlap.
   that passes `check_resources` fits on any node of that queue.
 * `alon_comb_q` sets no `default_chunk.qlist`, unlike the other queues, so it is not certain
   that its jobs land only on the 28 nodes listing it in their `qlist`.
-* ARC's default `max_job_time` is 120 h, which is longer than the maximum walltime of
-  `alon_comb_q` (24 h default), `zeus_combined_q` (24 h), `zeus_short_q` (3 h) and
-  `zeus_comb_short` (3 h). `rag-drg arc compose` warns about this.
+* n170 also serves `zeus_combined_q` and `zeus_comb_short`, so other users' jobs can run next to
+  ARC's runner there. The other `alon_q` nodes are n171-n173; n171 serves `alon_q` only.
 
 ## Software installation paths
 
-*To fill in* (the absolute paths of ORCA, Gaussian, Q-Chem, Psi4, Molpro and PySCF on zeus).
-See `_TEMPLATE.md` for the table layout.
+From `ls -l /usr/local` on zeus (2026-09-28). The same entries are in `servers.yaml` (`software:`),
+which `render_submit_script` / `rag-drg compose` use.
+
+| Program | Executable | Setup | Readable by |
+|---|---|---|---|
+| ORCA 5.0.4 | `/usr/local/orca-5.0.4/orca` (`orca5` is a link) | OpenMPI 4.1.1: `/usr/local/openmpi-4.1.1/{bin,lib}` on PATH / LD_LIBRARY_PATH | everyone |
+| ORCA 6.0.0 | `/usr/local/orca-6.0.0/orca` (`orca6` and `orca` are links) | OpenMPI 4.1.5 (`/usr/local/openmpi-4.1.5`), *not yet confirmed* | everyone |
+| Gaussian 09 | `/usr/local/g09/g09` | `g09root=/usr/local`; `source $g09root/g09/bsd/g09.profile` | Unix group `gaussian` |
+| Gaussian 16 (CPU) | `/usr/local/g16/g16` | `g16root=/usr/local`; `source $g16root/g16/bsd/g16.profile` | Unix group `gaussian` |
+| Gaussian 16 (GPU) | `/usr/local/g16-gpu/g16/g16` | `g16root=/usr/local/g16-gpu`; same profile; GPU queues only | Unix group `gaussian` |
+| Q-Chem 6.1 | `/usr/local/qchem6.1/bin/qchem` (`qchem` is a link) | `QC=/usr/local/qchem6.1`; `source $QC/qcenv.sh` | `grinberg-dana_prj` only (the group's licence) |
+| Molpro 2024 | `/usr/local/molpro-2024/bin/molpro` (`/usr/local/bin/molpro` points here) | none | Unix group `molpro` |
+| Molpro 2026 | `/usr/local/molpro-2026/bin/molpro` | none | Unix group `molpro` |
+| Molpro 2022 | `/usr/local/molpro-2022` | not in `servers.yaml` | Unix group `molpro` |
+| xTB 6.5.1 | `/usr/local/xtb-6.5.1/bin/xtb` (`/usr/local/xtb` is a link) | none | everyone |
+
+* **Psi4 and PySCF are not installed system-wide.** They live in each user's own conda env, so a
+  submit script must activate the user's env. Ask the user which env to use (`conda env list`),
+  or create one.
+* Gaussian, Molpro and Q-Chem need membership of the Unix group shown (`id` lists your groups).
+* ORCA's OpenMPI pairing is not yet confirmed with a parallel job. To see which libmpi an ORCA
+  binary links to, run `ldd /usr/local/orca-6.0.0/orca_scf_mpi | grep -i mpi`.
