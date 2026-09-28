@@ -90,11 +90,11 @@ def fetch_urls(src: SourceConfig) -> None:
     assert src.path is not None
     src.path.mkdir(parents=True, exist_ok=True)
     mapping: dict[str, str] = {}
-    queue = deque(src.urls)
+    queue = deque((u, 0) for u in src.urls)
     seen = set(src.urls)
     limit = src.max_pages if src.crawl else len(src.urls)
     while queue and len(mapping) < limit:
-        url = queue.popleft()
+        url, depth = queue.popleft()
         dest = src.path / _url_file_name(url)
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         try:
@@ -109,13 +109,13 @@ def fetch_urls(src: SourceConfig) -> None:
         dest.write_bytes(data)
         mapping[dest.name] = url
         log.info("  fetched %s", url)
-        if src.crawl and "html" in ctype:
+        if src.crawl and "html" in ctype and (src.max_depth is None or depth < src.max_depth):
             html = data.decode("utf-8", errors="replace")
             for href in _HREF.findall(html):
                 nxt = urldefrag(urljoin(url, unescape(href)))[0]
                 if nxt not in seen and _allowed(nxt, src):
                     seen.add(nxt)
-                    queue.append(nxt)
+                    queue.append((nxt, depth + 1))
         if src.delay:
             time.sleep(src.delay)
     (src.path / URL_MAP).write_text(json.dumps(mapping, indent=2))
@@ -151,7 +151,7 @@ def iter_files(src: SourceConfig) -> Iterator[tuple[Path, str]]:
             # A README at the root of a curated directory describes the folder, not the domain.
             continue
         rel = p.relative_to(root).as_posix()
-        if p.suffix.lower() not in SUPPORTED_SUFFIXES:
+        if p.suffix.lower() not in SUPPORTED_SUFFIXES or _is_clutter(p.relative_to(root)):
             continue
         if not _matches(rel, src.include) or _matches(rel, src.exclude):
             continue
@@ -159,6 +159,57 @@ def iter_files(src: SourceConfig) -> Iterator[tuple[Path, str]]:
             log.info("Skipping large file %s", rel)
             continue
         yield p, rel
+
+
+# Saved/mirrored web manuals: browser "_files" asset folders, Sphinx build artefacts and
+# generated index/search pages carry no documentation and would duplicate real pages.
+_CLUTTER_DIRS = ("_static", "_sources", "_images", "_downloads", "_modules", "_sphinx_design_static")
+_CLUTTER_FILES = {"genindex.html", "search.html", "py-modindex.html", "searchindex.js", "objects.inv"}
+META_SIDECAR = "_meta.yaml"
+
+
+def _is_clutter(rel: Path) -> bool:
+    if rel.name in _CLUTTER_FILES or rel.name == META_SIDECAR or rel.name.endswith(".meta.yaml"):
+        return True
+    return any(part.endswith("_files") or part in _CLUTTER_DIRS for part in rel.parts[:-1])
+
+
+def sidecar_meta(root: Path, path: Path) -> dict:
+    """Metadata from `_meta.yaml` files in the folders between `root` and `path` (outer first),
+    then from `<file>.meta.yaml` next to the file. Lets PDFs/HTML carry version, doc_type, title...
+    """
+    import yaml
+
+    meta: dict = {}
+    if root.is_file():
+        root = root.parent
+    try:
+        rel_parts = path.parent.relative_to(root).parts
+    except ValueError:
+        rel_parts = ()
+    folders = [root] + [root.joinpath(*rel_parts[: i + 1]) for i in range(len(rel_parts))]
+    for f in [d / META_SIDECAR for d in folders] + [path.with_name(path.name + ".meta.yaml")]:
+        if f.is_file():
+            try:
+                data = yaml.safe_load(f.read_text()) or {}
+            except yaml.YAMLError as e:
+                log.warning("Bad sidecar %s: %s", f, e)
+                continue
+            if isinstance(data, dict):
+                meta.update(data)
+    return meta
+
+
+_HOST_DIR = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$", re.IGNORECASE)
+
+
+def _url_from_mirror_path(rel: str) -> str | None:
+    """`wget --mirror` stores https://host/a/b.html as <folder>/host/a/b.html; rebuild the URL."""
+    parts = rel.split("/")
+    for i, part in enumerate(parts[:-1]):
+        if _HOST_DIR.match(part) and not part.lower().endswith((".html", ".htm", ".pdf")):
+            return "https://" + "/".join(parts[i:])
+    return None
 
 
 def _versions(value) -> str | None:
@@ -184,6 +235,7 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
     from .lessons import LESSONS_SOURCE
 
     all_chunks: list[Chunk] = []
+    seen_content: dict[str, tuple] = {}
     for path, rel in iter_files(src):
         if src.name != LESSONS_SOURCE and _is_within(path, cfg.lessons_dir):
             continue  # lessons are indexed by their own source
@@ -197,6 +249,21 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
         except Exception as e:  # noqa: BLE001 - one bad file must not stop the ingest
             log.warning("Failed to chunk %s/%s: %s", src.name, rel, e)
             continue
+        if not chunks:
+            if path.suffix.lower() == ".pdf":
+                log.warning("[%s] %s: no extractable text - scanned PDF? Run `rag-drg check-pdf` on it.", src.name, rel)
+            continue
+        digest = hashlib.sha1("\n".join(c.text for c in chunks).encode()).hexdigest()
+        if path.suffix.lower() == ".pdf":
+            _warn_if_needs_ocr(src.name, rel, chunks)
+        if src.path is not None:
+            side = sidecar_meta(src.path, path)
+            meta = {**side, **meta}
+            if side.get("title") and path.suffix.lower() == ".pdf":
+                # "gaussian_book_scan > Chapter 3 (p. 40)" -> "Exploring Chemistry ... > Chapter 3 (p. 40)"
+                for c in chunks:
+                    if c.title.startswith(path.stem):
+                        c.title = str(side["title"]) + c.title[len(path.stem):]
 
         p_domain, p_software = _infer_from_path(rel) if src.type == "local" else (None, None)
         domain = meta.get("domain") or src.domain or p_domain
@@ -214,7 +281,7 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
         if software and isinstance(software, list):
             tags += [str(s) for s in software[1:]]
             software = software[0]
-        url = meta.get("url") or url_map.get(path.name)
+        url = meta.get("url") or url_map.get(path.name) or _url_from_mirror_path(rel)
         if not url and src.base_url:
             url = src.base_url.rstrip("/") + "/" + rel
         for c in chunks:
@@ -228,8 +295,27 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
             c.tags = tags
             c.url = url
             c.status = meta.get("status")
+        # The same page saved twice (browser copy + wget mirror, index.html?x, two folders):
+        # keep one copy, preferring the one whose original URL is known, then the shorter path.
+        rank = (url is None, len(rel), rel)
+        if digest in seen_content and seen_content[digest][0] <= rank:
+            log.info("[%s] %s duplicates %s, skipped", src.name, rel, seen_content[digest][1])
+            continue
+        if digest in seen_content:
+            log.info("[%s] %s duplicates %s, skipped", src.name, seen_content[digest][1], rel)
+        seen_content[digest] = (rank, rel, chunks)
+    for _, _, chunks in seen_content.values():
         all_chunks.extend(chunks)
     return all_chunks
+
+
+def _warn_if_needs_ocr(source: str, rel: str, chunks: list[Chunk]) -> None:
+    text = " ".join(c.text for c in chunks)
+    letters = sum(ch.isalpha() for ch in text)
+    visible = sum(not ch.isspace() for ch in text) or 1
+    if "(cid:" in text or letters / visible < 0.6:
+        log.warning("[%s] %s: extracted text looks garbled - check with `rag-drg check-pdf`; "
+                    "consider `ocrmypdf --force-ocr`.", source, rel)
 
 
 def embed_missing(cfg: Config, store: Store, progress: Callable[[str], None] = print) -> int:

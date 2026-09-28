@@ -31,7 +31,7 @@ so a mistake only has to be fixed once.
 | ESS | **Level-of-theory support table**: which code supports each method/functional/dispersion/solvation model and how each one writes it | `knowledge/ess/levels_of_theory.yaml` (`lookup_level_of_theory`, `rag-drg level`) |
 | ESS | Psi4 manual + **every Psi4 keyword with default/allowed values** (parsed from `read_options.cc`) | Psi4 GitHub (auto-fetched) |
 | ESS | PySCF `examples/` (idiomatic usage for every module) | PySCF GitHub (auto-fetched) |
-| ESS | ORCA / Gaussian / Q-Chem / Molpro manuals, split along the PDF bookmarks and labelled `reference` (keywords/usage) or `theory` | PDFs you drop in `sources/<code>/<version>/` (licensed), or optional web crawls |
+| ESS | ORCA / Gaussian / Q-Chem / Molpro manuals as PDFs **or many HTML pages** (saved, wget-mirrored or crawled), split by bookmarks/headings and labelled `reference` (keywords/usage) or `theory`; books via `_meta.yaml` (e.g. one Gaussian book tagged for 09 and 16) | `sources/<code>/<version>/` (licensed, git-ignored), or built-in crawls |
 | ARC | Input reference, examples, settings, source code, and the **`output.yml` JSON schema** (one chunk per field) | ARC GitHub (auto-fetched) + `knowledge/arc/` |
 | HPC | Slurm/PBS essentials (submit, query, quota), submit templates for each ESS (programs called by absolute path, no `module load`), one card per cluster with the install paths | `knowledge/hpc/` |
 | Projects | Per-project protocol/convention cards, paper notes, paper PDFs | `knowledge/projects/`, `papers/` |
@@ -104,7 +104,9 @@ The tool is only as good as what's in it. In order of value:
 3. **Add the licensed manuals**, one PDF per manual and version, no manual splitting needed
    (see [`sources/README.md`](sources/README.md)): ORCA in `sources/orca/{5,6}/`, Gaussian in
    `sources/gaussian/{09,16}/`, Q-Chem in `sources/qchem/6.1/`, Molpro in
-   `sources/molpro/{2024,2026}/`, exported cluster
+   `sources/molpro/{2024,2026}/`. HTML manuals (ORCA 6, Gaussian keyword pages) can be saved,
+   wget-mirrored or crawled; books go in e.g. `sources/gaussian/book/` with a `_meta.yaml`;
+   run `rag-drg check-pdf` to see whether a PDF needs OCR first. Exported cluster
    docs in `sources/hpc/<cluster>/`. These are git-ignored, so they go on the shared server or
    each person's copy. Web crawls for the ORCA 6 / Gaussian / Molpro online docs are
    pre-configured but `enabled: false`: enable them in `rag_drg.yaml` if the site terms allow it.
