@@ -30,7 +30,9 @@ ACCESS_KEYS = {"users", "groups", "notes"}
 SOFTWARE_KEYS = {"ess", "version", "executable", "env", "setup", "parallel", "partitions", "notes"}
 STORAGE_KEYS = {"name", "path", "quota_gb", "backed_up", "quota_command", "notes"}
 SCRATCH_KEYS = {"path", "node_local", "notes"}
-ARC_KEYS = {"path", "max_simultaneous_jobs", "ess_queues", "runner"}
+ARC_KEYS = {"path", "max_simultaneous_jobs", "ess_queues", "runner", "cpus", "memory_gb", "commands",
+            "ess_installs", "default_job_settings"}
+ARC_COMMAND_KEYS = ("submit", "status", "delete")
 # arc.runner: the batch job that runs ARC itself on the cluster (see docs/arc-run.md). Only
 # group-level facts; each person's ARC clone and conda install are per-user (arc_runner.py).
 RUNNER_KEYS = {"queue", "host", "host_cores", "host_mem_gb", "cores", "mem_gb", "walltime", "extra_setup",
@@ -268,6 +270,42 @@ def _safe_abs_path(v: Any) -> bool:
     return isinstance(v, str) and bool(_EXE_RE.match(v))
 
 
+def _validate_arc_extras(arc: dict, software, where: str, problems: list[str]) -> None:
+    """The optional ARC `servers['local']` overrides: cpus, memory_gb, commands, ess_installs,
+    default_job_settings (see docs/servers-spec.md)."""
+    if arc.get("cpus") is not None and not (_is_int(arc["cpus"]) and arc["cpus"] > 0):
+        problems.append(f"{where}.cpus: must be a positive integer")
+    if arc.get("memory_gb") is not None and not (_is_num(arc["memory_gb"]) and arc["memory_gb"] > 0):
+        problems.append(f"{where}.memory_gb: must be a positive number")
+    cmds = arc.get("commands")
+    if cmds is not None:
+        if not isinstance(cmds, dict):
+            problems.append(f"{where}.commands: must be a mapping with submit / status / delete")
+        else:
+            for k, v in cmds.items():
+                if k not in ARC_COMMAND_KEYS:
+                    problems.append(f"{where}.commands.{k}: unknown (known: {', '.join(ARC_COMMAND_KEYS)})")
+                elif not (isinstance(v, str) and v.startswith("/") and "\n" not in v and "'" not in v):
+                    problems.append(f"{where}.commands.{k}: must be an absolute command path (optionally with "
+                                    "arguments), without quotes or newlines")
+    inst = arc.get("ess_installs")
+    if inst is not None:
+        if not isinstance(inst, dict):
+            problems.append(f"{where}.ess_installs: must be a mapping of ESS -> software key")
+        else:
+            for ess, key in inst.items():
+                sw = software.get(key) if isinstance(software, dict) else None
+                if not isinstance(sw, dict):
+                    problems.append(f"{where}.ess_installs.{ess}: {key!r} is not in this server's software")
+                elif sw.get("ess") != ess:
+                    problems.append(f"{where}.ess_installs.{ess}: {key!r} is a {sw.get('ess')} install")
+    djs = arc.get("default_job_settings")
+    if djs is not None and not (isinstance(djs, dict) and all(isinstance(k, str) and _is_num(v)
+                                                              for k, v in djs.items())):
+        problems.append(f"{where}.default_job_settings: must be a mapping of ARC setting -> number "
+                        "(e.g. job_total_memory_gb, job_cpu_cores)")
+
+
 def _validate_runner(r: Any, sched: Any, parts: dict, where: str, problems: list[str]) -> None:
     """servers.yaml `arc.runner` (the ARC.py batch job); limits are checked against its queue."""
     if not isinstance(r, dict):
@@ -461,6 +499,7 @@ def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
                             problems.append(f"{w}.arc.ess_queues: lists a partition twice")
                 if arc.get("max_simultaneous_jobs") is not None and not _is_int(arc["max_simultaneous_jobs"]):
                     problems.append(f"{w}.arc.max_simultaneous_jobs: must be an integer")
+                _validate_arc_extras(arc, s.get("software") or {}, f"{w}.arc", problems)
                 if "runner" in arc:
                     _validate_runner(arc["runner"], sched, parts, f"{w}.arc.runner", problems)
 

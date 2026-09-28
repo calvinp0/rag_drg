@@ -133,6 +133,13 @@ def arc_local_entry(server: Server, user: str | None = None, groups: list[str] |
     entry: dict = {"cluster_soft": ARC_CLUSTER_SOFT[server.scheduler]}
     if queues:
         _node_limits(entry, queues[0])
+    # servers.yaml arc.cpus / arc.memory_gb: the group's own caps (e.g. 16 cores / 160 GB per job)
+    if server.arc.get("cpus") is not None:
+        entry["cpus"] = int(server.arc["cpus"])
+    if server.arc.get("memory_gb") is not None:
+        mem = server.arc["memory_gb"]
+        entry["memory"] = int(mem) if float(mem).is_integer() else mem
+    if queues:
         entry["queues"] = {p.name: format_walltime(p.max_walltime_seconds) for p in queues}
     if excluded:
         entry["excluded_queues"] = list(excluded)
@@ -260,6 +267,9 @@ def arc_settings_parts(servers: dict[str, Server], names: list[str] | None = Non
     if any(sw.ess == "psi4" for n in names for sw in servers[n].software.values()):
         lines.append("# psi4 is installed but is not in ARC's supported_ess, so it has no entry here.")
     if local_name is not None:
+        djs = servers[local_name].arc.get("default_job_settings")
+        if djs:
+            lines += ["", "default_job_settings = {"] + [f"    {k!r}: {v!r}," for k, v in djs.items()] + ["}"]
         lines += _local_command_note(servers[local_name])
     return "\n".join(lines) + "\n", "\n".join(arc_submit_scripts(servers, names, local_name)) + "\n"
 
@@ -273,6 +283,15 @@ _ARC_LOCAL_COMMANDS = {
 
 def _local_command_note(server: Server) -> list[str]:
     soft = ARC_CLUSTER_SOFT[server.scheduler]
+    given = server.arc.get("commands") or {}
+    if given:
+        # servers.yaml arc.commands: write ARC's dicts (a top-level name replaces ARC's whole dict)
+        out = ["", "# Scheduler commands on this cluster (servers.yaml arc.commands)."]
+        for key, name in (("submit", "submit_command"), ("status", "check_status_command"),
+                          ("delete", "delete_command")):
+            if key in given:
+                out.append(f"{name} = {{{soft!r}: {given[key]!r}}}")
+        return out
     cmds = _ARC_LOCAL_COMMANDS.get(soft)
     if not cmds:
         return []
@@ -294,7 +313,11 @@ def _version_key(sw) -> tuple:
 
 
 def arc_ess_install(server: Server, ess: str):
-    """The install ARC should use for `ess` on `server`: a non-GPU build, newest version first."""
+    """The install ARC should use for `ess` on `server`: servers.yaml `arc.ess_installs[ess]` if set,
+    else a non-GPU build, newest version first."""
+    chosen = (server.arc.get("ess_installs") or {}).get(ess)
+    if chosen and chosen in server.software:
+        return server.software[chosen]
     cands = [sw for sw in server.software.values() if sw.ess == ess and not _is_gpu_build(sw)]
     return max(cands, key=_version_key) if cands else None
 
@@ -354,7 +377,7 @@ def render_card(server: Server) -> str:
         "title": f"{s.name} cluster card (generated from servers.yaml)",
         "domain": "hpc",
         "software": s.scheduler,
-        "doc_type": "card",
+        "doc_type": "reference",  # a rendering of servers.yaml: rank below hand-written cards
         "status": "draft",
         "generated": True,
         "tags": list(dict.fromkeys(tags)),

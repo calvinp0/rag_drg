@@ -167,13 +167,19 @@ MCP: `compose_arc_run(input_content, server, input_file="input.yml", arc_path=No
 conda_sh=None, user=None, groups=None)` returns the same dict as JSON. Pass the user's paths; the
 shared server never uses its own.
 
-## For zeus (to fill in)
+## zeus
 
-Confirmed: `qsub` works from n170 (so ARC can submit its ESS jobs from the runner node). The
-group's facts are in `knowledge/hpc/servers/zeus.md`. Still open: the path of `qsub` on n170
-(`command -v qsub`; ARC assumes `/usr/local/bin/qsub`).
+The `zeus` entry in `servers.yaml` holds the queues ARC uses, from `qstat -Qf` and `pbsnodes -a`
+(2026-09-28):
+* the runner is `alon_q` pinned to n170 (vnode gd004), with 384 cores and about 1511 GiB;
+* `qsub` works from n170 and is at `/usr/local/bin/qsub` (ARC's default);
+* `arc.ess_queues` is `[alon_q]`: ARC sends every ESS job to `alon_q` (group rule), and the
+  generated `servers['local']` excludes every other queue.
 
-`servers.yaml` needs, from `rag-drg servers discover-pbs` and the group: the partitions `alon_q`
-(max walltime 3600 h, multi-node), `mafat_new_q`, `zeus_long_q`, `zeus_short_q`, `zeus_comb_q`,
-`alon_comb_q` with their per-node cores/memory and `access:`; `arc.ess_queues` in the order ARC
-should prefer; `arc.runner` with `queue: alon_q`, `host: n170` and n170's `host_cores`/`host_mem_gb`.
+The group's notes and gotchas are in `knowledge/hpc/servers/zeus.md`. The installs (ORCA 5/6,
+Gaussian 09/16 and the 16 GPU build, Q-Chem 6.1, Molpro 2024/2026) are in `software:`.
+
+To refresh the entry after the cluster changes, save `qstat -Qf` and
+`pbsnodes -a | grep -E '^[a-z]|resources_available\.(host|ncpus|mem|ngpus|qlist) '`, then run
+`rag-drg servers discover-pbs --from-file qstat.txt --pbsnodes nodes.txt`, review the draft,
+update `servers.yaml` and run `rag-drg servers render-cards`.

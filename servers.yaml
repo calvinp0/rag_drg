@@ -1,0 +1,218 @@
+# The group's clusters (spec: docs/servers-spec.md; field reference: servers.example.yaml).
+# Group-level facts only. Per-user values (ARC clone, conda install) go in each person's
+# ~/.config/rag-drg/user.yaml, never here.
+#
+# zeus: queue limits and access groups come from `qstat -Qf`, node sizes from `pbsnodes -a`
+# (2026-09-28). Per-node values are the SMALLEST node serving the queue; a job sized to them
+# fits on any of the queue's nodes. Re-run both commands when the cluster changes, and redraft
+# with `rag-drg servers discover-pbs`.
+
+servers:
+  zeus:
+    description: "Technion zeus cluster (PBS). ARC runs as a batch job on n170 in alon_q."
+    scheduler: pbspro
+    host: zeus.technion.ac.il
+    user: null                        # your own $USER
+    modules_available: true           # Lmod (/usr/local/modules); we still call programs by absolute path
+    arc:
+      # ARC sends its ESS jobs to alon_q only (group decision, 2026-09-28). The other CPU queues
+      # below are for jobs submitted by hand.
+      ess_queues: [alon_q]
+      # The group's working ~/.arc/settings.py and submit.py (DanaResearchGroup/DRGScripts,
+      # Servers/Zeus/ARC/.arc/) cap ARC's jobs below the node size and call PBS from /opt/pbs/bin.
+      cpus: 16                        # servers['local']['cpus']
+      memory_gb: 160                  # servers['local']['memory']
+      default_job_settings:
+        job_total_memory_gb: 32
+        job_cpu_cores: 16
+      commands:
+        submit: /opt/pbs/bin/qsub
+        status: /opt/pbs/bin/qstat
+        delete: /opt/pbs/bin/qdel
+      ess_installs:                   # which install ARC uses per ESS (DRGScripts submit.py)
+        gaussian: gaussian-16-gpu     # the group's faster G16 C.02 build, run on CPU queues too
+        orca: orca-6
+        molpro: molpro-2026
+        qchem: qchem-6.1
+      runner:
+        queue: alon_q
+        host: n170                    # PBS vnode gd004; ARC runs and submits (qsub) from here
+        host_cores: 384
+        host_mem_gb: 1511
+        cores: 1
+        walltime: "72:00:00"          # DRGScripts Servers/Zeus/ARC/submit.sh
+        notes: "qsub from n170 works (confirmed 2026-09-28); the group's runner script is DRGScripts Servers/Zeus/ARC/submit.sh"
+    partitions:
+      alon_q:
+        max_walltime: "3600:00:00"    # no resources_max.walltime set; 3600 h is the queue default
+        cores_per_node: 384           # 4 nodes: n170-n173 (vnodes gd001-gd004)
+        mem_per_node_gb: 1511
+        gpus_per_node: 0
+        max_nodes: 4
+        default: true
+        access:
+          groups: [grinberg-dana_prj, halupovich_prj]
+          notes: "the group's own queue (acl_groups)"
+        notes: "priority 148; max 1536 cores in total (resources_max.ncpus); no maximum walltime is set, 3600 h is the default"
+      mafat_new_q:
+        max_walltime: "3600:00:00"    # no resources_max.walltime set; 3600 h is the queue default
+        cores_per_node: 256           # 15 nodes listed (n131, n134, n137-n149)
+        mem_per_node_gb: 1007
+        gpus_per_node: 0
+        access:
+          groups: [amouyal_prj, arad_prj, ben-gida_prj, bitton_prj, cukurel_prj, eichen_prj, frankel_prj,
+                   freydin_prj, grinberg-dana_prj, grisaro_prj, halupovich_prj, jacobi_prj, karpas_prj,
+                   lahav_prj, manor_prj, michaels_prj, pollini_prj, shmulevich_prj, tartakovsky_prj,
+                   yuvallevy_prj]
+          notes: "acl_groups from qstat -Qf"
+        notes: "shared with ~20 groups; max 40 queued jobs per user; max 4352 cores in total; no maximum walltime is set"
+      alon_comb_q:
+        max_walltime: "24:00:00"      # no resources_max.walltime set; 24 h is the queue default
+        cores_per_node: 80            # 28 nodes list it: n017-n033 (80 cores, 377 GiB), n088-n099 without n091 (128 cores, ~1 TB)
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        access:
+          groups: [grinberg-dana_prj, halupovich_prj]
+          notes: "acl_groups from qstat -Qf"
+        notes: >-
+          600 cores running per user; max 3072 cores per job. Unlike the other queues it sets no
+          default_chunk.qlist, so the 28 nodes listing it in their qlist are an assumption.
+      zeus_combined_q:
+        max_walltime: "24:00:00"
+        cores_per_node: 80            # 100 nodes, 80-384 cores and 377-1512 GiB; 80 / 377 fits all of them
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        notes: "open to all zeus users; priority 80; 400 queued jobs and 600 cores running per user"
+      zeus_long_q:
+        max_walltime: "336:00:00"
+        cores_per_node: 80            # 15 nodes: n034-n040, n057-n064
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        notes: >-
+          open to all zeus users; only 10 queued and 20 running jobs per user (ARC can exceed
+          this quickly); 1120 cores running in total
+      zeus_short_q:
+        max_walltime: "03:00:00"
+        cores_per_node: 80            # 17 nodes: n017-n033
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        notes: "open to all zeus users; 600 jobs and 600 cores running per user"
+      # GPU queues: the group runs GPU jobs only here. Not in arc.ess_queues (ARC's ESS jobs are CPU jobs).
+      gpu_v100_q:
+        max_walltime: "480:00:00"
+        cores_per_node: 40            # 2 nodes: n301, n302 (vnodes zg001, zg002)
+        mem_per_node_gb: 376
+        gpus_per_node: 4
+        gpu_type: "V100-SXM2-32GB"    # nvidia-smi on n302: 4x Tesla V100-SXM2-32GB, driver 580.159.03, CUDA 13.0
+        max_nodes: 2
+        notes: >-
+          GPU jobs only; open to all zeus users (acl_group_enable = False); 8 GPUs and 80 cores in the
+          whole queue; request GPUs with select=...:ngpus=N; default_chunk.ncpus = 1
+      mafat_gm_q:
+        max_walltime: "3600:00:00"    # no resources_max.walltime set; 3600 h is the queue default
+        cores_per_node: 40            # 1 node: n304 (vnode gm002)
+        mem_per_node_gb: 754
+        gpus_per_node: 4
+        gpu_type: "V100-SXM2-32GB"    # nvidia-smi on n304: 4x Tesla V100-SXM2-32GB, driver 580.159.03, CUDA 13.0
+        max_nodes: 1
+        notes: >-
+          GPU jobs only; a single node (4 GPUs). qstat lists acl_groups arad_prj, dagan_prj, frankel_prj
+          but acl_group_enable is not set, so the list is not enforced: anyone in the group can use it (confirmed by the group, 2026-09-28)
+    scratch:
+      path: "/gtmp/$USER"             # ESS scratch goes under /gtmp (group rule); a per-job directory is made below it
+      node_local: false
+      notes: "whether /gtmp is shared or node-local is not recorded yet"
+    storage:
+      - name: home
+        path: "$HOME"
+        quota_command: "quota -vs"
+    # Installs from `ls -l /usr/local` on zeus (2026-09-28). Psi4 and PySCF are not installed
+    # system-wide: they live in each user's own conda envs.
+    software:
+      orca-5:
+        ess: orca
+        version: "5.0.4"
+        executable: /usr/local/orca-5.0.4/orca   # also /usr/local/orca5
+        env:
+          PATH: "/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/bin:$PATH"
+          LD_LIBRARY_PATH: "/usr/local/orca-5.0.4:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        setup:
+          - "source /usr/local/orca-5.0.4/setup.sh"
+          - "source /usr/local/openmpi-4.1.1/setup.sh"
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "OpenMPI 4.1.1, as in the group's ARC submit.py (DRGScripts)"
+      orca-6:
+        ess: orca
+        version: "6.0.0"
+        executable: /usr/local/orca-6.0.0/orca   # also /usr/local/orca6 and /usr/local/orca
+        env:
+          PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/bin:$PATH"
+          LD_LIBRARY_PATH: "/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        setup:
+          - "source /usr/local/orca6/setup.sh"
+          - "source /usr/local/openmpi-4.1.1/setup.sh"
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "OpenMPI 4.1.1, as in the group's ARC submit.py (DRGScripts); the group's default ORCA"
+      gaussian-09:
+        ess: gaussian
+        version: "09"
+        executable: /usr/local/g09/g09
+        env:
+          g09root: /usr/local
+        setup:
+          - "source /usr/local/g09/setup.sh"
+        parallel: threads
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group gaussian"
+      gaussian-16:
+        ess: gaussian
+        version: "16"
+        executable: /usr/local/g16/g16
+        env:
+          g16root: /usr/local
+        setup:
+          - "source /usr/local/g16/setup.sh"
+        parallel: threads
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group gaussian"
+      gaussian-16-gpu:
+        ess: gaussian
+        version: "C.02"
+        executable: /usr/local/g16-gpu/g16/g16
+        env:
+          g16root: /usr/local/g16-gpu
+        setup:
+          - "source /usr/local/g16-gpu/g16/setup.sh"
+        parallel: threads
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q, gpu_v100_q, mafat_gm_q]
+        notes: >-
+          G16 rev C.02 built with GPU support; the group's preferred (faster) G16, run on CPU queues
+          (DRGScripts ARC submit.py). Running it on the GPU queues (gpu_v100_q, mafat_gm_q) is NOT set
+          up or tested by the group yet. Readable only by Unix group gaussian
+      qchem-6.1:
+        ess: qchem
+        version: "6.1"
+        executable: /usr/local/qchem6.1/bin/qchem   # also /usr/local/qchem
+        env:
+          QC: /usr/local/qchem6.1
+        setup:
+          - "source /usr/local/qchem/qcenv.sh"
+        parallel: threads
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "the group's own licence: readable only by Unix group grinberg-dana_prj"
+      molpro-2024:
+        ess: molpro
+        version: "2024"
+        executable: /usr/local/molpro-2024/bin/molpro   # /usr/local/bin/molpro points here
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group molpro"
+      molpro-2026:
+        ess: molpro
+        version: "2026"
+        executable: /usr/local/molpro-2026/bin/molpro
+        parallel: mpi
+        partitions: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q]
+        notes: "readable only by Unix group molpro"

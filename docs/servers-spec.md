@@ -19,6 +19,17 @@ servers:
       max_simultaneous_jobs: 20
       ess_queues: [<partition>, ...]   # optional: queues ARC may send ESS jobs to, first = ARC's default
                                        #   (default: the partitions without `access:` or GPUs)
+      cpus: 16                         # optional: ARC servers['local']['cpus'] (default: the first ESS queue's node)
+      memory_gb: 160                   # optional: ARC servers['local']['memory'] (same default)
+      default_job_settings:            # optional: written as ARC's default_job_settings
+        job_total_memory_gb: 32
+        job_cpu_cores: 16
+      commands:                        # optional: ARC's scheduler commands (default: ARC's /usr/local/bin/...)
+        submit: /opt/pbs/bin/qsub      #   -> submit_command, check_status_command, delete_command
+        status: /opt/pbs/bin/qstat
+        delete: /opt/pbs/bin/qdel
+      ess_installs:                    # optional: which `software` key ARC uses per ESS
+        gaussian: gaussian-16-gpu      #   (default: the newest non-GPU build)
       runner:                          # optional: ARC itself runs on this cluster as a batch job
         queue: <partition>             #   queue of the runner job (e.g. alon_q)
         host: n170                     #   optional: pin to a node (PBS Pro host=, Torque nodes=, Slurm --nodelist)
