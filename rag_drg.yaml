@@ -159,6 +159,7 @@ sources:
       - https://gaussian.com/pop/
       - https://gaussian.com/oniom/
       - https://gaussian.com/relnotes/
+      - https://gaussian.com/relnotes/?tabid=1      # G16 vs G09 differences (user-provided link)
     domain: ess
     software: gaussian
     version: "16"
