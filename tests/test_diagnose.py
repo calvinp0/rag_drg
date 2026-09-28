@@ -89,7 +89,7 @@ def test_repo_errors_yaml_lints_clean_and_has_every_program():
     data = yaml.safe_load(ERRORS_YAML.read_text())
     assert lint_errors_data(data, "errors.yaml") == []
     meta = data["meta"]
-    assert meta["status"] == "draft" and meta["domain"] == "ess" and meta["doc_type"] == "gotcha"
+    assert meta["status"] == "draft" and meta["domain"] == "ess" and meta["doc_type"] == "error"
     softwares = {e["software"] for e in data["errors"]}
     assert {"gaussian", "orca", "qchem", "molpro", "psi4", "scheduler"} <= softwares
     fallbacks = [e["id"] for e in data["errors"] if e.get("priority", 50) <= 0]

@@ -76,7 +76,7 @@ programs), so search them **without** `software=`.
 ## The errors database (`knowledge/ess/errors.yaml`)
 
 ```yaml
-meta: {title: ..., domain: ess, doc_type: gotcha, status: draft, tags: [...]}
+meta: {title: ..., domain: ess, doc_type: error, status: draft, tags: [...]}
 errors:
   - software: gaussian          # gaussian | orca | qchem | molpro | psi4 | pyscf | scheduler
     id: g-l9999-max-opt-steps   # unique, lower-case, stable (used in results and search)

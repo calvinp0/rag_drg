@@ -30,7 +30,7 @@
 meta:
   title: ESS error messages and fixes
   domain: ess
-  doc_type: gotcha
+  doc_type: error
   status: draft
   tags:
   - error
