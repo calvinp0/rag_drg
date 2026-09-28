@@ -14,6 +14,13 @@ T = REF["templates"]
 EXE_PROGRAM = {"g16": "gaussian", "g09": "gaussian", "g03": "gaussian", "orca": "orca", "qchem": "qchem",
                "molpro": "molpro", "psi4": "psi4", "python": "python", "python3": "python"}
 LAUNCHERS = {"mpirun", "mpiexec", "srun", "orterun", "mpiexec.hydra"}
+CMD_WRAPPERS = {"time", "nohup", "exec", "env", "stdbuf", "nice", "numactl", "taskset"}
+# Command words whose arguments name a program without running it.
+NOT_RUNNING = {"echo", "printf", "which", "type", "command", "ldd", "test", "[", "[[", "file", "ls", "cat", "cp",
+               "mv", "rm", "mkdir", "cd", "source", ".", "export", "module", "ml", "if", "fi", "then", "else",
+               "elif", "for", "while", "done", "do", "set", "unset", "trap", "tar", "gzip", "sed", "grep", "ulimit",
+               "readlink", "realpath", "dirname", "basename", "stat", "chmod", "ln", "head", "tail", "local",
+               "declare", "readonly", "alias", "hash"}
 ESS_INPUT_EXTS = (".gjf", ".com", ".gau", ".inp", ".in", ".dat", ".py", ".qcin")
 PROGRAM_EXES = {"gaussian": {"gaussian"}, "orca": {"orca"}, "qchem": {"qchem"}, "molpro": {"molpro"},
                 "psi4": {"psi4", "python"}, "pyscf": {"python"}}
@@ -36,7 +43,8 @@ def _pbs_mem(v: str) -> float | None:
     return mem_to_mb(float(m.group(1)), unit)
 
 
-def _walltime(v: str) -> int | None:
+def _walltime(v: str, scheduler: str = "slurm") -> int | None:
+    """Seconds. A bare number is minutes in Slurm (--time=90) but seconds in PBS (walltime=36000)."""
     v = v.strip()
     try:
         days = 0
@@ -49,7 +57,7 @@ def _walltime(v: str) -> int | None:
             return days * 86400 + h * 3600 + m * 60 + s
         parts = [int(float(x)) for x in v.split(":")]
         if len(parts) == 1:
-            return parts[0] * 60  # Slurm: minutes
+            return parts[0] if scheduler == "pbs" else parts[0] * 60
         if len(parts) == 2:
             return parts[0] * 60 + parts[1]
         return parts[0] * 3600 + parts[1] * 60 + parts[2]
@@ -115,6 +123,7 @@ def parse_submit(content: str, filename: str | None = None, path: Path | None = 
         _fill_slurm(sub, slurm)
     elif sub.scheduler == "pbs":
         _fill_pbs(sub, pbs_l)
+    _per_node(sub)
     _variables_and_commands(sub)
     return sub
 
@@ -150,13 +159,34 @@ def _fill_slurm(sub: ParsedSubmit, o: dict[str, str]) -> None:
             for part in o[key].split(","):
                 m = re.match(r"^gpu(?::([A-Za-z][\w-]*))?(?::(\d+))?$", part.strip())
                 if m:
-                    g = (g or 0) + int(m.group(2) or 1)
-    for key in ("gpus", "gpus-per-node"):
+                    g = (g or 0) + int(m.group(2) or 1) * (sub.nodes or 1)  # --gres is per node
+    for key in ("gpus", "gpus-per-node", "gpus-per-task"):
         if key in o:
             m = re.search(r"(\d+)$", o[key])
             if m:
-                g = int(m.group(1)) * ((sub.nodes or 1) if key == "gpus-per-node" else 1)
+                mult = {"gpus-per-node": sub.nodes or 1, "gpus-per-task": tasks}.get(key, 1)
+                g = int(m.group(1)) * mult
     sub.gpus = g
+
+
+def _per_node(sub: ParsedSubmit) -> None:
+    """Per-node request (node limits apply to this, not to the job total). Values already set
+    (PBS select chunks) are kept."""
+    nodes = max(sub.nodes or 1, 1)
+    if sub.cores_per_node is None and sub.total_cores:
+        if sub.scheduler == "slurm" and sub.ntasks_per_node:
+            sub.cores_per_node = sub.ntasks_per_node * (sub.cpus_per_task or 1)
+        else:
+            sub.cores_per_node = -(-sub.total_cores // nodes)
+    if sub.mem_per_node_mb is None:
+        if sub.scheduler == "slurm" and sub.mem_mb is not None:
+            sub.mem_per_node_mb = sub.mem_mb  # Slurm --mem is per node
+        elif sub.scheduler == "slurm" and sub.mem_per_cpu_mb is not None and sub.cores_per_node:
+            sub.mem_per_node_mb = sub.mem_per_cpu_mb * sub.cores_per_node
+        elif sub.mem_total_mb is not None:
+            sub.mem_per_node_mb = sub.mem_total_mb / nodes
+    if sub.gpus_per_node is None and sub.gpus is not None:
+        sub.gpus_per_node = -(-sub.gpus // nodes)
 
 
 def _fill_pbs(sub: ParsedSubmit, specs: list[str]) -> None:
@@ -187,6 +217,12 @@ def _fill_pbs(sub: ParsedSubmit, specs: list[str]) -> None:
                 if "ngpus" in res:
                     gpus += n * (_int(res["ngpus"]) or 0)
                     gpu_seen = True
+                # a chunk must fit on one node: keep the largest chunk
+                sub.cores_per_node = max(sub.cores_per_node or 0, c)
+                if "mem" in res and _pbs_mem(res["mem"]) is not None:
+                    sub.mem_per_node_mb = max(sub.mem_per_node_mb or 0, _pbs_mem(res["mem"]))
+                if "ngpus" in res:
+                    sub.gpus_per_node = max(sub.gpus_per_node or 0, _int(res["ngpus"]) or 0)
             mpi = mpi if mpi_seen else None
             mem = mem if mem_seen else None
             gpus = gpus if gpu_seen else None
@@ -205,7 +241,7 @@ def _fill_pbs(sub: ParsedSubmit, specs: list[str]) -> None:
             mem = _pbs_mem(val)
         elif key == "walltime":
             sub.walltime = val
-            sub.walltime_s = _walltime(val)
+            sub.walltime_s = _walltime(val, "pbs")
         elif key == "ngpus":
             gpus = _int(val)
         elif key == "mpiprocs":
@@ -239,10 +275,14 @@ def _variables_and_commands(sub: ParsedSubmit) -> None:
         if not s or s.startswith("#"):
             continue
         m = re.match(r"^(?:export\s+)?([A-Za-z_]\w*)=(.*)$", s)
-        if m:
+        # `VAR=val cmd args` sets VAR for cmd only: that line is a command, parsed below.
+        if m and (s.startswith("export") or len(_split(re.split(r"\s+#", s, maxsplit=1)[0])) <= 1
+                  or re.match(r"^[A-Za-z_]\w*=\$\(", s)):
             val = re.split(r"\s+#", m.group(2), maxsplit=1)[0].strip()
             if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
                 val = val[1:-1]
+            val = re.sub(r"^\$\(\s*which\s+([\w.-]+)\s*\)$|^`which\s+([\w.-]+)`$",
+                         lambda mm: "/WHICH/" + (mm.group(1) or mm.group(2)), val)
             env[m.group(1)] = _expand(val, env)
             sub.variables[m.group(1)] = env[m.group(1)]
             continue
@@ -250,18 +290,38 @@ def _variables_and_commands(sub: ParsedSubmit) -> None:
         line = re.sub(r"\$\(\s*which\s+([\w.-]+)\s*\)|`which\s+([\w.-]+)`", lambda mm: "/WHICH/" + (mm.group(1) or mm.group(2)), s)
         line = _expand(line, env)
         toks = _split(line.split(" #")[0])
-        if not toks or toks[0] in ("echo", "cp", "mv", "rm", "mkdir", "cd", "source", ".", "export", "module", "ls",
-                                    "cat", "if", "fi", "then", "else", "for", "done", "do", "set", "unset", "trap",
-                                    "printf", "tar", "gzip", "sed", "grep", "ulimit"):
-            continue
         launcher = None
-        for idx, t in enumerate(toks):
+        # Only the command word runs a program: token 0 after VAR=val assignments, or the first
+        # non-option word after a wrapper (time/nohup/exec/env) or an MPI launcher. `which orca`,
+        # `ldd /opt/orca/orca`, `echo "running orca"`, `test -x .../orca` do not run it.
+        idx, after_wrapper = 0, False
+        while idx < len(toks):
+            t = toks[idx]
+            if t in ("<", "<<", "|", "||", "&&", ";", "&") or t.startswith((">", "2>", "&>", "1>")):
+                idx = len(toks)
+                break
+            if re.match(r"^[A-Za-z_]\w*=", t) or (after_wrapper and (t.startswith("-") or t.isdigit())):
+                idx += 1
+                continue
+            base = Path(t).name
+            if base in LAUNCHERS:
+                launcher, after_wrapper = base, True
+                idx += 1
+                continue
+            if base in CMD_WRAPPERS:
+                after_wrapper = True
+                idx += 1
+                continue
+            break
+        if idx >= len(toks) or Path(toks[idx]).name in NOT_RUNNING:
+            continue
+        # After an MPI launcher the program may follow options with values (-machinefile FILE),
+        # so look further; otherwise only the command word itself counts.
+        end = len(toks) if launcher else idx + 1
+        for idx, t in list(enumerate(toks))[idx:end]:
             if t in ("<", "<<", "|", "||", "&&", ";", "&") or t.startswith((">", "2>", "&>", "1>")):
                 break
             base = Path(t).name
-            if base in LAUNCHERS:
-                launcher = base
-                continue
             prog = EXE_PROGRAM.get(base)
             if prog is None and re.fullmatch(r"python3?(\.\d+)?", base):
                 prog = "python"
@@ -391,7 +451,9 @@ def cross_check(inp: ParsedInput, sub: ParsedSubmit) -> list[Finding]:
                 f.append(Finding("info", "gaussian-nproc-alloc", f"The input uses {inp.nprocs} of the {cores} cores "
                                  "requested.", lp, ref=REF["gaussian"] + "#Memory and cores (gotcha)"))
         if inp.gpus and (sub.gpus or 0) < inp.gpus:
-            f.append(Finding("error", "gaussian-gpu-alloc", f"%gpucpu uses {inp.gpus} GPU(s) but the job requests "
+            # An unparsed GPU request (unusual syntax) must not become a blocking error.
+            unparsed = sub.gpus is None and any(re.search(r"gpu", d, re.I) for _, d in sub.directives)
+            f.append(Finding("info" if unparsed else "error", "gaussian-gpu-alloc", f"%gpucpu uses {inp.gpus} GPU(s) but the job requests "
                              f"{sub.gpus or 0}.", inp.line_of(r"^\s*%gpucpu", re.I), fix=f"#SBATCH --gres=gpu:{inp.gpus}",
                              ref=REF["gaussian"] + "#GPUs (G16 GPU build only; G09 has no GPU support)"))
         elif sub.gpus and not inp.gpus:

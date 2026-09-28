@@ -11,7 +11,7 @@ import ast
 import re
 from pathlib import Path
 
-from .common import fmt_mb, is_float, is_int, mem_to_mb, parse_atom_line, parse_label, split_tokens
+from .common import check_parity, fmt_mb, is_float, is_int, mem_to_mb, parse_atom_line, parse_label, split_tokens
 from .model import REF, Atom, Finding, ParsedInput
 
 G, O, QC, MP, P4, PY = (REF[k] for k in ("gaussian", "orca", "qchem", "molpro", "psi4", "pyscf"))
@@ -60,16 +60,48 @@ def detect_program(filename: str | None, content: str) -> str | None:
     first = next((ln for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("%")), "")
     if re.match(r"^\s*#[pntPNT]?(\s|$)", first):
         g += 2
-    if re.search(r"^\s*!\s*[A-Za-z]", text, re.M):
+    # GAMESS ($CONTRL/$DATA ... $END groups) and CP2K (&GLOBAL/&FORCE_EVAL sections) also use .inp
+    # and '!' comment lines; they are not checked, so never guess ORCA for them.
+    if (re.search(r"^\s*\$(contrl|data|basis|system|scf|guess|statpt)\b", text, re.M | re.I)
+            or re.search(r"^\s*&(global|force_eval|motion)\b", text, re.M | re.I)):
+        return None
+    if any(_orca_bang_line(ln) for ln in re.findall(r"^\s*!(.*)$", text, re.M)):
         o += 2
     if re.search(r"^\s*\*\s*(xyz|xyzfile|int|internal|gzmt|pdbfile|gzmtfile)\b", text, re.M | re.I):
         o += 3
-    if re.search(r"^\s*%(maxcore|pal|scf|geom|method|basis|cpcm|output|mdci|casscf|tddft|freq)\b(?!\s*=)", text,
-                 re.M | re.I):
+    if re.search(r"^\s*%(maxcore|pal|scf|geom|method|basis|cpcm|output|mdci|casscf|tddft|freq|compound)\b(?!\s*=)",
+                 text, re.M | re.I):
         o += 2
     if max(g, o) < 3:
         return None
     return "gaussian" if g > o else "orca"
+
+
+# Simple-input keywords that only ORCA puts on a '!' line (a '!' line alone is also a comment in
+# GAMESS, CP2K, Fortran namelists, ...). Methods/basis sets are matched by pattern below.
+_ORCA_BANG_WORDS = {
+    "sp", "opt", "optts", "freq", "numfreq", "anfreq", "tightscf", "verytightscf", "normalscf", "loosescf",
+    "tightopt", "verytightopt", "looseopt", "rijcosx", "rijk", "ri", "nori", "autoaux", "d3", "d3bj", "d3zero",
+    "d4", "cpcm", "smd", "uks", "rks", "uhf", "rhf", "rohf", "hf", "mp2", "ri-mp2", "ccsd", "ccsd(t)",
+    "dlpno-ccsd", "dlpno-ccsd(t)", "dlpno-ccsd(t1)", "moread", "noautostart", "largeprint", "miniprint",
+    "normalprint", "printbasis", "defgrid1", "defgrid2", "defgrid3", "grid4", "grid5", "finalgrid5",
+    "finalgrid6", "nofinalgrid", "slowconv", "veryslowconv", "kdiis", "soscf", "noiter", "engrad", "irc",
+    "neb", "neb-ts", "goat", "scan", "xtb", "gfn2-xtb", "gfn1-xtb", "casscf", "nevpt2", "tddft", "pal",
+    "b3lyp", "pbe", "pbe0", "tpss", "tpssh", "bp86", "blyp", "r2scan-3c", "b97-3c", "pbeh-3c", "hf-3c",
+    "wb97x", "wb97x-d3", "wb97x-v", "wb97m-v", "wb97x-d4", "m06", "m062x", "m06-2x", "b2plyp", "pwpb95",
+    "revdsd-pbep86-d4", "cam-b3lyp", "keepdens", "uco", "unatural", "allpop", "nbo", "chelpg", "hirshfeld",
+}
+
+
+def _orca_bang_line(rest: str) -> bool:
+    """Does the text after '!' look like ORCA simple-input keywords (not a prose comment)?"""
+    for tok in rest.split():
+        t = tok.lower()
+        if (t in _ORCA_BANG_WORDS or re.fullmatch(r"pal\d+", t) or re.match(r"(ma-)?def2-", t)
+                or re.fullmatch(r"(aug-|ma-)?cc-p[wc]?v[dtq5]z(-f12|-pp)?(/c|/jk?)?", t)
+                or re.fullmatch(r"def2/jk?", t) or re.fullmatch(r"\d-\d+\+*g\S*", t)):
+            return True
+    return False
 
 
 def detect_submit(filename: str | None, content: str) -> bool:
@@ -194,6 +226,8 @@ def _gaussian_job(inp: ParsedInput, lines: list[str], off: int, first: bool, lin
     allcheck = bool(geom & {"allcheck", "allchk"})
     geomcheck = bool(geom & {"check", "checkpoint"}) or allcheck
     uses_gen = bool(re.search(r"(^|[\s/])gen(ecp)?(\s|$|/)", rl)) or (inp.basis or "").lower() in ("gen", "genecp")
+    # ONIOM layers (oniom(b3lyp/gen:uff)): not certain enough for an error, so a warning below
+    oniom_gen = not uses_gen and bool(re.search(r"oniom\s*\(.*?/gen(ecp)?\b", rl))
     if first:
         inp.job_type = ("ts" if "ts" in opts.get("opt", set()) else "opt" if "opt" in opts else
                         "irc" if "irc" in opts else "freq" if "freq" in opts else "sp")
@@ -263,6 +297,12 @@ def _gaussian_job(inp: ParsedInput, lines: list[str], off: int, first: bool, lin
         f.append(Finding("warning", "gaussian-double-dispersion", "wB97XD already contains its own empirical "
                          "dispersion; adding EmpiricalDispersion counts dispersion twice.", ln_no(route_start),
                          fix="remove EmpiricalDispersion=... (or use wB97X with a dispersion model deliberately)",
+                         ref=G + "#Solvation, dispersion, basis"))
+    pp = re.search(r"/((?:aug-|jun-|may-)?cc-p[wc]?v[dtq5]z-pp)\b", rl)
+    if pp and "read" not in opts.get("pseudo", set()):
+        f.append(Finding("warning", "gaussian-pp-basis", f"{pp.group(1)} is not a built-in Gaussian basis set: its "
+                         "ECP must be given as a GenECP basis+ECP block (or Pseudo=Read).", ln_no(route_start),
+                         fix="use GenECP and paste the basis and ECP (e.g. from the Basis Set Exchange)",
                          ref=G + "#Solvation, dispersion, basis"))
     optset = opts.get("opt", set()) | opts.get("optimization", set())
     if "ts" in optset and not optset & {"calcfc", "readfc", "calcall", "rcfc", "calchffc", "readcartesianfc"}:
@@ -341,6 +381,9 @@ def _gaussian_job(inp: ParsedInput, lines: list[str], off: int, first: bool, lin
             if first:
                 ok = True
                 for k, ln in enumerate(atoms_lines):
+                    # Z-matrix variables may follow in the same block after 'Variables:'/'Constants:'
+                    if re.fullmatch(r"\s*(variables|constants)\s*:?\s*", ln, re.I):
+                        break
                     atom, rec = parse_atom_line(ln, ln_no(mol_idx + 1 + k), allow_flag=True)
                     if not rec:
                         tok = split_tokens(ln)
@@ -351,10 +394,12 @@ def _gaussian_job(inp: ParsedInput, lines: list[str], off: int, first: bool, lin
                     inp.atoms.append(atom)
                 inp.geometry_complete = ok and bool(inp.atoms)
             extra_sections = sections[2:]
-    if uses_gen:
-        has_basis = any(any(re.fullmatch(r"\s*\*{4}\s*", ln) for ln in blk) for _, blk in extra_sections)
+    if uses_gen or oniom_gen:
+        # a basis block ends with '****', or is read from a file with '@/path/basis.gbs[/N]'
+        has_basis = any(any(re.fullmatch(r"\s*\*{4}\s*", ln) or re.match(r"^\s*@\S+", ln) for ln in blk)
+                        for _, blk in extra_sections)
         if not has_basis:
-            f.append(Finding("error", "gaussian-gen-basis", "Gen/GenECP in the route but no basis-set block (atoms "
+            f.append(Finding("error" if uses_gen else "warning", "gaussian-gen-basis", "Gen/GenECP in the route but no basis-set block (atoms "
                              "line, basis, '****') after the geometry.", ln_no(route_start),
                              fix="add the basis block after the blank line that ends the geometry",
                              ref=G + "#Solvation, dispersion, basis"))
@@ -524,6 +569,10 @@ def analyze_orca(inp: ParsedInput) -> list[Finding]:
         mm = re.search(r"\bmult\s+(\d+)", txt, re.I)
         if mc and mm:
             inp.charge, inp.multiplicity = int(mc.group(1)), int(mm.group(1))
+    elif "compound" in blocks:
+        # %Compound scripts give the geometry inside New_Step ... Step_End (or in a .cmp file)
+        f.append(Finding("info", "orca-compound", "%Compound job: the geometry inside the compound steps is not "
+                         "checked.", blocks["compound"][1], ref=O + "#Input skeleton"))
     elif not re.search(r"\$new_job", inp.content):
         f.append(Finding("error", "orca-geometry", "No geometry: expected '* xyz charge mult' ... '*' or "
                          "'* xyzfile charge mult file.xyz'.", None, ref=O + "#Input skeleton"))
@@ -1018,13 +1067,13 @@ def analyze_psi4(inp: ParsedInput) -> list[Finding]:
     mm = re.search(r"^\s*memory\s+([\d.]+)\s*([a-z]*)", text, re.M | re.I) if not is_py else None
     mp = re.search(r"set_memory\(([^)]*\)?)\)", text, re.I)
     if mm:
-        inp.memory_total_mb = mem_to_mb(float(mm.group(1)), mm.group(2) or "b")
+        inp.memory_total_mb = _psi4_mem_mb(float(mm.group(1)), mm.group(2) or "b")
         mem_line = text[: mm.start()].count("\n") + 1
     elif mp:
         arg = mp.group(1).split(",")[0].strip()
         ms = re.fullmatch(r"[\"']\s*([\d.]+)\s*([a-zA-Z]*)\s*[\"']", arg)
         if ms:
-            inp.memory_total_mb = mem_to_mb(float(ms.group(1)), ms.group(2) or "b")
+            inp.memory_total_mb = _psi4_mem_mb(float(ms.group(1)), ms.group(2) or "b")
         else:
             nbytes = _arith(arg)
             inp.memory_total_mb = nbytes / 2**20 if nbytes is not None else None
@@ -1071,6 +1120,17 @@ def analyze_psi4(inp: ParsedInput) -> list[Finding]:
     return f
 
 
+def _psi4_mem_mb(value: float, unit: str) -> float | None:
+    """Psi4 memory -> MiB. Psi4 reads SI units as SI (1 kB = 1000 bytes, "memory 2 GB" = 2e9 bytes)
+    and IEC units as binary (1 KiB = 1024 bytes); units are case-insensitive (Psi4 manual,
+    psithoninput.rst "Memory Specification")."""
+    u = unit.lower()
+    si = {"b": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9, "tb": 1e12}
+    if u in si:
+        return value * si[u] / 2**20
+    return mem_to_mb(value, u)
+
+
 # ================================================================== PySCF
 
 
@@ -1091,8 +1151,6 @@ def analyze_pyscf(inp: ParsedInput) -> list[Finding]:
         tree = ast.parse(inp.content)
     except SyntaxError as e:
         return [Finding("error", "python-syntax", f"Python syntax error: {e.msg}.", e.lineno, ref=PY + "#Skeleton")]
-    mol_kw: dict[str, tuple[object, int]] = {}
-    attrs: dict[str, tuple[object, int]] = {}  # mol.spin = ... etc. (applied after the gto.M keywords)
     xc: list[tuple[str, int]] = []
     if re.search(r"\bpyscf\.pbc\b|\bfrom\s+pyscf\s+import\s+.*\bpbc\b|\bpbc\.gto\b", inp.content):
         inp.extra["pbc"] = True  # periodic cells: k-points/smearing, no molecular electron-count rules
@@ -1107,18 +1165,34 @@ def analyze_pyscf(inp: ParsedInput) -> list[Finding]:
                 if any(kw.arg == "a" for kw in node.value.keywords):
                     inp.extra["pbc"] = True
                     return f
+    # Molecule settings are keyed by (variable, attribute): a script with mol and mol2 must not mix
+    # mol2.atom with mol.spin. events[var] = [(line, attr, value)], applied in line order.
+    events: dict[str, list[tuple[int, str, object]]] = {}
+    mol_attrs = ("atom", "spin", "charge", "basis", "unit", "max_memory")
+    assigned_call: dict[int, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+            tgt = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            if tgt:
+                assigned_call[id(node.value)] = tgt[0]
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             fn = node.func
             name = fn.attr if isinstance(fn, ast.Attribute) else fn.id if isinstance(fn, ast.Name) else ""
             owner = fn.value.id if isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name) else ""
-            if (name in ("M", "Mole") and owner in ("gto", "pyscf", "")) and "_call" not in mol_kw:
+            if name in ("M", "Mole") and owner in ("gto", "pyscf", ""):
+                var = assigned_call.get(id(node), f"<call@{node.lineno}>")
+                ev = events.setdefault(var, [])
+                ev.append((node.lineno, "_call", None))
                 for kw in node.keywords:
                     if kw.arg:
-                        mol_kw[kw.arg] = (_literal(kw.value), node.lineno)
-                if node.args and name == "M" and "atom" not in mol_kw:
-                    mol_kw["atom"] = (_literal(node.args[0]), node.lineno)
-                mol_kw.setdefault("_call", (None, node.lineno))
+                        ev.append((node.lineno, kw.arg, _literal(kw.value)))
+                if node.args and name == "M" and not any(kw.arg == "atom" for kw in node.keywords):
+                    ev.append((node.lineno, "atom", _literal(node.args[0])))
+            elif name == "build" and owner and (owner in mol_names or not mol_names):
+                for kw in node.keywords:
+                    if kw.arg in mol_attrs:
+                        events.setdefault(owner, []).append((node.lineno, kw.arg, _literal(kw.value)))
             if name in ("RKS", "UKS", "ROKS", "KS", "GKS"):
                 for kw in node.keywords:
                     if kw.arg == "xc":
@@ -1135,13 +1209,40 @@ def analyze_pyscf(inp: ParsedInput) -> list[Finding]:
                     v = _literal(node.value)
                     if t.attr == "xc" and isinstance(v, str):
                         xc.append((v, node.lineno))
-                    elif t.attr in ("atom", "spin", "charge", "basis", "unit", "max_memory") and isinstance(
-                            t.value, ast.Name) and (t.value.id in mol_names or not mol_names or t.attr == "max_memory"):
-                        if t.attr not in attrs or node.lineno > attrs[t.attr][1]:
-                            attrs[t.attr] = (v, node.lineno)
-    mol_kw.update(attrs)
-    if "_call" not in mol_kw and "atom" not in mol_kw:
+                    elif t.attr in mol_attrs and isinstance(t.value, ast.Name) and (
+                            t.value.id in mol_names or not mol_names):
+                        events.setdefault(t.value.id, []).append((node.lineno, t.attr, v))
+    # `mol = gto.M(...)` again re-binds the name to a new molecule: split each variable's events there
+    segments: list[tuple[str, list]] = []
+    for var, ev in events.items():
+        cur: list = []
+        for e in sorted(ev, key=lambda e: e[0]):
+            if e[1] == "_call" and any(x[1] == "_call" for x in cur):
+                segments.append((var, cur))
+                cur = []
+            cur.append(e)
+        segments.append((var, cur))
+    # the molecules, in order of first appearance; only those that get atoms
+    mols = sorted(((min(e[0] for e in ev), var, ev) for var, ev in segments
+                   if any(a in ("atom", "_call") for _, a, _ in ev)), key=lambda x: x[0])
+    if not mols:
         return f
+    extra_mols = []
+    for idx, (_, var, ev) in enumerate(mols):
+        merged: dict[str, tuple[object, int]] = {}
+        seen: dict[str, set] = {}
+        for line, a, v in sorted(ev, key=lambda e: e[0]):
+            if a == "_call" and a in merged:
+                continue
+            merged[a] = (v, line)
+            if a in ("atom", "spin", "charge"):
+                seen.setdefault(a, set()).add(repr(v) if v is not _Unknown else "?")
+        # the same molecule re-assigned with different atom/spin/charge: which state is run is unclear
+        ambiguous = any(len(vals) > 1 for vals in seen.values())
+        if idx == 0:
+            mol_kw, first_ambiguous = merged, ambiguous
+        else:
+            extra_mols.append((var, merged, ambiguous))
     call_line = mol_kw.get("_call", (None, None))[1]
     charge = mol_kw.get("charge", (0, None))[0]
     spin = mol_kw.get("spin", (0, None))[0]
@@ -1169,7 +1270,31 @@ def analyze_pyscf(inp: ParsedInput) -> list[Finding]:
         inp.method = xc[0][0]
     if inp.spin_2s is None and "spin" not in mol_kw:
         inp.spin_2s = 0
+    if first_ambiguous:
+        f += _info_only(check_parity(inp))
+        inp.extra["parity_done"] = True
+    for var, merged, ambiguous in extra_mols:
+        other = ParsedInput(program="pyscf", filename=inp.filename, path=inp.path)
+        charge = merged.get("charge", (0, None))[0]
+        spin = merged.get("spin", (0, None))[0]
+        if not isinstance(charge, int) or not isinstance(spin, int):
+            continue
+        other.charge, other.spin_2s = charge, spin
+        other.extra["charge_line"] = merged.get("spin", merged.get("charge", merged.get("_call", (None, None))))[1]
+        atom = merged.get("atom", (None, None))
+        _pyscf_atoms(other, atom[0], atom[1])
+        found = check_parity(other)
+        for x in found:
+            x.message = f"[{var}] {x.message}"
+        f += _info_only(found) if ambiguous else found
     return f
+
+
+def _info_only(findings: list[Finding]) -> list[Finding]:
+    for x in findings:
+        x.severity = "info"
+        x.message += " (the script changes this molecule's atoms/spin/charge more than once; not sure which is run)"
+    return findings
 
 
 def _pyscf_atoms(inp: ParsedInput, atom, line: int | None) -> None:

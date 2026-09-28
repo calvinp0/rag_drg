@@ -152,7 +152,9 @@ class ParsedSubmit:
     mem_total_mb:    total memory of the allocation (what inputs are compared with)
     walltime:        as written; walltime_s: seconds
     partition:       Slurm partition / PBS queue
-    gpus:            GPUs requested (--gres=gpu:N, --gpus, ngpus=)
+    gpus:            GPUs requested in total (--gres=gpu:N per node, --gpus, --gpus-per-task, ngpus=)
+    cores_per_node, mem_per_node_mb, gpus_per_node: the largest per-node (Slurm) / per-chunk (PBS
+                     select) request, which is what node limits apply to
     executables:     program invocations found (see Executable)
     variables:       simple VAR=value assignments in the script
     directives:      raw scheduler directives [(line, text)]
@@ -176,6 +178,9 @@ class ParsedSubmit:
     walltime_s: int | None = None
     partition: str | None = None
     gpus: int | None = None
+    cores_per_node: int | None = None
+    mem_per_node_mb: float | None = None
+    gpus_per_node: int | None = None
     executables: list[Executable] = field(default_factory=list)
     variables: dict = field(default_factory=dict)
     directives: list[tuple[int, str]] = field(default_factory=list)

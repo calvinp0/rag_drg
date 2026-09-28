@@ -79,12 +79,25 @@ def cluster_limits_check(inp, sub, cfg) -> list[Finding]:
                                     file=sub.filename, ref=_REF,
                                     fix=(f"use a queue you may use (`rag-drg servers access {server.name}`)"
                                          if ap["severity"] != "info" else None)))
-    cores = sub.total_cores
-    mem_gb = (sub.mem_total_mb / 1024) if sub.mem_total_mb else None
+    # Node limits (cores/memory/GPUs per node) apply to the per-node request, not the job total:
+    # Slurm --mem is per node, --mem-per-cpu x cpus on a node; PBS select= chunks are per chunk.
+    cores = sub.cores_per_node or sub.total_cores
+    mem_mb = sub.mem_per_node_mb if sub.mem_per_node_mb is not None else sub.mem_total_mb
+    mem_gb = (mem_mb / 1024) if mem_mb else None
     # check_resources reads bare numbers as hours
     walltime = sub.walltime_s / 3600 if sub.walltime_s is not None else sub.walltime
+    part = server.partitions.get(sub.partition) if sub.partition else server.default_partition
+    nodes = sub.nodes or 1
+    if part is not None and nodes > 1 and nodes > part.max_nodes:
+        # max_nodes defaults to 1 when servers.yaml leaves it out, so only a larger value is a real limit
+        sev = "error" if part.max_nodes > 1 else "warning"
+        findings.append(Finding(sev, "cluster-limits",
+                                f"{server.name}: {nodes} nodes > max {part.max_nodes} node(s) on {part.name}"
+                                + ("" if sev == "error" else " (max_nodes not set in servers.yaml; most ESS jobs "
+                                   "run on one node)"), file=sub.filename, ref=_REF))
     if cores and mem_gb and walltime is not None:
-        for p in check_resources(server, sub.partition, int(cores), float(mem_gb), walltime, int(sub.gpus or 0),
+        for p in check_resources(server, sub.partition, int(cores), float(mem_gb), walltime,
+                                 int(sub.gpus_per_node if sub.gpus_per_node is not None else (sub.gpus or 0)),
                                  check_access=False):
             findings.append(Finding(p["severity"], "cluster-limits", f"{server.name}: {p['message']}",
                                     file=sub.filename, ref=_REF))

@@ -90,6 +90,8 @@ def parse_atom_line(line: str, lineno: int, allow_flag: bool = False) -> tuple[A
         return None, False
     xyz = None
     nums = tok[1:]
+    if nums and nums[0] == ":":  # ORCA ghost atom written "H : x y z" (also "H: x y z", see parse_label)
+        ghost, nums = True, nums[1:]
     zmat = len(nums) in (2, 4, 6, 7) and is_int(nums[0]) and (len(nums) == 2 or is_int(nums[2]))
     if allow_flag and len(nums) >= 4 and nums[0] in ("0", "-1") and all(is_float(t) for t in nums[1:4]):
         xyz = tuple(to_float(t) for t in nums[1:4])  # Gaussian freeze flag: "C 0 x y z" / "C -1 x y z"
