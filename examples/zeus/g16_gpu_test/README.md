@@ -10,6 +10,11 @@ Nothing here has been run yet. The job is a B3LYP/6-311+G(d,p) frequency calcula
 | `caffeine_freq_gpu.gjf` + `submit_gpu.sh` | `gpu_v100_q`, 4 cores + 1 GPU |
 | `caffeine_freq_cpu.gjf` + `submit_cpu.sh` | the same job on `alon_q`, 4 cores, no GPU |
 
+The GPU script uses `caffeine_freq_gpu.gjf`. If that file is missing but the folder holds
+exactly one other `.gjf` (for example `input.gjf`), it uses that one; otherwise set the input
+name with `qsub -v INPUT=name submit_gpu.sh`. If the input can't be found, the job stops before
+starting Gaussian.
+
 Run both from one directory on zeus:
 
 ```bash
@@ -48,13 +53,19 @@ qsub submit_cpu.sh
      only through its memory use.
   5. If no GPU qualifies, the job stops with exit code 2 before running `g16`, and prints the
      GPU table.
+* **Cores.** zeus does not confine a job to its cores either: `allowed cores: 0-39` on n302.
+  With `%CPU=0-3`, every GPU job would pin itself to the same four cores. The script therefore
+  gives each GPU its own block of the node's cores (40 cores / 4 GPUs = 10: GPU 1 gets cores
+  10-19) and uses the first `NCPUS` cores of the chosen GPU's block. The block's first core
+  controls the GPU (`%CPU=10,11,12,13`, `%GPUCPU=0=10`). If PBS ever does confine the job, its
+  cores are used as they are.
 * `nvidia-smi` logs GPU utilization to `gpu_usage.csv` every 15 s, which shows whether the GPU
   was really used.
 
 ## What to send back
 
 From `gpu_out.txt` and `cpu_out.txt`:
-* the header lines: host, `CUDA_VISIBLE_DEVICES`, allowed cores, and the `%CPU` / `%GPUCPU` lines;
+* the header lines: host, `CUDA_VISIBLE_DEVICES`, allowed cores, the `cores:` line, and the `%CPU` / `%GPUCPU` lines;
 * the summary: termination line, `Elapsed time`, the picked GPU index and max utilization per GPU
   (the picked GPU should be the busy one).
 

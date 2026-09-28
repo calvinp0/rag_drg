@@ -12,11 +12,19 @@
 source /usr/local/g16-gpu/g16/setup.sh
 
 cd "$PBS_O_WORKDIR" || exit 1
-INPUT=caffeine_freq_gpu
+INPUT=${INPUT:-caffeine_freq_gpu}   # input name without .gjf (or: qsub -v INPUT=name submit_gpu.sh)
 NCPU=${NCPUS:-4}
 NGPU=${NGPU:-1}               # GPUs for this job (match ngpus= above)
 MIN_FREE_MIB=${MIN_FREE_MIB:-28000}   # a GPU needs at least this much free memory (V100: 32 GB)
 CLAIMS=${GPU_CLAIMS_DIR:-/tmp/g16_gpu_claims}   # node-local: which job took which GPU
+
+# the input must exist; if the default name is missing but there is exactly one other .gjf, use it
+if [ ! -f "$INPUT.gjf" ]; then
+    mapfile -t GJFS < <(ls *.gjf 2>/dev/null | grep -v '\.run\.gjf$')
+    if [ "${#GJFS[@]}" -eq 1 ]; then INPUT="${GJFS[0]%.gjf}"; echo "using input ${INPUT}.gjf"
+    else echo "ERROR: $INPUT.gjf not found (and not exactly one other .gjf here: ${GJFS[*]:-none}); set INPUT=name" >&2; exit 1
+    fi
+fi
 
 export GAUSS_SCRDIR="/gtmp/$USER/scratch/g16/$PBS_JOBID"
 mkdir -p "$GAUSS_SCRDIR"
@@ -39,9 +47,8 @@ expand() {  # "0-3,8,10-11" -> "0 1 2 3 8 10 11"
     done
     echo "${out[@]}"
 }
-read -ra ALLOWED <<< "$(expand "$(awk '/Cpus_allowed_list/{print $2}' /proc/self/status)")"
-CPUS=("${ALLOWED[@]:0:$NCPU}")
-CPU_LINE="%CPU=$(IFS=,; echo "${CPUS[*]}")"
+# ALLOWED_CORES overrides the list (testing only)
+read -ra ALLOWED <<< "$(expand "${ALLOWED_CORES:-$(awk '/Cpus_allowed_list/{print $2}' /proc/self/status)}")"
 
 # --- pick the GPU(s) -------------------------------------------------------------------
 # zeus does not give a job its own GPU: every job on the node sees all 4, and other users'
@@ -90,6 +97,34 @@ else
     PICKED_IDX=$(printf '%s\n' "${PICK[@]}" | cut -d, -f1 | paste -sd,)
     echo "picked GPU index(es) $PICKED_IDX -> CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 fi
+# --- pick the cores ----------------------------------------------------------------------
+# If PBS confined the job to its cores (a cpuset), use those. zeus does not: every job sees
+# all 40 cores, so jobs pinned to "0-3" would pile onto the same cores. Instead each GPU owns
+# an equal block of the node's cores (GPU k -> cores k*B .. k*B+B-1, B = cores / GPUs), and the
+# job uses the first NCPU cores of its GPU's block. Jobs on different GPUs never share cores.
+NGPU_NODE=$(wc -l < gpu_state_at_start.csv)
+if [ "${#ALLOWED[@]}" -le $((NCPU + 1)) ]; then
+    CPUS=("${ALLOWED[@]:0:$NCPU}")
+    echo "cores: PBS confined the job to ${ALLOWED[*]}"
+else
+    BLOCK=$(( ${#ALLOWED[@]} / NGPU_NODE ))
+    if [ "$NCPU" -gt $((BLOCK * NGPU)) ]; then
+        echo "ERROR: $NCPU cores > $BLOCK cores per GPU x $NGPU GPU(s) on this node" >&2; exit 2
+    fi
+    POOL=()
+    for k in ${PICKED_IDX//,/ }; do POOL+=("${ALLOWED[@]:$((k * BLOCK)):$BLOCK}"); done
+    # the first core of each GPU's block controls that GPU; fill the rest from the pool
+    CTRL=(); for k in ${PICKED_IDX//,/ }; do CTRL+=("${ALLOWED[$((k * BLOCK))]}"); done
+    CPUS=("${CTRL[@]}")
+    for c in "${POOL[@]}"; do
+        [ "${#CPUS[@]}" -ge "$NCPU" ] && break
+        [[ " ${CTRL[*]} " == *" $c "* ]] || CPUS+=("$c")
+    done
+    echo "cores: no cpuset (all ${#ALLOWED[@]} visible); using GPU block(s) of $BLOCK cores -> ${CPUS[*]}"
+fi
+CPU_LINE="%CPU=$(IFS=,; echo "${CPUS[*]}")"
+nvidia-smi topo -m 2>/dev/null | head -8
+
 # %GPUCPU=<GPUs as Gaussian sees them>=<one controlling core each, also in %CPU>
 GPU_LINE="%GPUCPU=0-$((NGPU - 1))=$(IFS=,; echo "${CPUS[*]:0:$NGPU}")"
 [ "$NGPU" -eq 1 ] && GPU_LINE="%GPUCPU=0=${CPUS[0]}"
