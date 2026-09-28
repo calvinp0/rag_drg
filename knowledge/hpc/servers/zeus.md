@@ -4,7 +4,7 @@ domain: hpc
 software: pbs
 doc_type: card
 status: draft
-tags: [cluster, server, zeus, drgscripts, setup.sh, opt/pbs, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
+tags: [cluster, server, zeus, gpu, gpucpu, cuda_visible_devices, drgscripts, setup.sh, opt/pbs, technion, pbs, qsub, queues, alon_q, alon_comb_q, mafat_new_q, zeus_long_q, zeus_short_q, zeus_combined_q, n170, gd004, grinberg-dana_prj, arc, arc_env, max_queued, walltime]
 ---
 # zeus cluster card
 
@@ -136,7 +136,28 @@ GPU jobs go to `gpu_v100_q` or `mafat_gm_q`. The CPU queues above have no GPUs.
 | `gpu_v100_q` | 2: n301, n302 (vnodes zg001, zg002) | 40 cores, ~376 GiB, 4x Tesla V100-SXM2-32GB | 480 h | everyone (`acl_group_enable = False`) |
 | `mafat_gm_q` | 1: n304 (vnode gm002) | 40 cores, ~754 GiB, 4x Tesla V100-SXM2-32GB | none set (3600 h default) | everyone (ACL not enabled; see below) |
 
-* Not yet used by the group for ESS jobs (see *Software installation paths*).
+* **Gaussian 16 on the GPUs works** (group test on n302, gpu_v100_q, 2026-09-28) with the
+  approach in the template `hpc/templates/pbs_zeus_gaussian_gpu.sh`; use that script, don't write
+  a plain GPU script. Timings (GPU vs CPU) are not recorded yet.
+* **PBS does not assign a specific GPU.** `ngpus=N` is only a count: PBS does not set
+  `CUDA_VISIBLE_DEVICES`, and all 4 V100s stay visible to every job on the node. Other users'
+  processes can already be running on any of them (seen on n302). A Gaussian job hard-coded to
+  GPU 0 stops when GPU 0 lacks free memory (group experience).
+  * Pick a free GPU at job start: the one with the most free memory, e.g. at least 28 GB of 32.
+    Expose only that one (`CUDA_VISIBLE_DEVICES=<UUID>`) and write `%GPUCPU=0=<core>` into the
+    input.
+  * The template `hpc/templates/pbs_zeus_gaussian_gpu.sh` does this, with a node-wide lock and
+    claim files so that two jobs starting together don't pick the same GPU. It also takes the
+    job's cores from the chosen GPU's block, because PBS doesn't confine jobs to their cores
+    either.
+* **Gaussian reserves about `%mem` on the GPU.** With `%mem=24GB` the log shows
+  `2879845171 words of memory will be used on each GPU`, about 23 GB. A GPU needs at least `%mem`
+  of free memory, or g16 stops.
+* The `%CPU` / `%GPUCPU` lines go at the top of the input. Each GPU needs a controlling core, and
+  that core must also be listed in `%CPU`. The log then shows the thread / CPU / GPU table
+  (`Will use 1 GPUs`) to confirm the setup.
+  * The proper fix is per-GPU scheduling in PBS (set up by the admins), which would set
+    `CUDA_VISIBLE_DEVICES` for each job.
 * Request GPUs in the select statement:
   `#PBS -l select=1:ncpus=4:ngpus=1:mem=32gb`. zeus's nodes publish `resources_available.ngpus`.
 * NVIDIA driver 580.159.03 with CUDA 13.0 (`nvidia-smi` on n302 and n304, 2026-09-28).
@@ -191,6 +212,6 @@ which `render_submit_script` / `rag-drg compose` use.
   submit script must activate the user's env. Ask the user which env to use (`conda env list`),
   or create one.
 * Gaussian, Molpro and Q-Chem need membership of the Unix group shown (`id` lists your groups).
-* **GPU runs are not set up yet.** The group runs the `g16-gpu` build on CPU queues only. Running
-  Gaussian (or any ESS) on `gpu_v100_q` / `mafat_gm_q` has not been set up or tested; don't
-  present a GPU submit script as known to work.
+* **GPU runs:** Gaussian 16 (`g16-gpu`) on `gpu_v100_q` works with
+  `hpc/templates/pbs_zeus_gaussian_gpu.sh` (see *GPU queues*). ARC does not use the GPUs. Other
+  ESS on the GPUs have not been tried.
