@@ -1,0 +1,154 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/trsh/gaussian/inaccurate_quadrature.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-5, 56-90, 555-575, 10170-10182, 10695-10710, 10795-10835, 11172-11187
+
+ Cycle  94  Pass 1  IDiag  1:
+ E= -668.941347923252     Delta-E=        0.000000001683 Rises=F Damp=F
+ DIIS: error= 1.00D-05 at cycle  82 NSaved=   6.
+ NSaved= 6 IEnMin= 2 EnMin= -668.941347934283     IErMin= 4 ErrMin= 6.18D-06
+ [... 50 lines omitted ...]
+ Cycle  98  Pass 1  IDiag  1:
+ E= -668.941347922234     Delta-E=        0.000000000116 Rises=F Damp=F
+ DIIS: error= 2.74D-06 at cycle  86 NSaved=  10.
+ NSaved=10 IEnMin= 2 EnMin= -668.941347934283     IErMin= 9 ErrMin= 2.11D-06
+ ErrMax= 2.74D-06  0.00D+00 EMaxC= 1.00D+00 BMatC= 5.79D-10 BMatP= 2.90D-10
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com:  0.952D-01-0.581D-01 0.383D+00-0.720D+00-0.168D+00 0.803D-01
+ Coeff-Com:  0.980D+00-0.340D+00 0.395D+00 0.352D+00
+ Coeff:      0.952D-01-0.581D-01 0.383D+00-0.720D+00-0.168D+00 0.803D-01
+ Coeff:      0.980D+00-0.340D+00 0.395D+00 0.352D+00
+ Gap=     0.322 Goal=   None    Shift=    0.000
+ Gap=     0.238 Goal=   None    Shift=    0.000
+ RMSDP=3.68D-08 MaxDP=2.11D-06 DE= 1.16D-10 OVMax= 3.73D-06
+
+ Cycle  99  Pass 1  IDiag  1:
+ E= -668.941347922010     Delta-E=        0.000000000224 Rises=F Damp=F
+ DIIS: error= 4.35D-06 at cycle  87 NSaved=  11.
+ NSaved=11 IEnMin= 2 EnMin= -668.941347934283     IErMin= 9 ErrMin= 2.11D-06
+ ErrMax= 4.35D-06  0.00D+00 EMaxC= 1.00D+00 BMatC= 1.72D-09 BMatP= 2.90D-10
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com:  0.121D+00-0.387D-01 0.282D+00-0.130D+00-0.285D+00-0.800D-02
+ Coeff-Com:  0.339D+00 0.123D+00 0.224D+00 0.128D+01-0.908D+00
+ Coeff:      0.121D+00-0.387D-01 0.282D+00-0.130D+00-0.285D+00-0.800D-02
+ Coeff:      0.339D+00 0.123D+00 0.224D+00 0.128D+01-0.908D+00
+ Gap=     0.322 Goal=   None    Shift=    0.000
+ Gap=     0.238 Goal=   None    Shift=    0.000
+ RMSDP=1.18D-07 MaxDP=6.27D-06 DE= 2.24D-10 OVMax= 1.05D-05
+
+ Cycle 100  Pass 1  IDiag  1:
+ E= -668.941347922505     Delta-E=       -0.000000000495 Rises=F Damp=F
+ DIIS: error= 2.18D-06 at cycle  88 NSaved=  12.
+ NSaved=12 IEnMin= 2 EnMin= -668.941347934283     IErMin= 9 ErrMin= 2.11D-06
+ ErrMax= 2.18D-06  0.00D+00 EMaxC= 1.00D+00 BMatC= 4.82D-10 BMatP= 2.90D-10
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com:  0.401D-01-0.626D-01 0.251D+00-0.464D+00 0.282D-01 0.756D-01
+ [... 464 lines omitted ...]
+ Coeff-Com: -0.223D-01 0.406D+00 0.616D+00
+ Coeff:     -0.223D-01 0.406D+00 0.616D+00
+ Gap=     0.322 Goal=   None    Shift=    0.000
+ Gap=     0.238 Goal=   None    Shift=    0.000
+ RMSDP=1.66D-07 MaxDP=8.72D-06 DE= 3.84D-09 OVMax= 2.62D-05
+
+ >>>>>>>>>> Convergence criterion not met.
+ SCF Done:  E(UwB97XD) =  -668.941347932     A.U. after  129 cycles
+            NFock=128  Conv=0.17D-06     -V/T= 2.0059
+ <Sx>= 0.0000 <Sy>= 0.0000 <Sz>= 3.0000 <S**2>=12.0207 S= 3.0030
+ <L.S>= 0.000000000000E+00
+ KE= 6.650507302662D+02 PE=-2.332439378285D+03 EE= 6.186414516098D+02
+ Annihilation of the first spin contaminant:
+ S**2 before annihilation    12.0207,   after    12.0001
+ Convergence failure -- run terminated.
+ Error termination via Lnk1e in /usr/local/g09/l502.exe at Sat Aug 10 05:43:16 2024.
+ Job cpu time:       0 days  7 hours 15 minutes 49.5 seconds.
+ File lengths (MBytes):  RWF=     95 Int=      0 D2E=      0 Chk=      4 Scr=      1
+cd ..
+cd conformer1
+cat input.log
+ [... 9594 lines omitted ...]
+   D33       -0.04546   0.00000  -0.00033   0.00128   0.00095  -0.04451
+         Item               Value     Threshold  Converged?
+ Maximum Force            0.000065     0.000450     YES
+ RMS     Force            0.000018     0.000300     YES
+ Maximum Displacement     0.042384     0.001800     NO
+ RMS     Displacement     0.008381     0.001200     NO
+ Predicted change in Energy=-3.607486D-07
+ Optimization stopped.
+    -- Number of steps exceeded,  NStep=  84
+    -- Flag reset to prevent archiving.
+                           ----------------------------
+                           ! Non-Optimized Parameters !
+                           ! (Angstroms and Degrees)  !
+ [... 512 lines omitted ...]
+ Leave Link  601 at Sun Aug 11 02:19:45 2024, MaxMem=  4294967296 cpu:         2.9
+ (Enter /usr/local/g09/l9999.exe)
+
+
+ TRUTH, IN SCIENCE, CAN BE DEFINED AS THE WORKING HYPOTHESIS
+ BEST FITTED TO OPEN THE WAY TO THE NEXT BETTER ONE.
+
+                              -- KONRAD LORENZ
+ Error termination request processed by link 9999.
+ Error termination via Lnk1e in /usr/local/g09/l9999.exe at Sun Aug 11 02:19:45 2024.
+ Job cpu time:       1 days 15 hours  9 minutes 56.4 seconds.
+ File lengths (MBytes):  RWF=     94 Int=      0 D2E=      0 Chk=      4 Scr=      1
+channel 17: open failed: connect failed: open failed
+channel 14: open failed: connect failed: open failed
+channel 7: open failed: connect failed: open failed
+channel 7: open failed: connect failed: open failed
+ [... 84 lines omitted ...]
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+
+
+ Cite this work as:
+ Gaussian 09, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria,
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, B. Mennucci,
+ G. A. Petersson, H. Nakatsuji, M. Caricato, X. Li, H. P. Hratchian,
+ A. F. Izmaylov, J. Bloino, G. Zheng, J. L. Sonnenberg, M. Hada,
+ M. Ehara, K. Toyota, R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima,
+ Y. Honda, O. Kitao, H. Nakai, T. Vreven, J. A. Montgomery, Jr.,
+ J. E. Peralta, F. Ogliaro, M. Bearpark, J. J. Heyd, E. Brothers,
+ K. N. Kudin, V. N. Staroverov, T. Keith, R. Kobayashi, J. Normand,
+ K. Raghavachari, A. Rendell, J. C. Burant, S. S. Iyengar, J. Tomasi,
+ M. Cossi, N. Rega, J. M. Millam, M. Klene, J. E. Knox, J. B. Cross,
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann,
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski,
+ R. L. Martin, K. Morokuma, V. G. Zakrzewski, G. A. Voth,
+ P. Salvador, J. J. Dannenberg, S. Dapprich, A. D. Daniels,
+ O. Farkas, J. B. Foresman, J. V. Ortiz, J. Cioslowski,
+ and D. J. Fox, Gaussian, Inc., Wallingford CT, 2013.
+
+ ******************************************
+ Gaussian 09:  EM64L-G09RevD.01 24-Apr-2013
+                10-Aug-2024
+ ******************************************
+ %chk=check.chk
+ %mem=32768mb
+ %NProcShared=16
+ Will use up to   16 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P opt=(calcfc) guess=INDO uwb97xd/def2svp IOp(2/9=2000) nosymm scf=(N
+ Damp=30,NoDIIS,xqc)
+ ----------------------------------------------------------------------
+ 1/10=4,14=-1,18=20,19=15,26=3,38=1/1,3;
+ 2/9=2000,12=2,15=1,17=6,18=5,40=1/2;
+ 3/5=43,7=101,11=2,16=1,25=1,30=1,71=2,74=-58,116=2,140=1/1,2,3;
+ [... 336 lines omitted ...]
+ Cycle   9  Pass 1  IDiag  1:
+ E= -297.102500799614     Delta-E=      -81.801923312645 Rises=F Damp=F
+ Gap=    -0.891 Goal=   None    Shift=    0.000
+ Gap=    -0.552 Goal=   None    Shift=    0.000
+ 3-Point extrapolation.
+ RMSDP=1.90D-01 MaxDP=1.03D+01 DE=-8.18D+01 OVMax= 9.95D-01
+
+ Cycle  10  Pass 1  IDiag  1:
+ Spurious integrated density or basis function:
+ NE=   66 NElCor=    0 El error=8.92D+00 rel=1.35D-01 Tolerance=1.00D-03
+ Shell    19     absolute error=1.35D-04              Tolerance=1.20D-02
+ Shell    13       signed error=1.98D-05              Tolerance=1.00D-01
+ Inaccurate quadrature in CalDSu.
+ Error termination via Lnk1e in /usr/local/g09/l502.exe at Sat Aug 10 08:46:11 2024.
+ Job cpu time:       0 days  0 hours  1 minutes 31.2 seconds.
+ File lengths (MBytes):  RWF=      9 Int=      0 D2E=      0 Chk=      4 Scr=      1

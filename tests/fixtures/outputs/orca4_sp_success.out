@@ -1,0 +1,49 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/trsh/orca/orca_successful_sp.log (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-22, 2180-2204
+
+                                 *****************
+                                 * O   R   C   A *
+                                 *****************
+
+           --- An Ab Initio, DFT and Semiempirical electronic structure package ---
+
+                  #######################################################
+                  #                        -***-                        #
+                  #          Department of theory and spectroscopy      #
+                  #               Directorship: Frank Neese             #
+                  #        Max Planck Institute fuer Kohlenforschung    #
+                  #                Kaiser Wilhelm Platz 1               #
+                  #                 D-45470 Muelheim/Ruhr               #
+                  #                      Germany                        #
+                  #                                                     #
+                  #                  All rights reserved                #
+                  #                        -***-                        #
+                  #######################################################
+
+
+                         Program Version 4.1.2  - RELEASE  -
+ [... 2157 lines omitted ...]
+Magnitude (Debye)      :      2.40961
+
+
+
+--------------------
+Rotational spectrum 
+--------------------
+ 
+Rotational constants in cm-1:     1.804449     0.383378     0.336914 
+Rotational constants in MHz : 54096.024645 11493.390087 10100.437161 
+
+ Dipole components along the rotational axes: 
+x,y,z [a.u.] :    -0.904911     0.282546    -0.000011 
+x,y,z [Debye]:    -2.300101     0.718176    -0.000029 
+
+ 
+
+Timings for individual modules:
+
+Sum of individual times         ...       74.413 sec (=   1.240 min)
+GTO integral calculation        ...        3.477 sec (=   0.058 min)   4.7 %
+SCF iterations                  ...        9.845 sec (=   0.164 min)  13.2 %
+MDCI module                     ...       61.091 sec (=   1.018 min)  82.1 %
+                             ****ORCA TERMINATED NORMALLY****
+TOTAL RUN TIME: 0 days 0 hours 1 minutes 15 seconds 245 msec
