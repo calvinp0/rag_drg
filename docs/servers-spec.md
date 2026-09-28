@@ -60,8 +60,31 @@ Rules (enforced by `rag-drg lint`):
 * `partitions` referenced by software entries exist.
 * No secrets (passwords, tokens, private keys) anywhere in the file; `ssh` uses keys/agents.
 
+Additional rules added by the implementation (see docs/servers.md):
+
+* Unknown keys are reported (catches typos such as `mem_per_node`). Optional `notes:` strings
+  are also accepted on software, storage and scratch entries.
+* `host` is required unless `scheduler: local` (or an `ssh_alias` is given); `host`, `user`,
+  `ssh_alias` may only contain letters, digits and `_ . @ -`.
+* A software key is `<ess>` or `<ess>-<anything>` (e.g. `orca-6`, `gaussian-16-gpu`); a key
+  containing `gpu` marks a GPU build.
+* `storage[].quota_command` and every `commands:` entry must pass the read-only allowlist used by
+  the live cluster tools (`squeue sacct sinfo sshare`, `scontrol show`, `qstat`, `pbsnodes` with
+  read-only flags, `quota`, `df`, `lfs quota`, `mmlsquota`, `beegfs-ctl --getquota`; arguments
+  only from `[A-Za-z0-9_@%:=,./+- ]`, `$USER`, and `{job_id}` in `commands.job`). Allowed
+  `commands:` keys: `jobs job history partitions quota fairshare`.
+* `scratch.path` is absolute (or starts with `$TMPDIR`-style variables). A per-job directory is
+  created under it unless it already contains the job id variable.
+* Generated cards in `knowledge/hpc/servers/generated/` must be up to date with `servers.yaml`
+  and belong to an existing server.
+* Every ESS job is single-node: `cores <= cores_per_node` (`max_nodes` is informational).
+
+Live read-only commands are off unless `conf.d/servers.yaml` sets
+`cluster_commands: {enabled: true}` (see docs/servers.md for why).
+
 Python access (implemented in `rag_drg/tools/servers.py`):
 
 ```python
 from rag_drg.tools.servers import load_servers   # -> dict[name, Server] (dataclasses), {} if no file
+from rag_drg.tools.servers import check_resources, render_submit_script, cluster_query, arc_settings
 ```

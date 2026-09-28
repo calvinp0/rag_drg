@@ -1,0 +1,11 @@
+# Cluster registry plugin (rag_drg/tools/servers.py). The clusters themselves are in
+# servers.yaml at the repository root; see docs/servers.md.
+#
+# cluster_commands: the read-only live tools (`cluster_query` MCP tool, `rag-drg servers query`)
+# run squeue/sacct/qstat/quota... over `ssh -o BatchMode=yes` with the SSH identity of whoever
+# runs the rag-drg process. On a shared HTTP server that is the service account, so every
+# client would see that account's jobs and quotas. Keep this false on shared servers; enable it
+# only in a per-user stdio server (`rag-drg serve` started by your own Claude Code), e.g. with a
+# personal, untracked conf.d/zz-local.yaml containing `cluster_commands: {enabled: true}`.
+cluster_commands:
+  enabled: false
