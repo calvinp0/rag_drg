@@ -16,6 +16,7 @@ Sources:
 
 Items marked *to fill in* are not known yet; don't guess them. Atlas is part of the Technion's share
 of the ATLAS experiment computing, and **its admin is very strict**: follow the rules below exactly.
+The machine-readable version is the `atlas` entry in `servers.yaml` (card: `generated/atlas.md`).
 
 ## Rules (from the group wiki)
 
@@ -67,14 +68,18 @@ of the ATLAS experiment computing, and **its admin is very strict**: follow the 
 
   A job that fits on every machine: at most 42 cores and about 250 GB.
 
-* **Jobs are held (`condor_q` status H) automatically** (`SYSTEM_PERIODIC_HOLD`) when:
-  * they use more memory than requested (`MEMORY_EXCEEDED`);
-  * they run too long (`TIME_EXCEEDED`; *to fill in:* the limit);
-  * **they use less than 20% of the memory they requested** (`WastingMemory`).
+* **Jobs are held (`condor_q` status H) automatically** (`SYSTEM_PERIODIC_HOLD`;
+  `condor_config_val`, 2026-09-28) when:
+  * `MEMORY_EXCEEDED`: the job's resident memory exceeds `request_memory`;
+  * `TIME_EXCEEDED`: it has been running more than **72 h** (120 h for jobs of users with
+    `HiMemUser` set that request more than 60 GB);
+  * `WastingMemory`: the job requests **more than 8 GB** and, after its first hour, uses
+    **less than 20%** of that. Requests of 8 GB or less are never held for this.
 
-  **Held jobs are removed after 24 h** (`SYSTEM_PERIODIC_REMOVE`). So request memory close to
-  what the job really uses: both too little and far too much get the job held and then deleted.
-  This matters for ARC's `job_memory`.
+  **Held jobs are removed after 24 h** (`SYSTEM_PERIODIC_REMOVE`). So request memory close to what
+  the job really uses. With too little the job is held for exceeding it; with far too much (over
+  8 GB and five times the real use) it is held for wasting memory. Either way it is deleted a day
+  later. This matters for ARC's `job_memory`, and a job must finish within 72 h.
 
 ### Submit descriptions
 
@@ -97,11 +102,11 @@ the scratch directory at the end.
 | Program | Install | Used by the group's scripts |
 |---|---|---|
 | Gaussian 09 | `/Local/ce_dana/g09` (readable by group `ce_dana` only): `g09root=/Local/ce_dana`, `source /Local/ce_dana/g09/bsd/g09.login` (csh), `/Local/ce_dana/g09/g09` | yes (ARC) |
-| Gaussian 16 | **not installed** (`/Local/ce_dana/g16` does not exist) | the `g16` in DRGScripts `incore_commands` is stale |
+| Gaussian 16 | **not in `/Local/ce_dana`** (no `g16` directory). DRGScripts' `incore_commands` calls `g16`; *to fill in:* whether `command -v g16` finds one elsewhere | - |
 | ORCA 5.0.4 | `/Local/ce_dana/orca_5_0_4_linux_x86-64_shared_openmpi411/orca`, OpenMPI 4.1.1 in `/Local/ce_dana/openmpi-4.1.1` | yes (ARC) |
 | ORCA 4.0.1.2 | `/Local/ce_dana/orca_4_0_1_2_linux_x86-64_openmpi202`, OpenMPI 2.0.2 in `/Local/ce_dana/openmpi-2.0.2` | no |
-| Molpro | `/Local/ce_dana/molpro-mpp-2020.2.1`, `-2021.2.1`, `-2022.2.3` | ARC's job runs `molpro-mpp-2022.2.3/bin/molpro -n N -t 1 -d $MOLPRO_SCRDIR` (its submit file still puts 2021.2.1 on PATH) |
-| Q-Chem | `/Local/ce_dana/Q-Chem` (`QC=`; `bin/qchem -nt N`). *To fill in:* the version | ARC template exists |
+| Molpro | `/Local/ce_dana/molpro-mpp-2020.2.1`, `-2021.2.1`, `-2022.2.3`. **Use the latest, 2022.2.3** (group rule) | ARC's job runs `molpro-mpp-2022.2.3/bin/molpro -n N -t 1 -d $MOLPRO_SCRDIR` (its submit file still puts 2021.2.1 on PATH) |
+| Q-Chem 6.1.1 | `/Local/ce_dana/Q-Chem` (`version.txt`): `QC=/Local/ce_dana/Q-Chem`, `source $QC/qcenv.sh`, `bin/qchem -nt N` | ARC template exists |
 | Also | CFOUR v2.00beta (serial), CREST 2.12 and 3.0.2, Julia 1.8.0 (RMS), NVIDIA HPC SDK, group conda `/Local/ce_dana/anaconda3` | |
 
 Psi4 and PySCF are not in `/Local/ce_dana`.
@@ -152,3 +157,14 @@ Psi4 and PySCF are not in `/Local/ce_dana`.
 
 Don't write a batch "runner" submit file for ARC on Atlas. `rag-drg arc compose` generates a
 zeus-style PBS runner and does not apply here.
+
+## What rag-drg can do for Atlas
+
+* `servers.yaml` has `atlas`:
+  * one pseudo-partition, `vanilla`: 72 h, 42 cores and 251 GB (the smallest machine);
+  * software: G09, ORCA 5.0.4, Molpro 2022.2.3, Q-Chem 6.1.1;
+  * scratch in `/storage/ce_dana/$USER/scratch`.
+* `check_resources` works (e.g. a 100 h request is refused).
+* **Submit-file generation for HTCondor is not implemented**: `render_submit_script` and
+  `compose_ess_job --server atlas` refuse with a clear error. Write the group's `submit.sub` +
+  `job.sh` pair (DRGScripts `.arc/submit.py` templates), or compose only the input (no `server`).
