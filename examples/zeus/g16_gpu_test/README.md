@@ -2,7 +2,7 @@
 
 A timing test to find out whether the group's `g16-gpu` build (G16 C.02,
 `/usr/local/g16-gpu/g16/`) runs on zeus's V100 GPUs, and how much faster it is than running on CPUs.
-Nothing here has been run yet. The job is a B3LYP/6-311+G(d,p) frequency calculation on caffeine
+Status: the GPU job ran on n302 (group test, 2026-09-28); timings not recorded yet. The job is a B3LYP/6-311+G(d,p) frequency calculation on caffeine
 (24 atoms), starting from a force-field geometry. It is a benchmark, not chemistry.
 
 | File | What |

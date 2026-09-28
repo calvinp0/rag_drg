@@ -146,7 +146,7 @@ export g16root="/usr/local/g16-gpu"
 source /usr/local/g16-gpu/g16/setup.sh
 ```
 
-G16 rev C.02 built with GPU support; the group's preferred (faster) G16, run on CPU queues (DRGScripts ARC submit.py). Running it on the GPU queues (gpu_v100_q, mafat_gm_q) is NOT set up or tested by the group yet. Readable only by Unix group gaussian
+G16 rev C.02 built with GPU support; the group's preferred (faster) G16, run on CPU queues (DRGScripts ARC submit.py). On the GPU queues it works (group test, gpu_v100_q, 2026-09-28) only with a free GPU picked at job start: use knowledge/hpc/templates/pbs_zeus_gaussian_gpu.sh. Readable only by Unix group gaussian
 
 ### qchem-6.1 environment
 
