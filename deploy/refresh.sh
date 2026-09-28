@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 echo "== $(date -Is) refresh"
+.venv/bin/rag-drg lessons tidy   # drop local lesson copies already merged upstream, so the pull can't conflict
 git pull --ff-only
 .venv/bin/rag-drg lint
 .venv/bin/rag-drg ingest --fetch

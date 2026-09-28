@@ -380,7 +380,7 @@ def test_lint_checks_pr_and_similar(project):
     problems = wf.lint(project)
     assert len(problems) == 3
     assert any("'pr' must be a pull request URL" in p for p in problems)
-    assert any("gone.md" in p and "does not exist" in p for p in problems)
+    assert not any("gone.md" in p for p in problems)  # dangling hints are allowed
     assert any("must be a list" in p for p in problems)
     assert good.exists()
 

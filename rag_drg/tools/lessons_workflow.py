@@ -519,9 +519,11 @@ def lint(cfg: Config) -> list[str]:
         if not isinstance(sim, list):
             problems.append(f"{rel}: 'similar' must be a list of paths")
             continue
+        # A `similar` path may legitimately disappear (a lesson folded into a card and deleted),
+        # so only the type is checked here; dangling entries are harmless hints.
         for s in sim:
-            if not isinstance(s, str) or not (cfg.root / s).is_file():
-                problems.append(f"{rel}: similar entry {s!r} does not exist (remove it, or point to the card it was folded into)")
+            if not isinstance(s, str):
+                problems.append(f"{rel}: similar entry {s!r} must be a path string")
     try:
         pr_settings(cfg)
     except ValueError as e:
