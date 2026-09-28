@@ -1,0 +1,59 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/sp/psi4_mrcc.dat (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-40, 1080-1096
+
+    -----------------------------------------------------------------------
+          Psi4: An Open-Source Ab Initio Electronic Structure Package
+                               Psi4 1.9.1 release
+
+                         Git: Rev {} zzzzzzz 
+
+
+    D. G. A. Smith, L. A. Burns, A. C. Simmonett, R. M. Parrish,
+    M. C. Schieber, R. Galvelis, P. Kraus, H. Kruse, R. Di Remigio,
+    A. Alenaizan, A. M. James, S. Lehtola, J. P. Misiewicz, M. Scheurer,
+    R. A. Shaw, J. B. Schriber, Y. Xie, Z. L. Glick, D. A. Sirianni,
+    J. S. O'Brien, J. M. Waldrop, A. Kumar, E. G. Hohenstein,
+    B. P. Pritchard, B. R. Brooks, H. F. Schaefer III, A. Yu. Sokolov,
+    K. Patkowski, A. E. DePrince III, U. Bozkaya, R. A. King,
+    F. A. Evangelista, J. M. Turney, T. D. Crawford, C. D. Sherrill,
+    J. Chem. Phys. 152(18) 184108 (2020). https://doi.org/10.1063/5.0006002
+
+                            Additional Code Authors
+    E. T. Seidl, C. L. Janssen, E. F. Valeev, M. L. Leininger,
+    J. F. Gonthier, R. M. Richard, H. R. McAlexander, M. Saitow, X. Wang,
+    P. Verma, M. H. Lechner, A. Jiang, S. Behnle, A. G. Heide,
+    M. F. Herbst, and D. L. Poole
+
+             Previous Authors, Complete List of Code Contributors,
+                       and Citations for Specific Modules
+    https://github.com/psi4/psi4/blob/master/codemeta.json
+    https://github.com/psi4/psi4/graphs/contributors
+    http://psicode.org/psi4manual/master/introduction.html#citing-psifour
+
+    -----------------------------------------------------------------------
+
+
+    Psi4 started on: Tuesday, 07 January 2025 12:57AM
+
+    Process ID: 414528
+    Host:       n173.zeus.technion.ac.il
+    PSIDATADIR: /home/kaplan.kfir/psi4conda/share/psi4
+    Memory:     500.0 MiB
+    Threads:    30
+ [... 1039 lines omitted ...]
+  "TWO-ELECTRON ENERGY"             =>     230.264872578892
+
+
+
+
+  Array Variable Map:
+  ----------------------------------------------------------------------------
+  "CURRENT DIPOLE"                  =>      -1.503154208958 ... 0.000000000000 1 by 3
+  "SCF DIPOLE"                      =>      -1.503154208958 ... 0.000000000000 1 by 3
+  "SCF TOTAL ENERGIES"              =>    -279.419949971874 ... -280.650061932881 1 by 22
+
+
+
+    Psi4 stopped on: Tuesday, 07 January 2025 01:27PM
+    Psi4 wall time for execution: 12:29:53.05
+
+*** Psi4 exiting successfully. Buy a developer a beer!

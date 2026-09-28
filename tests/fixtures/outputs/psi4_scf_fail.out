@@ -1,0 +1,73 @@
+# rag-drg test fixture - SYNTHETIC Psi4 SCF failure. Header lines 1-40 copied from ARC arc/testing/sp/psi4_mrcc.dat (ARC commit d9f47ab, MIT License); the failure block follows the formats in psi4/run_psi4.py (exception print-out), psi4/driver/p4util/exceptions.py (ConvergenceError message), psi4/driver/p4util/text.py (message_box) and psi4/extras.py (exit_printing) on psi4 master, Sep 2026.
+
+    -----------------------------------------------------------------------
+          Psi4: An Open-Source Ab Initio Electronic Structure Package
+                               Psi4 1.9.1 release
+
+                         Git: Rev {} zzzzzzz 
+
+
+    D. G. A. Smith, L. A. Burns, A. C. Simmonett, R. M. Parrish,
+    M. C. Schieber, R. Galvelis, P. Kraus, H. Kruse, R. Di Remigio,
+    A. Alenaizan, A. M. James, S. Lehtola, J. P. Misiewicz, M. Scheurer,
+    R. A. Shaw, J. B. Schriber, Y. Xie, Z. L. Glick, D. A. Sirianni,
+    J. S. O'Brien, J. M. Waldrop, A. Kumar, E. G. Hohenstein,
+    B. P. Pritchard, B. R. Brooks, H. F. Schaefer III, A. Yu. Sokolov,
+    K. Patkowski, A. E. DePrince III, U. Bozkaya, R. A. King,
+    F. A. Evangelista, J. M. Turney, T. D. Crawford, C. D. Sherrill,
+    J. Chem. Phys. 152(18) 184108 (2020). https://doi.org/10.1063/5.0006002
+
+                            Additional Code Authors
+    E. T. Seidl, C. L. Janssen, E. F. Valeev, M. L. Leininger,
+    J. F. Gonthier, R. M. Richard, H. R. McAlexander, M. Saitow, X. Wang,
+    P. Verma, M. H. Lechner, A. Jiang, S. Behnle, A. G. Heide,
+    M. F. Herbst, and D. L. Poole
+
+             Previous Authors, Complete List of Code Contributors,
+                       and Citations for Specific Modules
+    https://github.com/psi4/psi4/blob/master/codemeta.json
+    https://github.com/psi4/psi4/graphs/contributors
+    http://psicode.org/psi4manual/master/introduction.html#citing-psifour
+
+    -----------------------------------------------------------------------
+
+
+    Psi4 started on: Tuesday, 07 January 2025 12:57AM
+
+    Process ID: 414528
+    Host:       n173.zeus.technion.ac.il
+    PSIDATADIR: /home/kaplan.kfir/psi4conda/share/psi4
+    Memory:     500.0 MiB
+    Threads:    30
+ [... lines omitted ...]
+   @DF-UHF iter  98:  -459.21184418470434   -2.11544e-05   4.93741e-04 DIIS/ADIIS
+   @DF-UHF iter  99:  -459.21173919011203    1.04995e-04   6.20166e-04 DIIS/ADIIS
+   @DF-UHF iter 100:  -459.21180562870961   -6.64386e-05   5.51309e-04 DIIS/ADIIS
+
+PsiException: Could not converge SCF iterations in 100 iterations.
+
+
+
+Traceback (most recent call last):
+  File "/opt/psi4/bin/psi4", line 365, in <module>
+    exec(content)
+  File "<string>", line 32, in <module>
+
+psi4.driver.p4util.exceptions.SCFConvergenceError: Could not converge SCF iterations in 100 iterations.
+
+
+Printing out the relevant lines from the Psithon --> Python processed input file:
+    core.set_global_option("REFERENCE", "uhf")
+--> energy('scf')
+
+!-------------------------------------------------------!
+!                                                       !
+!  Could not converge SCF iterations in 100 iterations. !
+!                                                       !
+!-------------------------------------------------------!
+
+    Psi4 stopped on: Tuesday, 07 January 2025 01:27PM
+    Psi4 wall time for execution: 0:03:12.44
+
+*** Psi4 encountered an error. Buy a developer more coffee!
+*** Resources and help at github.com/psi4/psi4.

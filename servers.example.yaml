@@ -1,0 +1,143 @@
+# EXAMPLE ONLY - a fake cluster that shows every field of servers.yaml (spec: docs/servers-spec.md).
+# Copy to servers.yaml and replace everything with the real values of our clusters
+# (docs/servers.md lists what we need). Nothing here describes a real machine.
+#
+#   rag-drg servers --file servers.example.yaml list
+#   rag-drg servers --file servers.example.yaml submit example orca-6 ts1.inp --cores 16 --mem 64
+
+servers:
+  example:
+    description: "Fake Slurm cluster used in the docs and tests (not a real machine)."
+    scheduler: slurm
+    host: login.example.org
+    user: null                        # null -> your own $USER
+    ssh_alias: null                   # or a Host alias from ~/.ssh/config
+    modules_available: false          # we call programs by absolute path
+    arc:
+      path: /home                     # ARC runs under <path>/<un>/runs/ARC_Projects/
+      max_simultaneous_jobs: 20
+    partitions:
+      cpu:
+        max_walltime: "3-00:00:00"
+        cores_per_node: 48
+        mem_per_node_gb: 256
+        gpus_per_node: 0
+        max_nodes: 1
+        default: true
+        notes: "general CPU work"
+      gpu:
+        max_walltime: "48:00:00"
+        cores_per_node: 32
+        mem_per_node_gb: 512
+        gpus_per_node: 4
+        gpu_type: A100
+        max_nodes: 1
+        notes: "GPU jobs only (Gaussian 16 GPU build)"
+        access:                       # optional queue ACL; omit = everyone in the group may use it
+          users: [alice]              # these Unix users ...
+          groups: [gpuusers]          # ... or members of ANY of these Unix groups
+          notes: "ask the PI to be added to gpuusers"
+    scratch:
+      path: "/scratch/$USER"          # node-local disk; a per-job directory is created under it
+      node_local: true
+    storage:
+      - name: home
+        path: "/home/$USER"
+        quota_gb: 50
+        backed_up: true
+        quota_command: "quota -s"
+      - name: group
+        path: /data/example-group
+        quota_gb: 10000
+        backed_up: false
+        quota_command: "df -h /data/example-group"
+    software:
+      orca-5:
+        ess: orca
+        version: "5.0.4"
+        executable: /opt/orca/orca_5_0_4/orca
+        env:
+          PATH: "/opt/orca/orca_5_0_4:/opt/openmpi-4.1.1/bin:$PATH"
+          LD_LIBRARY_PATH: "/opt/orca/orca_5_0_4:/opt/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        setup: []
+        parallel: mpi
+        partitions: [cpu]
+      orca-6:
+        ess: orca
+        version: "6.0.1"
+        executable: /opt/orca/orca_6_0_1/orca
+        env:
+          PATH: "/opt/orca/orca_6_0_1:/opt/openmpi-4.1.6/bin:$PATH"
+          LD_LIBRARY_PATH: "/opt/orca/orca_6_0_1:/opt/openmpi-4.1.6/lib:$LD_LIBRARY_PATH"
+        setup: []
+        parallel: mpi
+        partitions: [cpu]
+      gaussian-09:
+        ess: gaussian
+        version: "E.01"
+        executable: /opt/gaussian/g09-E.01/g09/g09
+        env:
+          g09root: /opt/gaussian/g09-E.01
+        setup:
+          - "source $g09root/g09/bsd/g09.profile"
+        parallel: threads
+        partitions: [cpu]
+      gaussian-16:
+        ess: gaussian
+        version: "C.02"
+        executable: /opt/gaussian/g16-C.02/g16/g16
+        env:
+          g16root: /opt/gaussian/g16-C.02
+        setup:
+          - "source $g16root/g16/bsd/g16.profile"
+        parallel: threads
+        partitions: [cpu]
+      gaussian-16-gpu:
+        ess: gaussian
+        version: "C.02"
+        executable: /opt/gaussian/g16-C.02-gpu/g16/g16
+        env:
+          g16root: /opt/gaussian/g16-C.02-gpu
+        setup:
+          - "source $g16root/g16/bsd/g16.profile"
+        parallel: threads
+        partitions: [gpu]
+      qchem-6.1:
+        ess: qchem
+        version: "6.1"
+        executable: /opt/qchem-6.1/bin/qchem
+        env:
+          QC: /opt/qchem-6.1
+          QCAUX: /opt/qchem-6.1/qcaux
+        setup:
+          - "source $QC/qcenv.sh"
+        parallel: threads
+        partitions: [cpu]
+      psi4:
+        ess: psi4
+        version: "1.9.1"
+        executable: /opt/miniforge3/envs/psi4/bin/psi4
+        env:
+          PATH: "/opt/miniforge3/envs/psi4/bin:$PATH"
+        parallel: threads
+      molpro-2024:
+        ess: molpro
+        version: "2024.1"
+        executable: /opt/molpro-2024.1/bin/molpro
+        parallel: mpi
+        partitions: [cpu]
+      molpro-2026:
+        ess: molpro
+        version: "2026.1"
+        executable: /opt/molpro-2026.1/bin/molpro
+        parallel: mpi
+        partitions: [cpu]
+      pyscf:
+        ess: pyscf
+        version: "2.6"
+        executable: /opt/miniforge3/envs/pyscf/bin/python
+        env:
+          PATH: "/opt/miniforge3/envs/pyscf/bin:$PATH"
+        parallel: threads
+    commands:                         # optional overrides of the default read-only commands
+      jobs: 'squeue -u $USER -o "%.18i %.9P %.30j %.8T %.10M %.10l %R"'

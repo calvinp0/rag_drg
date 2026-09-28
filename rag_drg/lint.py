@@ -8,7 +8,7 @@ from .chunking import split_front_matter
 from .config import Config
 
 DOMAINS = {"ess", "arc", "hpc", "project", "literature"}
-DOC_TYPES = {"card", "gotcha", "template", "schema", "lesson", "reference", "theory", "paper", "scaffold"}
+DOC_TYPES = {"card", "gotcha", "template", "schema", "lesson", "reference", "theory", "paper", "scaffold", "error"}
 STATUSES = {"draft", "unreviewed", "verified", "outdated"}
 LESSON_SECTIONS = ("## Mistake", "## Correct approach")
 
@@ -48,4 +48,9 @@ def lint(cfg: Config) -> list[str]:
                 problems.append(f"{rel}: lessons need '## Mistake' and '## Correct approach' sections")
             if not body.strip():
                 problems.append(f"{rel}: empty body")
+    from .plugins import plugin_modules
+
+    for mod in plugin_modules():
+        if hasattr(mod, "lint"):
+            problems.extend(mod.lint(cfg))
     return problems

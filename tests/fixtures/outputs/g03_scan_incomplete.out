@@ -1,0 +1,191 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/rotor_scans/OOC1CCOCO1.out (ARC main branch, MIT License, github.com/ReactionMechanismGenerator/ARC): a relaxed scan whose full output terminates normally, cut at line 35403 to mimic a running/killed job; kept lines 1-100, 34805-34830, 35340-35403
+ Entering Gaussian System, Link 0=g03
+ Input=input.gjf
+ Output=input.log
+ Initial command:
+ /opt/g03/l1.exe /scratch/mattsj/Gau-27979.inp -scrdir=/scratch/mattsj/
+ Entering Link 1 = /opt/g03/l1.exe PID=     27981.
+  
+ Copyright (c) 1988,1990,1992,1993,1995,1998,2003,2004, Gaussian, Inc.
+                  All Rights Reserved.
+  
+ This is the Gaussian(R) 03 program.  It is based on the
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 03, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, J. A. Montgomery, Jr., T. Vreven, 
+ K. N. Kudin, J. C. Burant, J. M. Millam, S. S. Iyengar, J. Tomasi, 
+ V. Barone, B. Mennucci, M. Cossi, G. Scalmani, N. Rega, 
+ G. A. Petersson, H. Nakatsuji, M. Hada, M. Ehara, K. Toyota, 
+ R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, 
+ H. Nakai, M. Klene, X. Li, J. E. Knox, H. P. Hratchian, J. B. Cross, 
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann, 
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski, 
+ P. Y. Ayala, K. Morokuma, G. A. Voth, P. Salvador, J. J. Dannenberg, 
+ V. G. Zakrzewski, S. Dapprich, A. D. Daniels, M. C. Strain, 
+ O. Farkas, D. K. Malick, A. D. Rabuck, K. Raghavachari, 
+ J. B. Foresman, J. V. Ortiz, Q. Cui, A. G. Baboul, S. Clifford, 
+ J. Cioslowski, B. B. Stefanov, G. Liu, A. Liashenko, P. Piskorz, 
+ I. Komaromi, R. L. Martin, D. J. Fox, T. Keith, M. A. Al-Laham, 
+ C. Y. Peng, A. Nanayakkara, M. Challacombe, P. M. W. Gill, 
+ B. Johnson, W. Chen, M. W. Wong, C. Gonzalez, and J. A. Pople, 
+ Gaussian, Inc., Wallingford CT, 2004.
+ 
+ ******************************************
+ Gaussian 03:  AM64L-G03RevD.01 13-Oct-2005
+                 7-Feb-2019 
+ ******************************************
+ %chk=check.chk
+ %mem=1500mb
+ %nproc=8
+ Will use up to    8 processors via shared memory.
+ --------------------------------------------------------------------
+ # opt=(modredundant, calcfc, noeigentest) b3lyp/6-311+g(d,p) scf=xqc
+ --------------------------------------------------------------------
+ 1/10=4,11=1,14=-1,18=120,26=3,38=1/1,3;
+ 2/9=110,17=6,18=5,40=1/2;
+ 3/5=4,6=6,7=111,11=2,16=1,25=1,30=1,74=-5/1,2,3;
+ 4//1;
+ 5/5=2,8=3,13=1,38=5/2,8;
+ 8/6=4,10=90,11=11/1;
+ 11/6=1,8=1,9=11,15=111,16=1/1,2,10;
+ 10/6=1,7=6/2;
+ 6/7=2,8=2,9=2,10=2,28=1/1;
+ 7/10=1,18=20,25=1/1,2,3,16;
+ 1/10=4,11=1,14=-1,18=20/3(3);
+ 2/9=110/2;
+   D32       -3.01576   0.00000  -0.00014  -0.00213  -0.00227  -3.01803
+   D33        1.21409   0.00000  -0.00014  -0.00219  -0.00233   1.21176
+   D34       -0.89740   0.00000  -0.00016  -0.00237  -0.00253  -0.89993
+         Item               Value     Threshold  Converged?
+ Maximum Force            0.000044     0.000450     YES
+ RMS     Force            0.000009     0.000300     YES
+ Maximum Displacement     0.004286     0.001800     NO 
+ RMS     Displacement     0.001234     0.001200     NO 
+ Predicted change in Energy=-2.479701D-08
+ Optimization stopped.
+    -- Number of steps exceeded,  NStep=  88
+    -- Flag reset to prevent archiving.
+                           ----------------------------
+                           ! Non-Optimized Parameters !
+                           ! (Angstroms and Degrees)  !
+ --------------------------                            --------------------------
+ ! Name  Definition              Value          Derivative Info.                !
+ --------------------------------------------------------------------------------
+ ! R1    R(1,6)                  1.407          -DE/DX =    0.0                 !
+ ! R2    R(1,8)                  1.4272         -DE/DX =    0.0                 !
+ ! R3    R(2,7)                  1.4311         -DE/DX =    0.0                 !
+ ! R4    R(2,8)                  1.4008         -DE/DX =    0.0                 !
+ ! R5    R(3,4)                  1.4544         -DE/DX =    0.0                 !
+ ! R6    R(3,6)                  1.4196         -DE/DX =    0.0                 !
+ ! R7    R(4,16)                 0.9712         -DE/DX =    0.0                 !
+ ! R8    R(5,6)                  1.5321         -DE/DX =    0.0                 !
+   16          1           0.001677492   -0.001693908   -0.000548776
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.002384209 RMS     0.000751297
+
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+ Berny optimization.
+ Internal  Forces:  Max     0.004343838 RMS     0.000492039
+ Search for a local minimum.
+ Step number   2 out of a maximum of  88 on scan point    12 out of    37
+ All quantities printed in internal units (Hartrees-Bohrs-Radians)
+ Update second derivatives using D2CorX and points  1  2
+ Trust test= 8.33D-01 RLast= 4.74D-02 DXMaxT set to 7.07D-02
+     Eigenvalues ---    0.00451   0.00957   0.00978   0.01629   0.03042
+     Eigenvalues ---    0.03293   0.04055   0.04951   0.05939   0.06436
+     Eigenvalues ---    0.07445   0.07696   0.08276   0.09441   0.09795
+     Eigenvalues ---    0.09948   0.10853   0.11927   0.12255   0.15258
+     Eigenvalues ---    0.18465   0.18876   0.21561   0.23568   0.24484
+     Eigenvalues ---    0.24969   0.26886   0.28642   0.29751   0.30328
+     Eigenvalues ---    0.31022   0.32347   0.33401   0.33515   0.33996
+     Eigenvalues ---    0.34073   0.34408   0.35847   0.37391   0.40205
+     Eigenvalues ---    0.501421000.000001000.000001000.000001000.00000
+     Eigenvalues --- 1000.000001000.000001000.000001000.000001000.00000
+     Eigenvalues --- 1000.000001000.000001000.000001000.000001000.00000
+     Eigenvalues --- 1000.000001000.000001000.000001000.000001000.00000
+     Eigenvalues --- 1000.000001000.000001000.000001000.000001000.00000
+     Eigenvalues --- 1000.000001000.000001000.000001000.000001000.00000
+     Eigenvalues --- 1000.000001000.000001000.000001000.000001000.00000
+     Eigenvalues --- 1000.000001000.000001000.00000
+ RFO step:  Lambda=-6.87723191D-08.
+ Quartic linear search produced a step of  0.00885.
+ Iteration  1 RMS(Cart)=  0.00022728 RMS(Int)=  0.00000005
+ Iteration  2 RMS(Cart)=  0.00000005 RMS(Int)=  0.00000001
+ Iteration  1 RMS(Cart)=  0.00000000 RMS(Int)=  0.00000000
+ Variable       Old X    -DE/DX   Delta X   Delta X   Delta X     New X
+                                 (Linear)    (Quad)   (Total)
+    R1        2.65608   0.00000  -0.00002   0.00005   0.00002   2.65610
+    R2        2.69507   0.00001  -0.00002   0.00008   0.00007   2.69514
+    R3        2.70361   0.00000  -0.00001   0.00002   0.00001   2.70362
+    R4        2.64824   0.00000   0.00001  -0.00004  -0.00003   2.64821
+    R5        2.74343  -0.00001  -0.00004   0.00006   0.00001   2.74345
+    R6        2.68515   0.00003   0.00002   0.00012   0.00014   2.68530
+    R7        1.83575   0.00001   0.00000   0.00001   0.00001   1.83576
+    R8        2.89633   0.00000   0.00001  -0.00005  -0.00004   2.89629
+    R9        2.89120   0.00000   0.00000   0.00000   0.00000   2.89120
+   R10        2.06504   0.00000   0.00000   0.00001   0.00001   2.06505
+   R11        2.06400   0.00000   0.00000   0.00001   0.00001   2.06401
+   R12        2.07402  -0.00003   0.00000  -0.00009  -0.00009   2.07393
+   R13        2.05982   0.00000   0.00000   0.00000   0.00000   2.05982
+   R14        2.07358   0.00000   0.00000   0.00000   0.00000   2.07358
+   R15        2.05454   0.00000   0.00000   0.00000   0.00000   2.05454
+   R16        2.07430   0.00000   0.00000   0.00000   0.00000   2.07429
+    A1        1.97706   0.00000   0.00001  -0.00001   0.00000   1.97706
+    A2        1.93579   0.00000  -0.00001  -0.00001  -0.00002   1.93577
+    A3        1.94227  -0.00007  -0.00003  -0.00023  -0.00026   1.94201
+    A4        1.81449  -0.00007  -0.00005  -0.00025  -0.00030   1.81418
+    A5        1.92038   0.00000   0.00000   0.00006   0.00006   1.92044
+    A6        1.87278   0.00000   0.00000   0.00004   0.00004   1.87281
+    A7        1.92163   0.00000   0.00000  -0.00003  -0.00002   1.92160
+    A8        1.91327   0.00000  -0.00001  -0.00001  -0.00001   1.91326
+    A9        1.94035   0.00000   0.00000  -0.00003  -0.00003   1.94033
+   A10        1.89399   0.00000   0.00000  -0.00003  -0.00003   1.89396
+   A11        1.98080  -0.00003   0.00003  -0.00025  -0.00022   1.98059
+   A12        1.95176   0.00000  -0.00001   0.00009   0.00008   1.95184
+   A13        1.83279   0.00000   0.00001  -0.00003  -0.00002   1.83277

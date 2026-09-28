@@ -1,0 +1,81 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/trsh/gaussian/maxsteps.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-5, 56-90, 11425-11445, 11640-11655
+ Entering Gaussian System, Link 0=g09
+ Initial command:
+ /usr/local/g09/l1.exe "/gtmp/calvin.p/scratch/g09/477574.zeus-master/Gau-997836.inp" -scrdir="/gtmp/calvin.p/scratch/g09/477574.zeus-master/"
+ Entering Link 1 = /usr/local/g09/l1.exe PID=    997837.
+  
+ [... 50 lines omitted ...]
+ Cite this work as:
+ Gaussian 09, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, B. Mennucci, 
+ G. A. Petersson, H. Nakatsuji, M. Caricato, X. Li, H. P. Hratchian, 
+ A. F. Izmaylov, J. Bloino, G. Zheng, J. L. Sonnenberg, M. Hada, 
+ M. Ehara, K. Toyota, R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima, 
+ Y. Honda, O. Kitao, H. Nakai, T. Vreven, J. A. Montgomery, Jr., 
+ J. E. Peralta, F. Ogliaro, M. Bearpark, J. J. Heyd, E. Brothers, 
+ K. N. Kudin, V. N. Staroverov, T. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. Rendell, J. C. Burant, S. S. Iyengar, J. Tomasi, 
+ M. Cossi, N. Rega, J. M. Millam, M. Klene, J. E. Knox, J. B. Cross, 
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann, 
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski, 
+ R. L. Martin, K. Morokuma, V. G. Zakrzewski, G. A. Voth, 
+ P. Salvador, J. J. Dannenberg, S. Dapprich, A. D. Daniels, 
+ O. Farkas, J. B. Foresman, J. V. Ortiz, J. Cioslowski, 
+ and D. J. Fox, Gaussian, Inc., Wallingford CT, 2013.
+ 
+ ******************************************
+ Gaussian 09:  EM64L-G09RevD.01 24-Apr-2013
+                 5-Aug-2024 
+ ******************************************
+ %chk=check.chk
+ %mem=32768mb
+ %NProcShared=16
+ Will use up to   16 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P opt=(calcfc,maxstep=5,tight) guess=read wb97xd/def2tzvp integral=(g
+ rid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight)
+ ----------------------------------------------------------------------
+ 1/7=10,8=5,10=4,14=-1,18=20,19=15,26=4,38=1/1,3;
+ 2/9=2000,12=2,17=6,18=5,40=1/2;
+ 3/5=44,7=101,11=2,16=1,25=1,30=1,71=2,74=-58,75=-5,116=-2,140=1/1,2,3;
+ 4/5=1/1;
+ [... 11334 lines omitted ...]
+    A4        2.09700   0.00038   0.00000   0.01110   0.01110   2.10809
+    A5        2.06844  -0.00039   0.00000  -0.01149  -0.01149   2.05695
+    A6        3.34318   0.00004   0.00000   0.00112   0.00112   3.34431
+    A7        3.14159   0.00000   0.00000   0.00000   0.00000   3.14159
+    D1        0.00000   0.00000   0.00000   0.00000   0.00000   0.00000
+    D2        3.14159   0.00000   0.00000   0.00000   0.00000   3.14159
+    D3        0.00000   0.00000   0.00000   0.00000   0.00000   0.00000
+    D4        3.14159   0.00000   0.00000   0.00000   0.00000   3.14159
+         Item               Value     Threshold  Converged?
+ Maximum Force            0.001691     0.000015     NO 
+ RMS     Force            0.000740     0.000010     NO 
+ Maximum Displacement     0.108447     0.000060     NO 
+ RMS     Displacement     0.048681     0.000040     NO 
+ Predicted change in Energy=-2.112158D-03
+ Optimization stopped.
+    -- Number of steps exceeded,  NStep=  27
+    -- Flag reset to prevent archiving.
+                           ----------------------------
+                           ! Non-Optimized Parameters !
+                           ! (Angstroms and Degrees)  !
+ --------------------------                            --------------------------
+ [... 194 lines omitted ...]
+ ZZZY=              0.0000 XXYY=            -87.0565 XXZZ=            -67.2328 YYZZ=            -36.6151
+ XXYZ=              0.0000 YYXZ=              0.0000 ZZXY=             12.2467
+ N-N= 2.157920683955D+02 E-N=-1.260402895391D+03  KE= 3.519295170656D+02
+ Symmetry A'   KE= 3.362936310344D+02
+ Symmetry A"   KE= 1.563588603124D+01
+ No NMR shielding tensors so no spin-rotation constants.
+ Leave Link  601 at Mon Aug  5 14:41:43 2024, MaxMem=  4294967296 cpu:         3.5
+ (Enter /usr/local/g09/l9999.exe)
+
+
+ THE LENGTH OF A MEETING IS PROPORTIONAL TO THE
+ SQUARE OF THE PARTICIPANTS.
+ Error termination request processed by link 9999.
+ Error termination via Lnk1e in /usr/local/g09/l9999.exe at Mon Aug  5 14:41:43 2024.
+ Job cpu time:       0 days  3 hours  9 minutes 52.1 seconds.
+ File lengths (MBytes):  RWF=     30 Int=      0 D2E=      0 Chk=      4 Scr=      1

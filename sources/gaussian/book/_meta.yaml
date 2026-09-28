@@ -1,0 +1,5 @@
+# Metadata for every file in this folder (a `<file>.meta.yaml` next to a file overrides it).
+# Edit the title to match your book; it replaces the file name in search results.
+title: "Exploring Chemistry with Electronic Structure Methods (Foresman & Frisch)"
+version: ["09", "16"]
+tags: [book, tutorial]

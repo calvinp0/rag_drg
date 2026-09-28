@@ -1,0 +1,34 @@
+# Zotero libraries synced into the knowledge base. See docs/zotero.md.
+#   rag-drg zotero sync --source zotero-group     (or: rag-drg ingest --fetch)
+#   rag-drg zotero status
+# Files land in the git-ignored sources_cache/<name>/ (PDFs never enter git).
+sources:
+  - name: zotero-group
+    type: zotero
+    enabled: false                 # set true once library_id and the key are in place
+    domain: literature
+    doc_type: paper
+    zotero:
+      mode: web                    # Zotero Web API v3
+      library_type: group          # group | user
+      library_id: "6305580"        # danaresearchgroup (zotero.org/groups/6305580/danaresearchgroup)
+      api_key_env: ZOTERO_API_KEY  # NAME of the env var holding a read-only key; never the key itself
+      collections: null            # null = whole library, or e.g. ["VAE-ESS-NN", "Datasets"] (names or keys)
+      collection_tags: true        # collection names (and parents) become tags, e.g. vae-ess-nn
+      include_notes: true          # child/standalone notes become Markdown documents
+      # file_types: [application/pdf, text/html]
+      # max_file_mb: 200
+
+  # A personal library read straight from the Zotero data directory (no API key needed).
+  # Zotero may be running: the database is copied before reading.
+  - name: zotero-personal
+    type: zotero
+    enabled: false
+    domain: literature
+    doc_type: paper
+    zotero:
+      mode: local
+      library_type: user
+      data_dir: ~/Zotero           # the folder with zotero.sqlite and storage/
+      # linked_base_dir: ~/Papers  # Zotero's "Linked Attachment Base Directory", if you use one
+      collections: null

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "rag-drg": {
-      "command": "rag-drg",
+      "command": ".venv/bin/rag-drg",
       "args": ["serve"]
     }
   }

@@ -56,6 +56,7 @@ class SourceConfig:
     allow_prefix: list[str] = field(default_factory=list)
     deny: list[str] = field(default_factory=list)  # substrings; matching URLs are skipped
     max_pages: int = 200
+    max_depth: int | None = None  # link hops from the start urls (None = unlimited within allow_prefix)
     delay: float = 0.5
 
 
@@ -69,6 +70,9 @@ class Config:
     sources: list[SourceConfig]
     chunk_size: int = 1500
     chunk_overlap: int = 200
+    # The whole merged YAML, so feature plugins can read their own top-level sections
+    # (e.g. cfg.extra.get("zotero")) without changes to this file.
+    extra: dict = field(default_factory=dict)
 
     def source(self, name: str) -> SourceConfig:
         for s in self.sources:
@@ -101,10 +105,51 @@ def _as_list(value: Any) -> list:
     return [value]
 
 
+def _version_str(value: Any) -> str | None:
+    """`version: "16"` or `version: ["09", "16"]` -> "16" / "09|16"."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, (list, tuple)):
+        return "|".join(str(v) for v in value)
+    return str(value)
+
+
+def _is_override(p: Path) -> bool:
+    return p.name.endswith(".local.yaml") or p.name.startswith("zz-")
+
+
+def conf_d_files(conf_d: Path) -> list[Path]:
+    """conf.d/*.yaml in merge order: shared files alphabetically, then per-machine
+    overrides (`zz-*.yaml`, `*.local.yaml`, git-ignored) so they always win."""
+    if not conf_d.is_dir():
+        return []
+    files = sorted(conf_d.glob("*.yaml"))
+    return [f for f in files if not _is_override(f)] + [f for f in files if _is_override(f)]
+
+
+def _deep_merge(base: Any, over: Any) -> Any:
+    """Dicts merge key by key (recursively); anything else (lists, scalars) replaces."""
+    if isinstance(base, dict) and isinstance(over, dict):
+        out = dict(base)
+        for k, v in over.items():
+            out[k] = _deep_merge(base.get(k), v)
+        return out
+    return over
+
+
 def load_config(path: str | os.PathLike | None = None) -> Config:
     cfg_path = _find_config(path)
     root = cfg_path.parent
     raw = yaml.safe_load(cfg_path.read_text()) or {}
+    # conf.d/*.yaml next to the main file: `sources` lists are appended, other keys merged
+    # recursively. Lets each feature keep its own config file.
+    for extra_file in conf_d_files(root / "conf.d"):
+        part = yaml.safe_load(extra_file.read_text()) or {}
+        for key, value in part.items():
+            if key == "sources":
+                raw["sources"] = list(raw.get("sources") or []) + list(value or [])
+            else:
+                raw[key] = _deep_merge(raw.get(key), value)
 
     def resolve(p: str | None, default: str) -> Path:
         p = os.path.expandvars(os.path.expanduser(p or default))
@@ -141,7 +186,7 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
                 exclude=_as_list(s.get("exclude")),
                 domain=s.get("domain"),
                 software=s.get("software"),
-                version=None if s.get("version") is None else str(s.get("version")),
+                version=_version_str(s.get("version")),
                 doc_type=s.get("doc_type", "reference"),
                 doc_type_rules=_as_list(s.get("doc_type_rules")),
                 tags=_as_list(s.get("tags")),
@@ -151,6 +196,7 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
                 allow_prefix=_as_list(s.get("allow_prefix")),
                 deny=_as_list(s.get("deny")),
                 max_pages=int(s.get("max_pages", 200)),
+                max_depth=None if s.get("max_depth") is None else int(s.get("max_depth")),
                 delay=float(s.get("delay", 0.5)),
             )
         )
@@ -164,4 +210,5 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
         sources=sources,
         chunk_size=int(raw.get("chunk_size", 1500)),
         chunk_overlap=int(raw.get("chunk_overlap", 200)),
+        extra=raw,
     )

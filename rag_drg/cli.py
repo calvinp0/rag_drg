@@ -23,7 +23,7 @@ from .config import load_config
 def _add_filters(p: argparse.ArgumentParser):
     p.add_argument("--software", "-s", help="orca, gaussian, qchem, psi4, molpro, pyscf, arc, slurm, ...")
     p.add_argument("--version", "-v", help="e.g. 6, 16, 2024")
-    p.add_argument("--domain", "-d", help="ess, arc, hpc, project, literature")
+    p.add_argument("--domain", "-d", help="ess, arc, hpc, project, literature, or lessons (recorded lessons only)")
     p.add_argument("--doc-type", help="lesson, gotcha, card, template, schema, reference, theory, code, paper")
 
 
@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("query", nargs="+")
     p.add_argument("--k", type=int, default=6)
     p.add_argument("--json", action="store_true", help="machine-readable output (for non-MCP agents)")
+    p.add_argument("--max-tokens", type=int, help="compact output within ~N tokens (for small local models)")
     _add_filters(p)
 
     p = sub.add_parser("serve", help="run the MCP server")
@@ -53,6 +54,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default=os.environ.get("RAG_DRG_HOST", "127.0.0.1"))
     p.add_argument("--port", type=int, default=int(os.environ.get("RAG_DRG_PORT", "8765")))
     p.add_argument("--readonly", action="store_true", help="open the index read-only; disables record_lesson")
+    p.add_argument("--auth", choices=["token", "none"], default=os.environ.get("RAG_DRG_AUTH", "token"),
+                   help="http/sse: require 'Authorization: Bearer <token>' (default; see `rag-drg tokens`)")
+    p.add_argument("--allow-unauthenticated", action="store_true",
+                   help="allow --auth none on a non-loopback address")
+    p.add_argument("--allowed-host", action="append", dest="allowed_hosts",
+                   default=[h for h in os.environ.get("RAG_DRG_ALLOWED_HOSTS", "").split(",") if h.strip()],
+                   help="host name clients use in the URL (Host-header check), e.g. rag.chem.example.ac.il; "
+                        "repeatable; '*' disables the check")
+    p.add_argument("--ssl-certfile", help="serve HTTPS directly (else put nginx/caddy in front)")
+    p.add_argument("--ssl-keyfile")
 
     p = sub.add_parser("lesson", help="record a lesson learned (a correction)")
     p.add_argument("--title", required=True)
@@ -64,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--evidence")
     p.add_argument("--tag", action="append", dest="tags")
 
+    p = sub.add_parser("check-pdf", help="is a PDF text-searchable, or does it need OCR? (and does it have bookmarks)")
+    p.add_argument("paths", nargs="+")
+
     p = sub.add_parser("level", help="which ESS supports a level of theory and how to write it")
     p.add_argument("name", nargs="?", default="", help="e.g. wB97X-D, 'DLPNO-CCSD(T)/cc-pVTZ'; empty lists all")
     p.add_argument("--software", "-s")
@@ -72,11 +86,21 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("stats", help="show index contents")
     sub.add_parser("sources", help="list configured sources")
 
+    from .plugins import plugin_modules
+
+    plugin_handlers: dict = {}
+    for mod in plugin_modules():
+        if hasattr(mod, "register_cli"):
+            plugin_handlers.update(mod.register_cli(sub) or {})
+
     args = parser.parse_args(argv)
     # stdout is the MCP channel for stdio transport; keep logs on stderr.
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, stream=sys.stderr, format="%(message)s")
     cfg = load_config(args.config)
     log = lambda msg: print(msg, file=sys.stderr)  # noqa: E731
+
+    if args.cmd in plugin_handlers:
+        return int(plugin_handlers[args.cmd](args, cfg) or 0)
 
     if args.cmd == "fetch":
         from .ingest import fetch_source
@@ -88,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
                 log(f"[{src.name}] disabled, skipping (pass --source {src.name} to force)")
                 continue
             log(f"[{src.name}] fetching {src.url or f'{len(src.urls)} urls'} -> {src.path}")
-            fetch_source(src)
+            fetch_source(src, cfg)
         return 0
 
     if args.cmd == "ingest":
@@ -105,39 +129,91 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "search":
-        from .search import Searcher, format_hits
+        from .search import Searcher, format_hits, make_reranker
 
         searcher = Searcher(cfg)
+        query = " ".join(args.query)
         hits = searcher.search(
-            " ".join(args.query), k=args.k, domain=args.domain, software=args.software,
-            version=args.version, doc_type=args.doc_type,
+            query, k=args.k, domain=args.domain, software=args.software,
+            version=args.version, doc_type=args.doc_type, rerank=make_reranker(cfg),
         )
         if args.json:
             print(json.dumps([h.to_dict() for h in hits], indent=2, default=str))
         else:
-            print(format_hits(hits))
+            print(format_hits(hits, query=query, max_tokens=args.max_tokens))
         return 0
 
     if args.cmd == "serve":
         from .mcp_server import serve
 
-        serve(cfg, transport=args.transport, host=args.host, port=args.port, readonly=args.readonly)
+        serve(cfg, transport=args.transport, host=args.host, port=args.port, readonly=args.readonly,
+              auth=args.auth, allowed_hosts=args.allowed_hosts, allow_unauthenticated=args.allow_unauthenticated,
+              ssl_certfile=args.ssl_certfile, ssl_keyfile=args.ssl_keyfile)
         return 0
 
     if args.cmd == "lesson":
-        from .lessons import index_lesson, write_lesson
+        from .lessons import check_lesson_meta, find_similar, index_lesson, lesson_text, write_lesson
+        from .search import Searcher
         from .store import Store
+        from .tools.lessons_workflow import submit_lesson
 
+        try:
+            check_lesson_meta(args.domain, args.software)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+
+        author = os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER")
+        st = Store(cfg.index_path)
+        similar = find_similar(
+            cfg, Searcher(cfg, store=st, embedder=False), lesson_text(args.title, args.mistake, args.correction),
+            software=args.software, domain=args.domain,
+        )
         path = write_lesson(
             cfg, title=args.title, mistake=args.mistake, correction=args.correction, domain=args.domain,
             software=args.software, version=args.version, evidence=args.evidence, tags=args.tags,
-            author=os.environ.get("RAG_DRG_AUTHOR") or os.environ.get("USER"),
+            author=author, similar=[s.path for s in similar],
         )
-        st = Store(cfg.index_path)
         index_lesson(cfg, st, path)
         st.close()
-        print(f"Wrote {path} (status: unreviewed). Commit it and open a PR for review.")
+        print(f"Wrote {path} (status: unreviewed).")
+        if similar:
+            print("possibly duplicates: " + ", ".join(f"{s.path} ({s.score:.2f})" for s in similar))
+        pr = submit_lesson(cfg, path, author=author)
+        print("Commit it and open a PR for review." if pr is None else pr.summary())
         return 0
+
+    if args.cmd == "check-pdf":
+        from pathlib import Path
+
+        from .chunking import pdf_quality
+
+        advice = {
+            "ok": "text layer is fine; ingest as is.",
+            "partial": "some pages are images only; `ocrmypdf --skip-text in.pdf out.pdf` OCRs just those pages.",
+            "scanned": "no usable text: run `ocrmypdf --skip-text in.pdf out.pdf` and ingest the output instead.",
+            "garbled": "text is unreadable (font encoding): run `ocrmypdf --force-ocr in.pdf out.pdf`.",
+        }
+        worst = 0
+        for p_ in args.paths:
+            files = sorted(Path(p_).rglob("*.pdf")) if Path(p_).is_dir() else [Path(p_)]
+            if not files or not all(f.is_file() for f in files):
+                print(f"{p_}: no PDF found")
+                worst = max(worst, 2)
+                continue
+            for f in files:
+                q = pdf_quality(f)
+                print(f"{q['file']}\n  pages: {q['pages']}, without text: {q['pages_without_text']}, "
+                      f"garbled: {q['pages_garbled']}, bookmarks: {q['bookmarks']}")
+                if q["first_pages_without_text"]:
+                    print(f"  pages without text (first): {q['first_pages_without_text']}")
+                print(f"  verdict: {q['verdict']} - {advice[q['verdict']]}")
+                if not q["bookmarks"]:
+                    print("  no bookmarks: it will be indexed page by page (still searchable, coarser titles).")
+                if q["sample"]:
+                    print(f"  sample: {q['sample'][:160]}...")
+                worst = max(worst, 0 if q["verdict"] == "ok" else 1)
+        return worst
 
     if args.cmd == "level":
         from .levels import lookup
