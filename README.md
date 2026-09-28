@@ -100,6 +100,10 @@ Local models: see [`integrations/local-models.md`](integrations/local-models.md)
 | `check_resources(server, partition, cores, mem_gb, walltime, gpus)` | Does a request fit the partition? |
 | `cluster_query(server, what)` | Read-only live queries (jobs, quota, partitions); off unless enabled |
 
+**Tool profiles.** `rag-drg serve --profile minimal` exposes only `search_knowledge`,
+`find_tool` and `run_tool` (about 650 tokens instead of 4,800) for clients that load every tool
+schema up front, e.g. local models; see [integrations/local-models.md](integrations/local-models.md).
+
 ### Command line
 
 | Command | Purpose | Docs |
