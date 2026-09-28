@@ -5,6 +5,30 @@ import pytest
 
 from rag_drg.config import load_config
 
+REPO = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def _ignore_repo_servers_yaml(monkeypatch, tmp_path_factory):
+    """The repo's servers.yaml describes the group's real clusters; it is data, not a fixture.
+    Tests that load the repo config see no servers.yaml (as before it existed); tests that
+    want clusters build a temp project with its own servers.yaml (e.g. servers.example.yaml)."""
+    from rag_drg.tools._servers import model
+
+    real = model.servers_path
+    missing = tmp_path_factory.getbasetemp() / "no-servers.yaml"
+
+    def servers_path(cfg):
+        if Path(cfg.root).resolve() == REPO:
+            return missing
+        return real(cfg)
+
+    import rag_drg.tools.compose_arc as compose_arc
+    import rag_drg.tools.servers as servers
+
+    for mod in (model, servers, compose_arc):  # the latter two import the name directly
+        monkeypatch.setattr(mod, "servers_path", servers_path)
+
 
 @pytest.fixture
 def project(tmp_path: Path):

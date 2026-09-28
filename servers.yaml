@@ -1,0 +1,88 @@
+# The group's clusters (spec: docs/servers-spec.md; field reference: servers.example.yaml).
+# Group-level facts only. Per-user values (ARC clone, conda install) go in each person's
+# ~/.config/rag-drg/user.yaml, never here.
+#
+# zeus: queue limits and access groups come from `qstat -Qf`, node sizes from `pbsnodes -a`
+# (2026-09-28). Per-node values are the SMALLEST node serving the queue; a job sized to them
+# fits on any of the queue's nodes. Re-run both commands when the cluster changes, and redraft
+# with `rag-drg servers discover-pbs`.
+
+servers:
+  zeus:
+    description: "Technion zeus cluster (PBS). ARC runs as a batch job on n170 in alon_q."
+    scheduler: pbspro
+    host: zeus.technion.ac.il
+    user: null                        # your own $USER
+    arc:
+      # Queues ARC may send ESS jobs to; the first is ARC's default. zeus_long_q is late in the
+      # list because it accepts only 10 queued jobs per user.
+      ess_queues: [alon_q, mafat_new_q, alon_comb_q, zeus_combined_q, zeus_long_q, zeus_short_q, zeus_comb_short]
+      runner:
+        queue: alon_q
+        host: n170                    # PBS vnode gd004; ARC runs and submits (qsub) from here
+        host_cores: 384
+        host_mem_gb: 1511
+        notes: "qsub from n170 works (confirmed 2026-09-28); qsub is /usr/local/bin/qsub, ARC's default"
+    partitions:
+      alon_q:
+        max_walltime: "3600:00:00"    # no resources_max.walltime set; 3600 h is the queue default
+        cores_per_node: 384           # 4 nodes: n170-n173 (vnodes gd001-gd004)
+        mem_per_node_gb: 1511
+        gpus_per_node: 0
+        max_nodes: 4
+        default: true
+        access:
+          groups: [grinberg-dana_prj, halupovich_prj]
+          notes: "the group's own queue (acl_groups)"
+        notes: "priority 148; max 1536 cores in total (resources_max.ncpus); no maximum walltime is set, 3600 h is the default"
+      mafat_new_q:
+        max_walltime: "3600:00:00"    # no resources_max.walltime set; 3600 h is the queue default
+        cores_per_node: 256           # 15 nodes listed (n131, n134, n137-n149)
+        mem_per_node_gb: 1007
+        gpus_per_node: 0
+        access:
+          groups: [amouyal_prj, arad_prj, ben-gida_prj, bitton_prj, cukurel_prj, eichen_prj, frankel_prj,
+                   freydin_prj, grinberg-dana_prj, grisaro_prj, halupovich_prj, jacobi_prj, karpas_prj,
+                   lahav_prj, manor_prj, michaels_prj, pollini_prj, shmulevich_prj, tartakovsky_prj,
+                   yuvallevy_prj]
+          notes: "acl_groups from qstat -Qf"
+        notes: "shared with ~20 groups; max 40 queued jobs per user; max 4352 cores in total; no maximum walltime is set"
+      alon_comb_q:
+        max_walltime: "24:00:00"      # no resources_max.walltime set; 24 h is the queue default
+        cores_per_node: 80            # 28 nodes list it: n017-n033 (80 cores, 377 GiB), n088-n099 without n091 (128 cores, ~1 TB)
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        access:
+          groups: [grinberg-dana_prj, halupovich_prj]
+          notes: "acl_groups from qstat -Qf"
+        notes: >-
+          600 cores running per user; max 3072 cores per job. Unlike the other queues it sets no
+          default_chunk.qlist, so the 28 nodes listing it in their qlist are an assumption.
+      zeus_combined_q:
+        max_walltime: "24:00:00"
+        cores_per_node: 80            # 100 nodes, 80-384 cores and 377-1512 GiB; 80 / 377 fits all of them
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        notes: "open to all zeus users; priority 80; 400 queued jobs and 600 cores running per user"
+      zeus_long_q:
+        max_walltime: "336:00:00"
+        cores_per_node: 80            # 15 nodes: n034-n040, n057-n064
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        notes: >-
+          open to all zeus users; only 10 queued and 20 running jobs per user (ARC can exceed
+          this quickly); 1120 cores running in total
+      zeus_short_q:
+        max_walltime: "03:00:00"
+        cores_per_node: 80            # 17 nodes: n017-n033
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        notes: "open to all zeus users; 600 jobs and 600 cores running per user"
+      zeus_comb_short:
+        max_walltime: "03:00:00"
+        cores_per_node: 80            # 72 nodes, 80-384 cores; 80 / 377 fits all of them
+        mem_per_node_gb: 377
+        gpus_per_node: 0
+        notes: "open to all zeus users; priority 80; 1000 jobs and 600 cores running per user"
+    # software: to fill in - the absolute paths of ORCA, Gaussian, Q-Chem, Psi4, Molpro and PySCF
+    # on zeus (see servers.example.yaml for the layout).

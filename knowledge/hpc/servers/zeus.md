@@ -8,9 +8,10 @@ tags: [cluster, server, zeus, technion, pbs, qsub, queues, alon_q, alon_comb_q, 
 ---
 # zeus cluster card
 
-Facts here come from the group. Items marked *to fill in* are not known yet; don't guess them.
-The machine-readable version (queue limits, install paths, access rules) belongs in
-`servers.yaml`, and `rag-drg arc compose` / `render_submit_script` read it from there.
+Facts here come from the group and from `qstat -Qf` / `pbsnodes -a` (2026-09-28). Items marked
+*to fill in* are not known yet; don't guess them. The machine-readable version is the `zeus` entry
+in `servers.yaml` (card: `generated/zeus.md`); `rag-drg arc compose`, `render_submit_script` and
+`check_resources` read it from there.
 
 ## Access
 
@@ -80,8 +81,31 @@ Rules and gotchas:
   not the usual `PBS_GENERIC`. It may not be enforced; ask the admins before relying on it.
 * There is no queue called `zeus_comb_q`: the combined queues are `zeus_combined_q` (24 h) and
   `zeus_comb_short` (3 h).
-* *To fill in:* the cores and memory per node for each queue except n170's. Get them with
-  `pbsnodes -a` (see `docs/arc-run.md`).
+
+## Nodes per queue (`pbsnodes -a`, 2026-09-28)
+
+Memory is `resources_available.mem` converted to GiB. Several queues share nodes, so their totals
+overlap.
+
+| Queue | Nodes | Cores per node | Memory per node | Total cores |
+|---|---|---|---|---|
+| `alon_q` | 4: n170-n173 (vnodes gd001-gd004) | 384 | ~1511 GiB | 1536 |
+| `mafat_new_q` | 15: n131, n134, n137-n149 | 256 | ~1007 GiB | 3840 (queue cap 4352) |
+| `alon_comb_q` | 28: n017-n033, n088-n099 except n091 | 80 or 128 | 377 GiB or ~1007 GiB | 2768 |
+| `zeus_long_q` | 15: n034-n040, n057-n064 | 80 | 377 GiB | 1200 |
+| `zeus_short_q` | 17: n017-n033 | 80 | 377 GiB | 1360 |
+| `zeus_combined_q` | 100, mixed | 80-384 | 377-1512 GiB | 14824 |
+| `zeus_comb_short` | 72, mixed | 80-384 | 377-1512 GiB | 9672 |
+
+* A single ESS job must fit on one node: at most 80 cores and about 377 GiB on `zeus_long_q`,
+  `zeus_short_q` and `alon_comb_q`, and up to 384 cores and about 1.5 TB on `alon_q`.
+* `servers.yaml` records the smallest node of each mixed queue (80 cores, 377 GiB), so a request
+  that passes `check_resources` fits on any node of that queue.
+* `alon_comb_q` sets no `default_chunk.qlist`, unlike the other queues, so it is not certain
+  that its jobs land only on the 28 nodes listing it in their `qlist`.
+* ARC's default `max_job_time` is 120 h, which is longer than the maximum walltime of
+  `alon_comb_q` (24 h default), `zeus_combined_q` (24 h), `zeus_short_q` (3 h) and
+  `zeus_comb_short` (3 h). `rag-drg arc compose` warns about this.
 
 ## Software installation paths
 
