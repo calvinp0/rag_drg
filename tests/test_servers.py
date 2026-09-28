@@ -134,7 +134,7 @@ def test_arc_settings_is_valid_python(example):
     assert entry["cluster_soft"] == "Slurm"
     assert entry["address"] == "login.example.org"
     assert entry["path"] == "/home" and entry["cpus"] == 48 and entry["memory"] == 256
-    assert list(entry["queues"]) == ["cpu", "gpu"]  # default queue first
+    assert list(entry["queues"]) == ["cpu"]  # restricted GPU queue left out (see test_review_servers)
     assert entry["queues"]["cpu"] == "72:00:00"
     assert entry["max_simultaneous_jobs"] == 20
     assert "un" not in entry and "key" not in entry
@@ -166,7 +166,7 @@ EXPECTED_BODY = {
               'export OMP_NUM_THREADS=8', '"$PYTHON" "job.py" > "job.out" 2>&1'],
 }
 EXPECTED_NOTE = {"orca": "%maxcore 3072", "gaussian": "%mem=28GB", "qchem": "MEM_TOTAL 28835",
-                 "molpro": "memory,", "psi4": "memory 28 GB", "pyscf": "max_memory = 28835"}
+                 "molpro": "memory,", "psi4": "memory 28835 MB", "pyscf": "max_memory = 28835"}
 
 
 @pytest.mark.parametrize("key", ALL_ESS)
@@ -218,7 +218,7 @@ def test_submit_defaults_and_python_psi4(example):
     assert "#SBATCH --time=24:00:00" in script and "#SBATCH --job-name=run" in script
     assert 'PYTHON=/opt/miniforge3/envs/psi4/bin/python' in script
     assert '"$PYTHON" "calc/run.py" > "calc/run.out" 2>&1' in script
-    assert 'psi4.set_memory("66 GB")' in notes[0]
+    assert 'psi4.set_memory("68485 MB")' in notes[0]
     # GPU build defaults to the only partition it may use
     script, _ = srv.render_submit_script(example, "gaussian-16-gpu", "a.gjf", gpus=2)
     assert "#SBATCH --partition=gpu" in script and "#SBATCH --gres=gpu:2" in script

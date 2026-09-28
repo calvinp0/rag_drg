@@ -36,7 +36,7 @@ DEFAULT_PRIORITY = 50
 HEAD_LINES = 300          # program banner, version, route / input echo
 TAIL_LINES = 2000         # errors are almost always within the last few hundred lines
 FULL_READ_BYTES = 4 << 20  # smaller files are simply read whole
-FULL_SCAN_MAX_BYTES = 256 << 20
+FALLBACK_SCAN_BYTES = 8 << 20  # when the tail explains nothing: rescan head + at most this much of the end
 MAX_CONTENT_CHARS = 2 << 20
 EXCERPT_CONTEXT = 4
 EXCERPT_MAX_LINES = 30
@@ -82,11 +82,27 @@ class ErrorEntry:
     priority: int = DEFAULT_PRIORITY
     severity: str = "error"
     versions: list[str] = field(default_factory=list)
+    standalone: bool | None = None
     regex: re.Pattern | None = field(default=None, repr=False, compare=False)
 
     @property
     def fallback(self) -> bool:
         return self.priority <= 0
+
+    @property
+    def proves_failure(self) -> bool:
+        """Does a match prove the job failed even without a termination/error marker?
+
+        Scheduler and `fatal` entries do. Otherwise the `standalone` field decides; by default
+        entries tied to a failing Gaussian link (`links`) and fallbacks do not (without an 'Error
+        termination' line there is no failing link, and e.g. 'Number of steps exceeded' is normal
+        for one point of a relaxed scan that goes on).
+        """
+        if self.software == "scheduler" or self.severity == "fatal":
+            return True
+        if self.standalone is not None:
+            return self.standalone
+        return not self.links and not self.fallback
 
 
 def is_errors_file(data: Any) -> bool:
@@ -108,7 +124,8 @@ def _entries_from_data(data: dict) -> list[ErrorEntry]:
             fixes=[str(f) for f in (e.get("fixes") or [])], sources=[str(s) for s in (e.get("sources") or [])],
             links=[str(x).lower() for x in (e.get("links") or [])],
             priority=int(e.get("priority", DEFAULT_PRIORITY)), severity=str(e.get("severity") or "error"),
-            versions=[str(v) for v in (e.get("versions") or [])], regex=rx,
+            versions=[str(v) for v in (e.get("versions") or [])],
+            standalone=e["standalone"] if isinstance(e.get("standalone"), bool) else None, regex=rx,
         ))
     return out
 
@@ -224,6 +241,21 @@ def read_head_tail(path: Path, tail_lines: int = TAIL_LINES, head_lines: int = H
         return path.read_text(errors="replace"), True
     marker = f"\n [... rag-drg: {skipped} bytes in the middle of the file not read ...]\n"
     return head.decode(errors="replace") + marker + tail.decode(errors="replace"), False
+
+
+def read_head_and_end(path: Path, end_bytes: int, head_lines: int = HEAD_LINES) -> tuple[str, bool]:
+    """(text, complete): the head plus the last `end_bytes` of the file (all of it if that covers it)."""
+    size = path.stat().st_size
+    with path.open("rb") as f:
+        head = b"".join(f.readline() for _ in range(head_lines))
+        start = max(len(head), size - end_bytes)
+        if start <= len(head):
+            return path.read_text(errors="replace"), True
+        f.seek(start)
+        f.readline()  # skip the partial line
+        end = f.read()
+    marker = f"\n [... rag-drg: {size - len(head) - len(end)} bytes in the middle of the file not read ...]\n"
+    return head.decode(errors="replace") + marker + end.decode(errors="replace"), False
 
 
 def _shrink_content(content: str, tail_lines: int) -> tuple[str, bool]:
@@ -451,7 +483,8 @@ class Diagnosis:
         if self.route:
             out.append(f"Route/input: {self.route}")
         for i, e in enumerate(self.errors[:max_errors]):
-            label = "Most likely cause" if i == 0 else "Also matched"
+            label = ("Possible cause" if self.status != "failed" else "Most likely cause") if i == 0 \
+                else "Also matched"
             out.append(f"\n{label}: [{e['software']}:{e['id']}] {e['meaning']}")
             out.append(f"  matched: {e['matched']!r}")
             if i == 0 or len(self.errors) <= 2:
@@ -583,14 +616,15 @@ def diagnose_output(
     if sw and sw not in KNOWN_SOFTWARE:
         notes.append(f"Unknown software {software!r}; known: {', '.join(KNOWN_SOFTWARE)}.")
     diag = _diagnose_text(text, sw, db)
-    # A big file whose tail explains nothing: look at the whole final step once.
+    # A big file whose tail explains nothing: look further back once, but bounded (the head plus
+    # the last FALLBACK_SCAN_BYTES), so a 50 MB log costs about as much as an 8 MB one.
     if (path is not None and not complete and diag.status in ("failed", "incomplete")
-            and not [e for e in diag.errors if e["priority"] > 0]
-            and Path(path).stat().st_size <= FULL_SCAN_MAX_BYTES):
-        text = Path(path).read_text(errors="replace")
-        complete = True
+            and not [e for e in diag.errors if e["priority"] > 0]):
+        text, complete = read_head_and_end(Path(path), FALLBACK_SCAN_BYTES)
         diag = _diagnose_text(text, sw, db)
-        notes.append("The tail did not explain the failure, so the whole file was scanned.")
+        notes.append("The tail did not explain the failure, so the whole file was scanned." if complete else
+                     f"The tail did not explain the failure, so the last {FALLBACK_SCAN_BYTES >> 20} MB of the "
+                     "file were scanned.")
     diag.file = name
     diag.complete_read = complete
     if not complete:
@@ -607,14 +641,25 @@ def _diagnose_text(text: str, sw: str | None, db: list[ErrorEntry]) -> Diagnosis
     notes: list[str] = []
     reason = st.reason
     decisive = [f for f in found if f[2].severity != "warning"]
-    if decisive and status in ("success", "incomplete", "unknown"):
+    if decisive and status == "success":
         first = decisive[0][2]
-        if status == "success" and first.severity == "fatal":
+        if first.severity == "fatal":
             reason = f"{reason}, but {first.id} matched (it is fatal even after a normal-termination marker)"
             status = "failed"
-        elif status in ("incomplete", "unknown"):
-            reason = f"{reason}; matched {first.id}"
+    elif decisive and status in ("incomplete", "unknown"):
+        # Without a termination/error marker only a message that is fatal on its own (scheduler
+        # kill, disk full, allocation failure, ...) proves a failure; the others are possible causes.
+        proof = next((f for f in decisive if f[2].proves_failure), None)
+        if proof is not None:
+            reason = f"{reason}; matched {proof[2].id}"
             status = "failed"
+            found = [proof] + [f for f in found if f is not proof]
+        else:
+            reason = f"{reason}; possible cause(s): {', '.join(f[2].id for f in decisive[:3])}"
+            notes.append("The matched message(s) do not prove a failure on their own: without a termination line "
+                         "they may belong to a step the job got past (e.g. 'Number of steps exceeded' for one "
+                         "point of a relaxed scan) or to a link that did not fail. Check whether the job is still "
+                         "running or was killed.")
     if status == "incomplete":
         notes.append(INCOMPLETE_ADVICE)
     if status == "failed" and not found:
@@ -713,6 +758,8 @@ def lint_errors_data(data: Any, where: str, seen_ids: dict[str, str] | None = No
                 problems.append(f"{tag}: links must look like 'l502', got {bad}")
         if e.get("priority") is not None and not isinstance(e["priority"], int):
             problems.append(f"{tag}: 'priority' must be an integer")
+        if e.get("standalone") is not None and not isinstance(e["standalone"], bool):
+            problems.append(f"{tag}: 'standalone' must be true or false")
         if e.get("severity") is not None and e["severity"] not in SEVERITIES:
             problems.append(f"{tag}: severity {e['severity']!r} not in {list(SEVERITIES)}")
     return problems

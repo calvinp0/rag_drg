@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
 
 from .model import Server, format_walltime
-from .submit import SubmitError, render_submit_script
+from .submit import SubmitError, _is_gpu_build, render_arc_template, render_submit_script
 
 GENERATED_SUBDIR = Path("hpc") / "servers" / "generated"
 
@@ -63,6 +64,29 @@ def _code(v) -> str:
 
 # ----------------------------------------------------------------- ARC settings
 
+def arc_queue_split(server: Server) -> tuple[list, dict[str, str]]:
+    """(partitions for ARC's `queues`, {excluded partition: why}).
+
+    Restricted (`access:`) and GPU partitions are left out: ARC's queue troubleshooting moves a
+    failed job to the next queue in the dict, and it never requests GPUs. If that would leave no
+    queue at all, every partition is kept.
+    """
+    ordered = sorted(server.partitions.values(), key=lambda p: not p.default)
+    excluded: dict[str, str] = {}
+    for p in ordered:
+        why = []
+        if p.access is not None:
+            why.append("restricted (access: " + access_text(p) + ")")
+        if p.gpus_per_node:
+            why.append("GPU partition (ARC does not request GPUs)")
+        if why:
+            excluded[p.name] = "; ".join(why)
+    kept = [p for p in ordered if p.name not in excluded]
+    if not kept:
+        return ordered, {}
+    return kept, excluded
+
+
 def arc_server_entry(server: Server) -> dict:
     part = server.default_partition
     entry: dict = {"cluster_soft": ARC_CLUSTER_SOFT[server.scheduler]}
@@ -75,7 +99,7 @@ def arc_server_entry(server: Server) -> dict:
         mem = part.mem_per_node_gb
         entry["memory"] = int(mem) if float(mem).is_integer() else mem
     # ARC takes the first queue as the default one.
-    ordered = sorted(server.partitions.values(), key=lambda p: not p.default)
+    ordered, _ = arc_queue_split(server)
     if ordered:
         entry["queues"] = {p.name: format_walltime(p.max_walltime_seconds) for p in ordered}
     if server.arc.get("max_simultaneous_jobs") is not None:
@@ -100,6 +124,9 @@ def arc_settings(servers: dict[str, Server], names: list[str] | None = None) -> 
         lines.append(f"    {n!r}: {{")
         for k, v in arc_server_entry(s).items():
             lines.append(f"        {k!r}: {v!r},")
+        _, excluded = arc_queue_split(s)
+        for pname, why in excluded.items():
+            lines.append(f"        # queue {pname!r} left out of 'queues': {why}")
         lines.append("        # 'un': '<your username>',")
         lines.append("        # 'key': '/home/<you>/.ssh/id_ed25519',")
         if "path" not in s.arc:
@@ -119,7 +146,56 @@ def arc_settings(servers: dict[str, Server], names: list[str] | None = None) -> 
     lines.append("}")
     if any(sw.ess == "psi4" for n in names for sw in servers[n].software.values()):
         lines.append("# psi4 is installed but is not in ARC's supported_ess, so it has no entry here.")
+    lines += ["", *arc_submit_scripts(servers, names)]
     return "\n".join(lines) + "\n"
+
+
+def _version_key(sw) -> tuple:
+    # the key's version (gaussian-16 > gaussian-09) first, then the full version string
+    return (tuple(int(x) for x in re.findall(r"\d+", sw.key)),
+            tuple(int(x) for x in re.findall(r"\d+", sw.version or "")))
+
+
+def arc_ess_install(server: Server, ess: str):
+    """The install ARC should use for `ess` on `server`: a non-GPU build, newest version first."""
+    cands = [sw for sw in server.software.values() if sw.ess == ess and not _is_gpu_build(sw)]
+    return max(cands, key=_version_key) if cands else None
+
+
+def arc_submit_scripts(servers: dict[str, Server], names: list[str]) -> list[str]:
+    """Lines of a `submit_scripts` dict for ~/.arc/submit.py (one template per ARC-supported ESS)."""
+    lines = [
+        "# " + "=" * 94,
+        "# REQUIRED: ~/.arc/submit.py must also have a `submit_scripts[<server>][<ess>]` entry for every",
+        "# server and ESS above. ARC looks up submit_scripts[server][job_adapter] when it writes a job",
+        "# (arc/job/adapter.py) and raises KeyError for a server that has none. Paste the dict below",
+        "# into ~/.arc/submit.py (merge it with an existing `submit_scripts`). ARC fills {name}, {un},",
+        "# {queue}, {t_max}, {memory} (MiB; per CPU on Slurm, total on PBS) and {cpus} with str.format,",
+        "# so literal braces are doubled ({{...}}). Review the scripts before the first run.",
+        "# " + "=" * 94,
+        "submit_scripts = {",
+    ]
+    for n in names:
+        s = servers[n]
+        lines.append(f"    {n!r}: {{")
+        for ess in ARC_ESS:
+            sw = arc_ess_install(s, ess)
+            if sw is None:
+                continue
+            others = [o.key for o in s.software.values() if o.ess == ess and o.key != sw.key]
+            try:
+                tmpl = render_arc_template(s, sw.key)
+            except SubmitError as e:
+                lines.append(f"        # {ess}: no template ({e})")
+                continue
+            if '"""' in tmpl or "\\" in tmpl:
+                lines.append(f"        # {ess}: no template (the script contains triple quotes or backslashes)")
+                continue
+            note = f"  # {sw.key}" + (f"; other installs: {', '.join(others)}" if others else "")
+            lines.append(f'        {ess!r}: """{tmpl}""",{note}')
+        lines.append("    },")
+    lines.append("}")
+    return lines
 
 
 # ----------------------------------------------------------------- cards

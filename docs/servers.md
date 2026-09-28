@@ -24,7 +24,10 @@ and write `servers.yaml` with the real values:
    (`access:`, see [Restricted queues](#restricted-queues-access)). Get them from
    `sinfo -o "%P %l %c %m %G"` / `scontrol show partition` (Slurm) or `qstat -Qf` / `pbsnodes -aSj`
    (PBS), or the cluster documentation. For PBS, `rag-drg servers discover-pbs` drafts the block.
-3. **Every ESS install**: absolute path of the executable, the environment lines it needs
+   Write walltimes as `"72:00:00"` (quoted or not: servers.yaml is read without YAML 1.1's base-60
+   numbers, so an unquoted `72:00:00` is not the integer 259200). A bare number means hours; one
+   above 10000 is rejected as a likely mis-parse.
+3. **Every ESS install**: absolute path of the executable (no spaces or shell metacharacters), the environment lines it needs
    (e.g. ORCA's OpenMPI `PATH`/`LD_LIBRARY_PATH`, `g16root` + `source $g16root/g16/bsd/g16.profile`,
    `QC`/`QCAUX` + `source $QC/qcenv.sh`, the Python env of Psi4/PySCF), MPI vs threads, and the
    partitions it may run on (e.g. the Gaussian GPU build only on the GPU partition).
@@ -61,7 +64,7 @@ Everything is under one command, `rag-drg servers`. `--file F` uses another file
 | `servers show NAME` | the full card (same text as the generated file) |
 | `servers validate` | validation problems of `servers.yaml` |
 | `servers render-cards [--out DIR]` | write one card per cluster |
-| `servers arc-settings [NAME ...]` | Python `servers = {...}` and a suggested `global_ess_settings` for `~/.arc/settings.py` |
+| `servers arc-settings [NAME ...]` | Python `servers = {...}` and a suggested `global_ess_settings` for `~/.arc/settings.py`, plus the **required** `submit_scripts = {...}` stubs for `~/.arc/submit.py` (see below) |
 | `servers submit SERVER SOFTWARE INPUT [--cores N --mem GB --time T --partition P --gpus G --job-name J -o FILE]` | submit script on stdout (or `-o`), notes (input lines, warnings) on stderr |
 | `servers check SERVER [PARTITION] --cores N --mem GB --time T [--gpus G --software KEY]` | check a request against the limits (exit 1 on errors) |
 | `servers query SERVER {jobs,job,history,partitions,quota,fairshare,queue_access} [JOB_ID]` | read-only live query (disabled by default, see below) |
@@ -86,8 +89,9 @@ They mirror `knowledge/hpc/templates/*.sh`:
   (PBS: `mpiprocs=N`); `threads` (Gaussian, Q-Chem, Psi4, PySCF) -> `--ntasks=1 --cpus-per-task=N`.
   Jobs are single-node. Memory is requested as total memory (`--mem`, PBS `mem=`).
 * **Absolute executable** plus the `env:` exports and `setup:` lines, no `module load`.
-* **Per-job scratch** `<scratch.path>/<job id>` (default `${TMPDIR:-/tmp}/<job id>`), removed at
-  the end: ORCA copies the input there, runs there and copies `.gbw/.hess/.xyz/...` back;
+* **Per-job scratch** `<scratch.path>/<job id>` (default `${TMPDIR:-/tmp}/<job id>`), removed by a
+  `trap cleanup EXIT` handler (`TERM`/`INT` exit through it), so a walltime kill or `scancel`/`qdel`
+  also copies ORCA's files back and removes node-local scratch: ORCA copies the input there, runs there and copies `.gbw/.hess/.xyz/...` back;
   Gaussian uses `GAUSS_SCRDIR`; Q-Chem `QCSCRATCH`/`QCLOCALSCR` and `qchem -nt N`; Molpro
   `molpro -n N -d $SCRATCH`; Psi4 `PSI_SCRATCH` and `psi4 -n N` (or the env's `python` for a `.py`
   input); PySCF `PYSCF_TMPDIR` and `OMP_NUM_THREADS`.
@@ -177,8 +181,9 @@ commands enabled, see below) runs, as you over SSH: `id -un`, `id -Gn` and
 - PBS Pro/OpenPBS: `qstat -Qf` - per queue: `usable` yes/no/unknown and why (`enabled`, `started`,
   `acl_users`, `acl_groups`; every enabled ACL must admit you), plus limits
   (`resources_max.walltime/ncpus/mem/ngpus`, `max_run`, `max_user_run`, ...). PBS compares
-  `acl_groups` with the job's group, so if the matching group is a secondary one, submit with
-  `#PBS -W group_list=<group>`. Torque is not supported (different output).
+  `acl_groups` with the job's group (one group), so a queue is usable if ANY one of your groups
+  is admitted (`-badgrp,+danagrp` still admits a member of both, via danagrp); if that group is not
+  your primary group (the first of `id -Gn`), the report says to submit with `#PBS -W group_list=<group>`. Torque is not supported (different output).
 - Slurm: `scontrol show partition` + `sacctmgr show assoc user=$USER format=Account,Partition -P -n`
   (`State`, `AllowGroups`, `AllowAccounts`/`DenyAccounts` vs. your accounts; `MaxTime`, ...).
 
@@ -196,8 +201,23 @@ rag-drg servers discover-pbs --from-file qstat_Qf.txt --pbsnodes pbsnodes.txt
 The output is a **draft to review**: walltime from `resources_max.walltime`, cores/memory/GPUs
 per node as the minimum over the nodes serving each queue (`queue =` or `resources_available.Qlist`
 in `pbsnodes -a`; all nodes when that mapping is unknown, falling back to the queue's per-job
-`resources_max.*`), `access:` from the ACLs, `max_run`/`max_user_run` as notes, route queues
-skipped, `TODO` where nothing was found.
+`resources_max.*`), `access:` from the ACLs (deny entries and wildcards such as `*`, which admit
+everyone, are left out with a comment; an ACL with nothing left gives no `access:`),
+`max_run`/`max_user_run` as notes, route queues skipped, `TODO` where nothing was found.
+
+### ARC settings and submit scripts
+
+`rag-drg servers arc-settings` prints three blocks. `servers` and `global_ess_settings` go into
+`~/.arc/settings.py`. `queues` lists the default partition first and leaves out restricted
+(`access:`) and GPU partitions (ARC's queue troubleshooting may move a job to any listed queue, and
+ARC never requests GPUs); a comment names each excluded one. The third block, `submit_scripts`,
+goes into `~/.arc/submit.py` and is **required**: ARC reads `submit_scripts[server][job_adapter]`
+when it writes a job and fails with `KeyError` for a server that has no entry. Each template is the
+same script as `servers submit` (newest non-GPU install of each ESS ARC supports: Gaussian, ORCA,
+Molpro, Q-Chem) with ARC's `str.format` placeholders `{name}`, `{queue}`, `{cpus}`, `{memory}`
+(MiB, per CPU on Slurm `--mem-per-cpu`, total on PBS `mem=...mb`), `{t_max}` and ARC's fixed file
+names (`input.gjf`/`input.log`, `input.in`/`input.log` (ORCA), `input.in`/`output.out` (Q-Chem));
+literal shell braces are doubled.
 
 ## Live cluster queries (off by default)
 
