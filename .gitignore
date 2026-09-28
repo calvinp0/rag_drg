@@ -224,3 +224,6 @@ sources/**/*.pdf
 sources/**/*.html
 sources/**/*.htm
 papers/**/*.pdf
+
+# Claude Code agent worktrees
+.claude/worktrees/
