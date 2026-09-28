@@ -383,6 +383,7 @@ def render(dest: Path, state: dict, s: ZoteroSettings,
                     and prev.get("sig") == sig and not path.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 (dest / prev["path"]).replace(path)  # renamed in Zotero; no need to download again
+                prev = files[akey] = {"path": rel, "sig": sig}
             if not path.is_file() or prev.get("sig") != sig or prev.get("path") != rel:
                 try:
                     data = fetch(att)

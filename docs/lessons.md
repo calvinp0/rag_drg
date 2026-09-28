@@ -14,7 +14,7 @@ Code: `rag_drg/lessons.py` (writing, duplicate detection) and
         │  1. look for near-duplicates (same software: lessons + curated cards)
         │  2. write knowledge/lessons/<domain>/[<software>/]<date>-<slug>.md
         │     status: unreviewed, similar: [paths]  -> indexed at once, searchable
-        │  3. lessons.pr.mode != none: commit it on lessons/<date>-<slug> (or lessons/<date>)
+        │  3. lessons.pr.mode != none: commit it on lessons/<domain>-[<software>-]<date>-<slug> (or lessons/<date>)
         │     from <remote>/<base>, push, and (github mode) open or update the PR
         ▼
  pull request  ── reviewer checks it against the manual / a test calculation
@@ -78,7 +78,7 @@ lessons:
 | mode | what happens after a lesson is recorded |
 |---|---|
 | `none` | nothing; the tool asks the user to commit the file and open a PR |
-| `branch` | commit on `lessons/<date>-<slug>` and push it; open the PR yourself (any git host) |
+| `branch` | commit on `lessons/<domain>-[<software>-]<date>-<slug>` (e.g. `lessons/ess-orca-2026-03-01-maxcore`) and push it; open the PR yourself (any git host) |
 | `github` | as `branch`, then open a PR via the GitHub REST API (`POST /repos/{owner}/{repo}/pulls`) titled `Lesson: <title>`, with the lesson, its author, the similar entries and a reviewer checklist |
 
 `batch: daily` puts all lessons of one day on `lessons/<YYYY-MM-DD>` and in one PR
@@ -113,7 +113,17 @@ the token is only used for the API.
    `git clone https://github.com/<owner>/<repo>.git rag_drg` (or the ssh URL plus a deploy
    key with write access).
 2. In that clone, set `mode: github`, `repo: <owner>/<repo>`, and `base:` to the branch the
-   group merges into, in `conf.d/lessons.yaml` (commit that change so it survives pulls).
+   group merges into, in a per-machine override, `conf.d/zz-local.yaml` (or
+   `conf.d/<name>.local.yaml`), which is git-ignored and merged after `conf.d/lessons.yaml`:
+
+   ```yaml
+   lessons:
+     pr: {mode: github, repo: <owner>/<repo>, base: main}
+   ```
+
+   Nested keys are merged, so the rest of `lessons.pr` keeps its defaults. Do **not** edit and
+   commit `conf.d/lessons.yaml` in the serving clone: a local commit makes the nightly
+   `git pull --ff-only` fail.
 3. Put the token in the service environment, not in the repo, e.g. a root-only
    `/etc/rag-drg/secrets.env` with `GITHUB_TOKEN=github_pat_...` and
    `EnvironmentFile=/etc/rag-drg/secrets.env` in `deploy/rag-drg.service`. Set
@@ -121,18 +131,22 @@ the token is only used for the API.
 4. Keep the serving checkout on `base` and clean. Recorded lessons stay there as untracked
    files until their PR is merged. Because `git pull` refuses to overwrite untracked files,
    the nightly refresh must run **`rag-drg lessons tidy` before `git pull --ff-only`**: it
-   fetches `<remote>/<base>` and deletes the local copies of lessons that are now on it, so
-   the pull brings in the reviewed version:
+   fetches `<remote>/<base>` (with the same token as the push) and deletes the local copies of
+   lessons that are now on it, or whose pushed commit (recorded in `index/lessons_prs.json`)
+   was merged into it even though the reviewer folded the lesson into a card and deleted the
+   file, so the pull brings in the reviewed version (`deploy/refresh.sh` does this; tidy and
+   lint problems are reported there but do not stop the re-index):
 
    ```bash
-   .venv/bin/rag-drg lessons tidy
+   .venv/bin/rag-drg lessons tidy || true
    git pull --ff-only
-   .venv/bin/rag-drg lint
+   .venv/bin/rag-drg lint || true
    .venv/bin/rag-drg ingest --fetch
    ```
 
    Lessons whose PR was closed without merging stay as local files; delete them by hand
-   (they are listed in `rag-drg lessons report`).
+   (they are listed in `rag-drg lessons report`). The same goes for lessons folded into a card
+   by a **squash or rebase merge**, which rewrites the commit: tidy cannot tell those were merged.
 5. Test it once from the server: `rag-drg lesson --title "test" ...` followed by closing the
    PR, or run `rag-drg lessons pr PATH` on an existing lesson.
 

@@ -39,6 +39,19 @@ def _slug(text: str, n: int = 60) -> str:
     return s[:n].rstrip("-") or "lesson"
 
 
+def check_lesson_meta(domain: str, software: str | None = None) -> str:
+    """Normalised domain, or ValueError if the lesson would fail `rag-drg lint`."""
+    from .lint import DOMAINS
+
+    d = _slug(domain or "", 30)
+    if d not in DOMAINS:
+        raise ValueError(f"domain {domain!r} is not one of {sorted(DOMAINS)}; lesson not recorded")
+    if d == "ess" and not (software or "").strip():
+        raise ValueError("domain 'ess' needs `software` (e.g. orca, gaussian, qchem, psi4, molpro, pyscf); "
+                         "lesson not recorded")
+    return d
+
+
 def write_lesson(
     cfg: Config,
     title: str,
@@ -52,7 +65,7 @@ def write_lesson(
     author: str | None = None,
     similar: list[str] | None = None,
 ) -> Path:
-    domain = _slug(domain, 30)
+    domain = check_lesson_meta(domain, software)  # raises ValueError instead of writing a lint failure
     folder = cfg.lessons_dir / domain
     if software:
         folder = folder / _slug(software, 30)

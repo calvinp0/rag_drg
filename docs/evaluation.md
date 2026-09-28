@@ -91,7 +91,9 @@ results, and the top 5 results (source, path, title, doc type, score). The file 
 **Privacy.** Queries can contain project details (molecules, unpublished results, user and
 cluster names). The log stays on the server under the git-ignored `index/`; never commit it or
 paste it raw into issues. Only curated questions (read and cleaned by a person) go into
-`eval/qa.yaml`. Delete `index/query_log.jsonl*` whenever you like, or set `enabled: false`.
+`eval/qa.yaml`. Delete `index/query_log.jsonl*` whenever you like, or set `enabled: false`
+(on the server, in the git-ignored `conf.d/zz-local.yaml` as `query_log: {enabled: false}`, not as
+a local commit, which would break the nightly `git pull --ff-only`).
 
 ```bash
 rag-drg queries report                  # last 7 days

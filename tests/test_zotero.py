@@ -266,6 +266,26 @@ def test_incremental_sync_and_deletion(zot):
     assert not (root / "items/P2").exists()
 
 
+def test_renamed_attachment_is_moved_not_downloaded_again(zot):
+    fake, make_cfg = zot
+    cfg = make_cfg()
+    src = cfg.source("zot")
+    sync_source(src, cfg, progress=quiet)
+    root = src.path
+    assert (root / "items/P1/A1_gomez_2018.pdf").is_file()
+
+    # Renamed in Zotero (same file, same md5): only the metadata version changes.
+    fake.version = 5
+    fake.items["A1"]["version"] = 5
+    fake.items["A1"]["data"]["filename"] = "gomez-bombarelli 2018.pdf"
+    fake.log.clear()
+    sync_source(src, cfg, progress=quiet)
+    assert (root / "items/P1/A1_gomez-bombarelli_2018.pdf").is_file()
+    assert not (root / "items/P1/A1_gomez_2018.pdf").exists()
+    assert not [p for p, _, _ in fake.log if p.startswith("/s3/")]
+    assert load_state(root)["files"]["A1"]["path"] == "items/P1/A1_gomez-bombarelli_2018.pdf"
+
+
 def test_collection_filter(zot):
     _, make_cfg = zot
     cfg = make_cfg(collections=["vae ess nn"], collection_tags=False)

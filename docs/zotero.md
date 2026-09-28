@@ -78,7 +78,9 @@ The nightly refresh (`deploy/refresh.sh`, run by cron) loads `/etc/rag-drg/secre
 
 ## 5. Configure and run
 
-Edit `conf.d/zotero.yaml`:
+Edit `conf.d/zotero.yaml` (through a normal PR; on the serving clone itself put machine-only
+changes in the git-ignored `conf.d/zz-local.yaml` instead, because a local commit there breaks
+the nightly `git pull --ff-only`):
 
 ```yaml
 sources:

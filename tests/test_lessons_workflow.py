@@ -209,7 +209,7 @@ def test_branch_mode_pushes_without_touching_checkout(project, tmp_path):
     out = call("record_lesson", **ORCA_DUP)
     lesson = next((project.lessons_dir / "ess" / "orca").glob("*.md"))
     rel = lesson.relative_to(project.root).as_posix()
-    branch = f"lessons/{lesson.stem}"
+    branch = f"lessons/ess-orca-{lesson.stem}"
     assert f"Pushed to branch {branch}" in out
 
     # Branch on the remote: one commit on top of main, containing exactly the lesson.
@@ -242,7 +242,7 @@ def test_lessons_pr_cli_for_existing_lessons(project, tmp_path, capsys):
     p1 = write_lesson(cfg, **ORCA_OTHER, author="bob")
     code = cli_main(["-c", str(project.root / "rag_drg.yaml"), "lessons", "pr", "--all-unreviewed"])
     assert code == 0
-    assert git(bare, "branch", "--list", f"lessons/{p1.stem}").strip().endswith(p1.stem)
+    assert git(bare, "branch", "--list", f"lessons/ess-orca-{p1.stem}").strip().endswith(p1.stem)
     capsys.readouterr()
     cli_main(["-c", str(project.root / "rag_drg.yaml"), "lessons", "pr", "--all-unreviewed"])
     assert "Nothing to do" in capsys.readouterr().out
@@ -266,11 +266,11 @@ def test_github_mode_opens_pr(project, tmp_path, github, monkeypatch):
     assert all(r["auth"] == "Bearer sekrit-token" for r in github.requests)
     get, post, labels = github.requests
     assert get["method"] == "GET" and get["path"].startswith("/repos/o/r/pulls?")
-    assert f"head=o%3Alessons%2F{lesson.stem}" in get["path"]
+    assert f"head=o%3Alessons%2Fess-orca-{lesson.stem}" in get["path"]
     assert post["method"] == "POST" and post["path"] == "/repos/o/r/pulls"
     body = post["body"]
     assert body["title"] == "Lesson: ORCA maxcore is per core"
-    assert body["head"] == f"lessons/{lesson.stem}" and body["base"] == "main"
+    assert body["head"] == f"lessons/ess-orca-{lesson.stem}" and body["base"] == "main"
     for text in (rel, "alice", "knowledge/ess/orca/orca.md", "Reviewer checklist", "status: verified",
                  "%maxcore 3000"):
         assert text in body["body"]

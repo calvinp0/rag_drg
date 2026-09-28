@@ -114,23 +114,42 @@ def _version_str(value: Any) -> str | None:
     return str(value)
 
 
+def _is_override(p: Path) -> bool:
+    return p.name.endswith(".local.yaml") or p.name.startswith("zz-")
+
+
+def conf_d_files(conf_d: Path) -> list[Path]:
+    """conf.d/*.yaml in merge order: shared files alphabetically, then per-machine
+    overrides (`zz-*.yaml`, `*.local.yaml`, git-ignored) so they always win."""
+    if not conf_d.is_dir():
+        return []
+    files = sorted(conf_d.glob("*.yaml"))
+    return [f for f in files if not _is_override(f)] + [f for f in files if _is_override(f)]
+
+
+def _deep_merge(base: Any, over: Any) -> Any:
+    """Dicts merge key by key (recursively); anything else (lists, scalars) replaces."""
+    if isinstance(base, dict) and isinstance(over, dict):
+        out = dict(base)
+        for k, v in over.items():
+            out[k] = _deep_merge(base.get(k), v)
+        return out
+    return over
+
+
 def load_config(path: str | os.PathLike | None = None) -> Config:
     cfg_path = _find_config(path)
     root = cfg_path.parent
     raw = yaml.safe_load(cfg_path.read_text()) or {}
-    # conf.d/*.yaml next to the main file: `sources` lists are appended, other keys merged.
-    # Lets each feature keep its own config file.
-    conf_d = root / "conf.d"
-    if conf_d.is_dir():
-        for extra_file in sorted(conf_d.glob("*.yaml")):
-            part = yaml.safe_load(extra_file.read_text()) or {}
-            for key, value in part.items():
-                if key == "sources":
-                    raw["sources"] = list(raw.get("sources") or []) + list(value or [])
-                elif isinstance(value, dict) and isinstance(raw.get(key), dict):
-                    raw[key] = {**raw[key], **value}
-                else:
-                    raw[key] = value
+    # conf.d/*.yaml next to the main file: `sources` lists are appended, other keys merged
+    # recursively. Lets each feature keep its own config file.
+    for extra_file in conf_d_files(root / "conf.d"):
+        part = yaml.safe_load(extra_file.read_text()) or {}
+        for key, value in part.items():
+            if key == "sources":
+                raw["sources"] = list(raw.get("sources") or []) + list(value or [])
+            else:
+                raw[key] = _deep_merge(raw.get(key), value)
 
     def resolve(p: str | None, default: str) -> Path:
         p = os.path.expandvars(os.path.expanduser(p or default))

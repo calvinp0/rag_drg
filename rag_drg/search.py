@@ -22,6 +22,7 @@ from .store import Store, StoredChunk
 
 RRF_K = 60
 CANDIDATES = 60
+LESSONS_DOMAIN = "lessons"  # pseudo-domain for search filters; equals lessons.LESSONS_SOURCE
 
 # Multipliers applied after fusion. Curated knowledge wins ties against raw manuals.
 TYPE_BOOST = {
@@ -117,6 +118,13 @@ class Searcher:
     ) -> list[Hit]:
         """Hybrid search. `rerank(query, texts) -> scores` (optional, e.g. a cross-encoder from
         :func:`make_reranker`) re-orders the best `rerank.top_n` (default 30) fused candidates."""
+        # `domain="lessons"` is a pseudo-domain: lesson chunks carry their real domain (ess, hpc,
+        # ...), so it means "only the recorded lessons", i.e. the lessons source.
+        if isinstance(domain, str) and domain.strip().lower() == LESSONS_DOMAIN or (
+                isinstance(domain, (list, tuple)) and [str(d).lower() for d in domain] == [LESSONS_DOMAIN]):
+            domain = None
+            if source is None:
+                source = LESSONS_DOMAIN
         filters = dict(domain=domain, software=software, version=version, doc_type=doc_type, source=source)
         scores: dict[int, float] = {}
         via: dict[int, list[str]] = {}
