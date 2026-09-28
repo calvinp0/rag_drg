@@ -354,7 +354,7 @@ def render_card(server: Server) -> str:
         "title": f"{s.name} cluster card (generated from servers.yaml)",
         "domain": "hpc",
         "software": s.scheduler,
-        "doc_type": "card",
+        "doc_type": "reference",  # a rendering of servers.yaml: rank below hand-written cards
         "status": "draft",
         "generated": True,
         "tags": list(dict.fromkeys(tags)),

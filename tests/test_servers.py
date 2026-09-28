@@ -91,7 +91,7 @@ def test_rendered_cards_pass_lint(project, example):
     assert "ARC's `servers` entry is `'local'`" in written[1].read_text()
     text = written[0].read_text()
     meta = yaml.safe_load(text.split("---")[1])
-    assert meta["domain"] == "hpc" and meta["software"] == "slurm" and meta["doc_type"] == "card"
+    assert meta["domain"] == "hpc" and meta["software"] == "slurm" and meta["doc_type"] == "reference"
     assert meta["status"] == "draft" and meta["generated"] is True
     for section in ("## Access", "## Partitions / queues", "## Installed software", "## Storage, scratch and quotas",
                     "## How to submit"):
