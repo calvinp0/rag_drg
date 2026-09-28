@@ -65,6 +65,16 @@ def _token() -> str | None:
     return f.read_text().strip() if f.is_file() else None
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow redirects: urllib would re-send the Authorization header to the new host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401, PLR0913
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def _request(method: str, path: str, *, params: dict | None = None, body: dict | None = None) -> dict:
     url = f"{_base_url()}/api/{path}"
     if params:
@@ -78,7 +88,7 @@ def _request(method: str, path: str, *, params: dict | None = None, body: dict |
     if tok:
         req.add_header("Authorization", f"Bearer {tok}")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with _OPENER.open(req, timeout=TIMEOUT) as r:
             raw = r.read() or b"{}"
             if "json" not in (r.headers.get("Content-Type") or ""):
                 return {"text": raw.decode(errors="replace")}
@@ -87,6 +97,10 @@ def _request(method: str, path: str, *, params: dict | None = None, body: dict |
         detail = e.read().decode(errors="replace")[:300]
         if e.code == 401:
             raise ConnectionError("401 unauthorized: check RAG_DRG_TOKEN") from e
+        if 300 <= e.code < 400:
+            raise ConnectionError(f"server redirected ({e.code}) to {e.headers.get('Location')}; "
+                                  "set RAG_DRG_URL to the final address (redirects are not followed "
+                                  "so your token is never sent elsewhere)") from e
         raise ConnectionError(f"HTTP {e.code}: {detail}") from e
     except (urllib.error.URLError, OSError) as e:
         raise ConnectionError(f"cannot reach {url.split('?')[0]}: {e}") from e

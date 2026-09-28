@@ -24,6 +24,8 @@ from __future__ import annotations
 import contextlib
 import json
 
+import anyio
+
 from typing import Any
 
 MAX_K = 20
@@ -128,6 +130,12 @@ def build_rest_app(ctx) -> Any:
         return JSONResponse({"chunk_id": cid, "chunks": rows})
 
     async def _json_body(request: Request) -> dict:
+        try:
+            declared = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            declared = 0
+        if declared > MAX_BODY:
+            raise _BadRequest(f"request body larger than {MAX_BODY // 1_000_000} MB; send the head and tail only")
         raw = await request.body()
         if len(raw) > MAX_BODY:
             raise _BadRequest(f"request body larger than {MAX_BODY // 1_000_000} MB; send the head and tail only")
@@ -152,9 +160,15 @@ def build_rest_app(ctx) -> Any:
         groups = data.get("client_groups")
         identity = (data.get("client_user") or None,
                     [str(g) for g in groups] if isinstance(groups, list) else None)
-        with client_identity(identity):
-            findings = check_input(content=content, filename=filename,
+
+        def work():
+            # Runs in a worker thread (CPU-heavy parsing must not block other users' requests);
+            # the identity scope is set inside the thread so it can never leak between requests.
+            with client_identity(identity):
+                return check_input(content=content, filename=filename,
                                    submit_content=data.get("submit_content") or None, cfg=ctx.cfg)
+
+        findings = await anyio.to_thread.run_sync(work)
         n = {sev: sum(1 for f in findings if f.severity == sev) for sev in ("error", "warning", "info")}
         ctx.emit({"tool": "check_input", "transport": "rest", "args": {"filename": filename},
                   "n_results": len(findings), "errors": n["error"], "warnings": n["warning"]})
@@ -172,8 +186,9 @@ def build_rest_app(ctx) -> Any:
             return JSONResponse({"error": "need a non-empty string field 'content'"}, status_code=400)
         from .diagnose import diagnose_output
 
-        d = diagnose_output(content=content, filename=data.get("filename") or None,
-                            software=data.get("software") or None, cfg=ctx.cfg)
+        d = await anyio.to_thread.run_sync(lambda: diagnose_output(
+            content=content, filename=data.get("filename") or None,
+            software=data.get("software") or None, cfg=ctx.cfg))
         body = json.loads(json.dumps(d.to_dict(), default=str))
         body["text"] = d.format_text()
         ctx.emit({"tool": "diagnose_output", "transport": "rest", "args": {"filename": data.get("filename")},
@@ -191,8 +206,9 @@ def build_rest_app(ctx) -> Any:
         from .basis import check_basis, format_report
 
         try:
-            res = check_basis(basis, elements=data.get("elements"), smiles=data.get("smiles"),
-                              xyz=data.get("xyz"), software=data.get("software"))
+            res = await anyio.to_thread.run_sync(lambda: check_basis(
+                basis, elements=data.get("elements"), smiles=data.get("smiles"),
+                xyz=data.get("xyz"), software=data.get("software")))
         except Exception as e:  # noqa: BLE001 - e.g. BSE / RDKit not installed on the server
             return JSONResponse({"error": str(e)}, status_code=422)
         res = dict(res)

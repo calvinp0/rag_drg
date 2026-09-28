@@ -70,17 +70,51 @@ def _mcp_asgi_app(mcp, transport: str, host: str, security):
     return mcp.sse_app() if transport == "sse" else mcp.streamable_http_app()
 
 
-class _Router:
-    """`/api/...` -> REST app, everything else (and lifespan) -> the MCP app."""
+def _allowed(value: str, patterns: list[str]) -> bool:
+    for p in patterns:
+        if value == p or (p.endswith(":*") and value.rsplit(":", 1)[0] == p[:-2] and ":" in value):
+            return True
+    return False
 
-    def __init__(self, mcp_app, rest_app):
+
+async def _reject(send, status: int, message: str):
+    body = message.encode()
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"text/plain"), (b"content-length", str(len(body)).encode())]})
+    await send({"type": "http.response.body", "body": body})
+
+
+class _Router:
+    """`/api/...` -> REST app, everything else (and lifespan) -> the MCP app.
+
+    The SDK's Host/Origin (DNS-rebinding) checks only guard its own endpoints, so the same
+    settings are applied to /api here."""
+
+    def __init__(self, mcp_app, rest_app, security=None):
         self.mcp_app = mcp_app
         self.rest_app = rest_app
+        self.security = security
+
+    def _host_problem(self, scope) -> tuple[int, str] | None:
+        sec = self.security
+        if sec is None or not getattr(sec, "enable_dns_rebinding_protection", False):
+            return None
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+        if not _allowed(headers.get("host", ""), list(sec.allowed_hosts or [])):
+            return 421, "Invalid Host header"
+        origin = headers.get("origin")
+        if origin and not _allowed(origin, list(sec.allowed_origins or [])):
+            return 403, "Invalid Origin header"
+        return None
 
     async def __call__(self, scope, receive, send):
         if scope["type"] in ("http", "websocket"):
             path = scope.get("path", "")
             if path == "/api" or path.startswith("/api/"):
+                problem = self._host_problem(scope)
+                if problem:
+                    await _reject(send, *problem)
+                    return
                 scope = dict(scope)
                 scope["root_path"] = scope.get("root_path", "") + "/api"
                 scope["path"] = path[4:] or "/"
@@ -106,7 +140,7 @@ def build_http_app(mcp, transport: str = "http", host: str = "127.0.0.1",
 
     ctx = mcp._rag_drg_ctx
     security = transport_security(host, allowed_hosts)
-    app = _Router(_mcp_asgi_app(mcp, transport, host, security), build_rest_app(ctx))
+    app = _Router(_mcp_asgi_app(mcp, transport, host, security), build_rest_app(ctx), security)
     if token_store is not None:
         app = BearerAuthMiddleware(app, token_store, public_paths=("/api/health",))
     return app

@@ -173,13 +173,24 @@ def check_distances(inp: ParsedInput) -> list[Finding]:
     import numpy as np
 
     xyz = np.array([a.xyz for a in pts], dtype=float) * scale
-    d2 = ((xyz[:, None, :] - xyz[None, :, :]) ** 2).sum(-1)
-    iu = np.triu_indices(len(pts), 1)
-    close = np.where(d2[iu] < MIN_DIST_ANG ** 2)[0]
+    # Block-wise so memory stays bounded (~BLOCK x n doubles) for large inputs on the shared server.
+    pairs: list[tuple[int, int, float]] = []
+    n_close = 0
+    block = 256
+    for start in range(0, len(pts), block):
+        chunk = xyz[start:start + block]
+        d2 = ((chunk[:, None, :] - xyz[None, :, :]) ** 2).sum(-1)
+        ii, jj = np.nonzero(d2 < MIN_DIST_ANG ** 2)
+        for i_local, j in zip(ii.tolist(), jj.tolist()):
+            i = start + i_local
+            if j <= i:
+                continue
+            n_close += 1
+            if len(pairs) < 3:
+                pairs.append((i, j, math.sqrt(float(d2[i_local, j]))))
+    close = range(n_close)
     out = []
-    for k in close[:3]:
-        i, j = iu[0][k], iu[1][k]
-        d = math.sqrt(d2[i, j])
+    for i, j, d in pairs:
         a, b = pts[i], pts[j]
         what = "duplicate atom" if d < 0.01 else "too close"
         out.append(Finding(

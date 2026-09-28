@@ -507,7 +507,11 @@ def register_mcp(mcp, ctx) -> None:
                   "n_results": len(rows)})
         return json.dumps(rows, indent=1)
 
-    if cluster_commands_enabled(cfg) and not ctx.readonly:
+    # Never on the shared HTTP server: commands would run with the service account's SSH identity,
+    # so `$USER`, quotas and queue access would describe the service account, not the requester.
+    from ._servers.access import local_identity_allowed
+
+    if cluster_commands_enabled(cfg) and not ctx.readonly and local_identity_allowed():
 
         @mcp.tool(name="cluster_query")
         def cluster_query_tool(server: str, what: str, job_id: str | None = None) -> str:
