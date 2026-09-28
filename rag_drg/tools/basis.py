@@ -240,9 +240,10 @@ def elements_from_smiles(smiles: str) -> list[str]:
 
 
 def elements_from_xyz(text: str) -> list[str]:
-    """Elements from xyz text (with or without the count/comment header) or a path to an .xyz file."""
-    if "\n" not in text and len(text) < 4096 and Path(text).expanduser().is_file():
-        text = Path(text).expanduser().read_text(errors="replace")
+    """Elements from xyz *text* (with or without the count/comment header).
+
+    Never treats the argument as a file path: this is reachable from the shared server's MCP/REST
+    tools, where reading a path would expose the server's files. The CLI reads files itself."""
     found = []
     for line in text.splitlines():
         tok = line.replace(",", " ").split()
@@ -295,7 +296,7 @@ def check_basis(basis: str, elements: list[str] | str | None = None, smiles: str
                 xyz: str | None = None, software: str | None = None) -> dict:
     """Resolve a basis name in BSE and check element coverage / ECPs / auxiliary sets.
 
-    Elements come from `elements` (list or "C,H,I"), `xyz` (text or path) or `smiles` (RDKit).
+    Elements come from `elements` (list or "C,H,I"), `xyz` (geometry text) or `smiles` (RDKit).
     """
     res: dict = {"input": basis, "found": False, "canonical": None, "bse_key": None, "role": None,
                  "interpreted_as": None, "suggestions": [], "elements": [], "covered": [], "missing": [],

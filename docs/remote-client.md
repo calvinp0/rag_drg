@@ -15,6 +15,14 @@ API with your personal token.
 ARC is never used by the server: it indexes ARC's source from GitHub. Your own ARC checkout and
 `~/.arc/settings.py` stay yours.
 
+## Transport security
+
+Tokens are sent as `Authorization: Bearer ...`. Over plain `http://` they cross the network
+unencrypted; behind the university firewall that is a trade-off the group may accept, but an
+`https://` URL (see docs/auth.md for `--ssl-certfile`/`--ssl-keyfile` or a reverse proxy) is
+better whenever it is available. The client never follows redirects, so the token only ever goes
+to the host in `RAG_DRG_URL`.
+
 ## Setup (once per person)
 
 1. Ask the server admin for a token (`rag-drg tokens add <you>` on the main PC).
