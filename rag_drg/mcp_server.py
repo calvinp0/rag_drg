@@ -18,6 +18,7 @@ import threading
 from .config import Config
 from .ingest import embed_missing
 from .levels import lookup
+from .plugins import ServerContext, plugin_modules
 from .lessons import index_lesson, write_lesson
 from .search import Searcher, format_hits
 from .store import Store, dumps
@@ -68,6 +69,8 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
     else:
         mcp = server_cls("rag-drg", instructions=INSTRUCTIONS, host=host, port=port)
     mcp._rag_drg_sdk_major = sdk_major  # used by serve()
+    ctx = ServerContext(cfg=cfg, store=store, searcher=searcher, lock=lock, readonly=readonly)
+    mcp._rag_drg_ctx = ctx
 
     @mcp.tool()
     def search_knowledge(
@@ -97,6 +100,14 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 query, k=max(1, min(int(k), 20)), domain=domain, software=software,
                 version=version, doc_type=doc_type,
             )
+        ctx.emit({
+            "tool": "search_knowledge",
+            "args": {"query": query, "software": software, "version": version, "domain": domain,
+                     "doc_type": doc_type, "k": k},
+            "n_results": len(hits),
+            "results": [{"source": h.chunk.source, "path": h.chunk.path, "title": h.chunk.title,
+                         "doc_type": h.chunk.doc_type, "score": round(h.score, 5)} for h in hits],
+        })
         return format_hits(hits)
 
     @mcp.tool()
@@ -168,7 +179,10 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
             software: Only show this code's row (gaussian, orca, qchem, psi4, molpro, pyscf),
                 plus which other codes support it as-is.
         """
-        return lookup(cfg, name or None, software)
+        out = lookup(cfg, name or None, software)
+        ctx.emit({"tool": "lookup_level_of_theory", "args": {"name": name, "software": software},
+                  "n_results": 0 if out.startswith(("No ", "'")) else 1})
+        return out
 
     @mcp.tool()
     def list_knowledge_sources() -> str:
@@ -217,10 +231,16 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 except Exception:  # noqa: BLE001 - keyword search still finds it
                     pass
             rel = path.relative_to(cfg.root) if path.is_relative_to(cfg.root) else path
+            ctx.emit({"tool": "record_lesson", "args": {"title": title, "domain": domain, "software": software},
+                      "path": str(rel), "n_results": 1})
             return (
                 f"Lesson saved to {rel} (status: unreviewed) and indexed. "
                 "Ask the user to commit it and open a PR so the group can review it."
             )
+
+    for mod in plugin_modules():
+        if hasattr(mod, "register_mcp"):
+            mod.register_mcp(mcp, ctx)
 
     return mcp
 

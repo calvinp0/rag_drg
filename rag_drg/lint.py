@@ -48,4 +48,9 @@ def lint(cfg: Config) -> list[str]:
                 problems.append(f"{rel}: lessons need '## Mistake' and '## Correct approach' sections")
             if not body.strip():
                 problems.append(f"{rel}: empty body")
+    from .plugins import plugin_modules
+
+    for mod in plugin_modules():
+        if hasattr(mod, "lint"):
+            problems.extend(mod.lint(cfg))
     return problems
