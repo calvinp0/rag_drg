@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-drg"
+version = "0.1.0"
+description = "Shared retrieval-augmented knowledge base for the research group: ESS docs, ARC, HPC and project literature, served to coding agents over MCP."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# MCP server for Claude Code / any MCP-capable client
+mcp = ["mcp>=1.2"]
+# PDF ingestion (ORCA manual, papers)
+pdf = ["pypdf>=4.0"]
+# Local dense embeddings (no server needed)
+st = ["sentence-transformers>=2.6"]
+all = ["mcp>=1.2", "pypdf>=4.0", "sentence-transformers>=2.6"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+rag-drg = "rag_drg.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rag_drg*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

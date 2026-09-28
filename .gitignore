@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- rag-drg ---
+index/
+sources_cache/
+sources/**/*.pdf
+sources/**/*.html
+sources/**/*.htm
+papers/**/*.pdf

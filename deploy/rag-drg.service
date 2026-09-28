@@ -1,0 +1,18 @@
+# systemd unit for the shared group server (HTTP transport).
+#   sudo cp deploy/rag-drg.service /etc/systemd/system/ && edit paths/user
+#   sudo systemctl daemon-reload && sudo systemctl enable --now rag-drg
+# Members then run:  claude mcp add --transport http rag-drg http://<host>:8765/mcp
+[Unit]
+Description=rag-drg group knowledge base (MCP over HTTP)
+After=network.target
+
+[Service]
+Type=simple
+User=<service-user>
+WorkingDirectory=/opt/rag_drg
+Environment=RAG_DRG_CONFIG=/opt/rag_drg/rag_drg.yaml
+ExecStart=/opt/rag_drg/.venv/bin/rag-drg serve --transport http --host 0.0.0.0 --port 8765
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

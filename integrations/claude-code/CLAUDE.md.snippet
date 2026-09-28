@@ -1,0 +1,9 @@
+## Group knowledge base (rag-drg)
+
+- Before writing or editing ESS inputs (ORCA, Gaussian, Q-Chem, Psi4, Molpro, PySCF), ARC input/settings
+  or output parsers, or HPC submit scripts/commands, call the `rag-drg` MCP tool
+  `search_knowledge` (pass `software` and `version`). Prefer `lesson`/`gotcha` results over
+  your own memory. Use `lookup_level_of_theory` before translating a method between codes.
+- On our clusters, programs are called by absolute path (no `module load`); take the paths
+  from the cluster card (`list_documents(domain="hpc")`).
+- When I correct you on any of these, call `record_lesson` so the next agent does not repeat it.
