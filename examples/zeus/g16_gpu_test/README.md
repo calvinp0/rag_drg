@@ -31,6 +31,23 @@ qsub submit_cpu.sh
     (`Cpus_allowed_list`).
   * The first of those cores controls the GPU. The GPU number is CUDA's: with
     `CUDA_VISIBLE_DEVICES` set, the job's GPU is 0.
+* **GPU choice.** On zeus, PBS counts GPUs (`ngpus=1`) but does not say *which* GPU the job
+  got: it does not set `CUDA_VISIBLE_DEVICES`, and all 4 V100s stay visible. Other users' jobs may
+  already sit on GPU 0, and Gaussian then stops for lack of GPU memory. So at start the script:
+  1. uses PBS's `CUDA_VISIBLE_DEVICES` if it is ever set (the proper setup; nothing else to do);
+  2. otherwise reads each GPU's free memory and utilization (`gpu_state_at_start.csv`), and takes
+     the GPU with the most free memory that has at least `MIN_FREE_MIB` (default 28000 MiB)
+     and is not claimed by another job;
+  3. hides every other GPU from Gaussian (`CUDA_VISIBLE_DEVICES=<GPU UUID>`,
+     `CUDA_DEVICE_ORDER=PCI_BUS_ID`), so Gaussian sees the chosen GPU as 0 and writes
+     `%GPUCPU=0=<first allowed core>`;
+  4. prevents two jobs starting together from choosing the same GPU: the choice is made under
+     a node-wide lock, and a claim file is left in `/tmp/g16_gpu_claims/<GPU UUID>` (job id +
+     PID). Later jobs skip a GPU while that process runs, and the claim is removed when the job
+     ends. This only coordinates jobs that use this script; anything else on the GPU is seen
+     only through its memory use.
+  5. If no GPU qualifies, the job stops with exit code 2 before running `g16`, and prints the
+     GPU table.
 * `nvidia-smi` logs GPU utilization to `gpu_usage.csv` every 15 s, which shows whether the GPU
   was really used.
 
@@ -38,7 +55,8 @@ qsub submit_cpu.sh
 
 From `gpu_out.txt` and `cpu_out.txt`:
 * the header lines: host, `CUDA_VISIBLE_DEVICES`, allowed cores, and the `%CPU` / `%GPUCPU` lines;
-* the summary: termination line, `Elapsed time`, max GPU utilization.
+* the summary: termination line, `Elapsed time`, the picked GPU index and max utilization per GPU
+  (the picked GPU should be the busy one).
 
 Also send `gpu_err.txt` / `cpu_err.txt` if they aren't empty, and the last ~30 lines of
 `caffeine_freq_gpu.log` if the GPU job failed.
@@ -47,7 +65,14 @@ Also send `gpu_err.txt` / `cpu_err.txt` if they aren't empty, and the last ~30 l
 
 * **GPU used** (max utilization well above 0) **and faster:** GPU runs are confirmed. Then
   `servers.yaml` and the zeus card are updated, and a GPU template can be added.
-* **Normal termination but 0 % GPU utilization:** Gaussian ignored the GPU. The next thing to
-  try is the GPU numbering: use the physical index from `nvidia-smi` in `%GPUCPU`.
+* **Normal termination but the picked GPU stays at 0 %:** Gaussian ignored the GPU. Check the
+  `%GPUCPU` line at the top of the `.log`.
 * **Error termination:** the log says why. Common causes are a GPU/core mismatch, or too
   little memory per GPU.
+
+## The proper fix (cluster admins)
+
+With per-GPU scheduling, PBS would give each job its own GPU and set `CUDA_VISIBLE_DEVICES`. Then
+`%GPUCPU=0=<core>` would always point at the job's GPU, and none of the selection above would be
+needed. OpenPBS / PBS Pro can do this (for example through the cgroups hook's device support), but
+only an administrator can enable it. Worth asking the zeus admins about.

@@ -137,6 +137,17 @@ GPU jobs go to `gpu_v100_q` or `mafat_gm_q`. The CPU queues above have no GPUs.
 | `mafat_gm_q` | 1: n304 (vnode gm002) | 40 cores, ~754 GiB, 4x Tesla V100-SXM2-32GB | none set (3600 h default) | everyone (ACL not enabled; see below) |
 
 * Not yet used by the group for ESS jobs (see *Software installation paths*).
+* **PBS does not assign a specific GPU.** `ngpus=N` is only a count: PBS does not set
+  `CUDA_VISIBLE_DEVICES`, and all 4 V100s stay visible to every job on the node. Other users'
+  processes can already be running on any of them (seen on n302). A Gaussian job hard-coded to
+  GPU 0 stops when GPU 0 lacks free memory (group experience).
+  * Pick a free GPU at job start: the one with the most free memory, e.g. at least 28 GB of 32.
+    Expose only that one (`CUDA_VISIBLE_DEVICES=<UUID>`) and write `%GPUCPU=0=<core>` into the
+    input.
+  * `examples/zeus/g16_gpu_test/submit_gpu.sh` in the rag-drg repository does this, with a
+    node-wide lock and claim files so that two jobs starting together don't pick the same GPU.
+  * The proper fix is per-GPU scheduling in PBS (set up by the admins), which would set
+    `CUDA_VISIBLE_DEVICES` for each job.
 * Request GPUs in the select statement:
   `#PBS -l select=1:ncpus=4:ngpus=1:mem=32gb`. zeus's nodes publish `resources_available.ngpus`.
 * NVIDIA driver 580.159.03 with CUDA 13.0 (`nvidia-smi` on n302 and n304, 2026-09-28).

@@ -14,6 +14,9 @@ source /usr/local/g16-gpu/g16/setup.sh
 cd "$PBS_O_WORKDIR" || exit 1
 INPUT=caffeine_freq_gpu
 NCPU=${NCPUS:-4}
+NGPU=${NGPU:-1}               # GPUs for this job (match ngpus= above)
+MIN_FREE_MIB=${MIN_FREE_MIB:-28000}   # a GPU needs at least this much free memory (V100: 32 GB)
+CLAIMS=${GPU_CLAIMS_DIR:-/tmp/g16_gpu_claims}   # node-local: which job took which GPU
 
 export GAUSS_SCRDIR="/gtmp/$USER/scratch/g16/$PBS_JOBID"
 mkdir -p "$GAUSS_SCRDIR"
@@ -39,8 +42,57 @@ expand() {  # "0-3,8,10-11" -> "0 1 2 3 8 10 11"
 read -ra ALLOWED <<< "$(expand "$(awk '/Cpus_allowed_list/{print $2}' /proc/self/status)")"
 CPUS=("${ALLOWED[@]:0:$NCPU}")
 CPU_LINE="%CPU=$(IFS=,; echo "${CPUS[*]}")"
-# GPU numbers are CUDA's: with CUDA_VISIBLE_DEVICES set, the job's first GPU is 0.
-GPU_LINE="%GPUCPU=0=${CPUS[0]}"
+
+# --- pick the GPU(s) -------------------------------------------------------------------
+# zeus does not give a job its own GPU: every job on the node sees all 4, and other users'
+# processes may already sit on GPU 0. Gaussian stops when its GPU lacks memory, so choose the
+# GPU(s) with the most free memory and hide the others from Gaussian (CUDA_VISIBLE_DEVICES,
+# by UUID so the numbering cannot mix up); Gaussian then sees them as GPUs 0..NGPU-1.
+nvidia-smi --query-gpu=index,uuid,memory.free,memory.total,utilization.gpu --format=csv,noheader,nounits \
+    | tr -d ' ' > gpu_state_at_start.csv
+echo "GPUs at start (index,uuid,free MiB,total MiB,util %):"; cat gpu_state_at_start.csv
+if [ -n "${CUDA_VISIBLE_DEVICES:-}" ] && [ "$CUDA_VISIBLE_DEVICES" != "NoDevFiles" ]; then
+    echo "PBS set CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES: using the GPU(s) it assigned"
+    PICKED_IDX=$(nvidia-smi --query-gpu=index --format=csv,noheader | tr '\n' ',' | sed 's/,$//')
+else
+    # Two jobs starting together on one node would both see the same GPU as free, so choose
+    # under a node-wide lock and leave a claim file (job id + PID) that later jobs skip while
+    # its process is alive. The claim is removed when this job ends.
+    mkdir -p -m 1777 "$CLAIMS" 2>/dev/null
+    exec 9>>"$CLAIMS/.lock"; flock -w 120 9 || echo "warning: no GPU lock after 120 s; choosing anyway" >&2
+    claimed() {  # is this UUID claimed by a job whose process is still running?
+        local f="$CLAIMS/$1" pid
+        [ -f "$f" ] || return 1
+        pid=$(awk '{print $2}' "$f")
+        if [ -n "$pid" ] && ps -p "$pid" >/dev/null 2>&1; then return 0; fi
+        rm -f "$f" 2>/dev/null; return 1   # stale claim
+    }
+    # most free memory first, then least busy; keep unclaimed GPUs with enough free memory
+    PICK=()
+    while IFS= read -r row; do
+        claimed "$(cut -d, -f2 <<< "$row")" && continue
+        PICK+=("$row"); [ "${#PICK[@]}" -ge "$NGPU" ] && break
+    done < <(sort -t, -k3,3nr -k5,5n gpu_state_at_start.csv | awk -F, -v min="$MIN_FREE_MIB" '$3 >= min')
+    if [ "${#PICK[@]}" -lt "$NGPU" ]; then
+        flock -u 9
+        echo "ERROR: need $NGPU free GPU(s) with >= $MIN_FREE_MIB MiB free and not claimed by another" \
+             "job, found ${#PICK[@]}; not starting g16" >&2
+        ls -l "$CLAIMS" >&2
+        exit 2
+    fi
+    MY_CLAIMS=()
+    for row in "${PICK[@]}"; do
+        u=$(cut -d, -f2 <<< "$row"); echo "$PBS_JOBID $$ $(hostname)" > "$CLAIMS/$u"; MY_CLAIMS+=("$CLAIMS/$u")
+    done
+    flock -u 9
+    export CUDA_DEVICE_ORDER=PCI_BUS_ID
+    export CUDA_VISIBLE_DEVICES=$(printf '%s\n' "${PICK[@]}" | cut -d, -f2 | paste -sd,)
+    PICKED_IDX=$(printf '%s\n' "${PICK[@]}" | cut -d, -f1 | paste -sd,)
+    echo "picked GPU index(es) $PICKED_IDX -> CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+fi
+# %GPUCPU=<GPUs as Gaussian sees them>=<one controlling core each, also in %CPU>
+GPU_LINE="%GPUCPU=0-$((NGPU - 1))=$(IFS=,; echo "${CPUS[*]:0:$NGPU}")"
+[ "$NGPU" -eq 1 ] && GPU_LINE="%GPUCPU=0=${CPUS[0]}"
 echo "$CPU_LINE   $GPU_LINE"
 
 # Gaussian uses no GPU unless told: put %CPU / %GPUCPU at the top of the input (they then
@@ -53,6 +105,7 @@ SMI_PID=$!
 
 cleanup() {
     kill "$SMI_PID" 2>/dev/null
+    rm -f "${MY_CLAIMS[@]}" 2>/dev/null
     cd "$PBS_O_WORKDIR" || true
     rm -rf "$GAUSS_SCRDIR"
 }
@@ -66,4 +119,6 @@ touch final_time_gpu
 echo "--- summary ---"
 grep -iE "gpu" "$INPUT.log" | head -20
 grep -E "Normal termination|Error termination|Elapsed time|Job cpu time" "$INPUT.log" | tail -4
-echo "max GPU utilization (%): $(awk -F', ' 'NR>1{gsub(/ %/,"",$4); if ($4>m) m=$4} END{print m+0}' gpu_usage.csv)"
+echo "picked GPU index(es): $PICKED_IDX"
+echo "max utilization per GPU index (%):"
+awk -F', ' 'NR>1{gsub(/ %/,"",$4); if ($4>m[$2]) m[$2]=$4} END{for (i in m) print "  GPU " i ": " m[i]}' gpu_usage.csv | sort
