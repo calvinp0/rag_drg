@@ -19,7 +19,7 @@ import math
 import re
 from typing import Callable
 
-from .model import PBS_FAMILY, Server, format_walltime
+from .model import ACCOUNT_NAME_RE, PBS_FAMILY, Server, format_walltime
 
 # ----------------------------------------------------------------- generic helpers
 
@@ -134,13 +134,23 @@ def pbs_queue_report(name: str, attrs: dict[str, str], user: str | None, groups:
         if groups is None:
             usable = None if usable is not False else False
             reasons.append(f"group ACL ({', '.join(acl_groups) or 'empty'}) but your groups are unknown")
-        elif not _acl_admits(acl_groups, set(groups)):
-            usable = False
-            reasons.append(f"none of your groups is in acl_groups ({', '.join(acl_groups) or 'empty'})")
         else:
-            hit = next(g for g in groups if _acl_admits(acl_groups, {g}))
-            reasons.append(f"group {hit} is in acl_groups (PBS checks the job's group: if {hit} is not your "
-                           f"primary group, add `#PBS -W group_list={hit}`)")
+            # PBS checks the ACL against the JOB's group (one group), not the set of all of the
+            # user's groups: the queue is usable if ANY single group of the user is admitted
+            # (a `-badgrp` entry does not stop a job submitted with group_list=danagrp).
+            admitted = [g for g in groups if _acl_admits(acl_groups, {g})]
+            if not admitted:
+                usable = False
+                reasons.append(f"none of your groups is admitted by acl_groups ({', '.join(acl_groups) or 'empty'})")
+            else:
+                # `id -Gn` lists the primary (effective) group first
+                primary = groups[0] if groups else None
+                hit = primary if primary in admitted else admitted[0]
+                if hit == primary:
+                    reasons.append(f"your primary group {hit} is admitted by acl_groups")
+                else:
+                    reasons.append(f"group {hit} is admitted by acl_groups but is not your primary group"
+                                   f"{f' ({primary})' if primary else ''}: submit with `#PBS -W group_list={hit}`")
     if not reasons:
         reasons.append("no user/group ACL")
     limits = {k: attrs[a] for k, a in (
@@ -370,6 +380,28 @@ def _int(v) -> int | None:
         return None
 
 
+def _draft_acl(attrs: dict[str, str], enable_key: str, list_key: str) -> tuple[list[str], list[str]]:
+    """Allowed names of an enabled PBS ACL for the draft, and the entries left out.
+
+    Deny (`-`) entries are dropped (servers.yaml only lists who is allowed), and so are wildcard
+    entries such as `*` (they admit everyone, i.e. no restriction) and anything that is not a
+    valid Unix name (it would fail servers.yaml validation).
+    """
+    if not _truthy(attrs.get(enable_key)):
+        return [], []
+    names: list[str] = []
+    left_out: list[str] = []
+    for e in _acl_list(attrs.get(list_key)):
+        if e.startswith("-"):
+            continue
+        name = e.lstrip("+").split("@")[0]
+        if "*" in name or not ACCOUNT_NAME_RE.match(name):
+            left_out.append(e)
+        elif name not in names:
+            names.append(name)
+    return names, left_out
+
+
 def discover_pbs(qstat_qf: str, pbsnodes: str | None = None) -> str:
     """A DRAFT servers.yaml `partitions:` block from saved `qstat -Qf` [+ pbsnodes] output."""
     queues = parse_qstat_qf(qstat_qf)
@@ -423,10 +455,11 @@ def discover_pbs(qstat_qf: str, pbsnodes: str | None = None) -> str:
             out.append(f"    gpus_per_node: {gpus_q}   # resources_max.ngpus")
         else:
             out.append("    gpus_per_node: 0")
-        acl_users = [e.lstrip("+").split("@")[0] for e in _acl_list(a.get("acl_users"))
-                     if not e.startswith("-")] if _truthy(a.get("acl_user_enable")) else []
-        acl_groups = [e.lstrip("+").split("@")[0] for e in _acl_list(a.get("acl_groups"))
-                      if not e.startswith("-")] if _truthy(a.get("acl_group_enable")) else []
+        acl_users, bad_u = _draft_acl(a, "acl_user_enable", "acl_users")
+        acl_groups, bad_g = _draft_acl(a, "acl_group_enable", "acl_groups")
+        if bad_u or bad_g:
+            out.append("    # ACL entries left out (wildcards mean everyone; others are not plain names): "
+                       + ", ".join(bad_u + bad_g))
         if acl_users or acl_groups:
             out.append("    access:")
             if acl_users:

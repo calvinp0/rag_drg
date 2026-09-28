@@ -16,6 +16,10 @@
 #              fatal (checked even after a normal-termination marker and turns the status to failed),
 #              warning (reported, never changes the status)
 #   versions   optional list of program versions the entry is limited to
+#   standalone optional true/false: does a match prove failure when the output has NO termination/error marker
+#              (job still running or killed)? Default: true, except for entries with `links` (they need the
+#              failing link) and fallbacks (priority <= 0); scheduler and `fatal` entries always do. When no
+#              match proves failure the status stays "incomplete" and the matches are listed as possible causes.
 #
 # Sources:
 #   arc:...     ReactionMechanismGenerator/ARC, commit d9f47ab9 (MIT License); arc/job/trsh.py unless another

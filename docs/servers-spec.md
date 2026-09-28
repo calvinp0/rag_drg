@@ -19,7 +19,7 @@ servers:
       max_simultaneous_jobs: 20
     partitions:                        # Slurm partitions or PBS queues
       <partition>:
-        max_walltime: "72:00:00"       # HH:MM:SS, or "D-HH:MM:SS"
+        max_walltime: "72:00:00"       # HH:MM:SS, or "D-HH:MM:SS" (read as a string even unquoted; no base-60)
         cores_per_node: 48
         mem_per_node_gb: 256
         gpus_per_node: 0               # optional
@@ -60,7 +60,7 @@ Rules (enforced by `rag-drg lint`):
 
 * `scheduler` is one of the listed values; every partition has `max_walltime`,
   `cores_per_node`, `mem_per_node_gb`; at most one partition has `default: true`.
-* `software.<key>.executable` is an absolute path; `ess` is a known ESS; `parallel` is `mpi` or `threads`.
+* `software.<key>.executable` is an absolute path without whitespace or shell metacharacters; `ess` is a known ESS; `parallel` is `mpi` or `threads`.
 * `partitions` referenced by software entries exist.
 * No secrets (passwords, tokens, private keys) anywhere in the file; `ssh` uses keys/agents.
 
@@ -81,6 +81,8 @@ Additional rules added by the implementation (see docs/servers.md):
   created under it unless it already contains the job id variable.
 * Generated cards in `knowledge/hpc/servers/generated/` must be up to date with `servers.yaml`
   and belong to an existing server.
+* servers.yaml is parsed without YAML 1.1 base-60 numbers (`72:00:00` stays a string); a numeric
+  `max_walltime` is hours and is rejected above 10000 (a mis-parsed or unquoted value).
 * Every ESS job is single-node: `cores <= cores_per_node` (`max_nodes` is informational).
 * `partitions.<p>.access` (optional) is a mapping with only `users`, `groups` (lists of Unix
   names: letters, digits, `_ . -`, not starting with `.`/`-`) and `notes` (string); it must list

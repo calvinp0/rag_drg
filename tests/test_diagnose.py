@@ -36,6 +36,8 @@ EXPECTED = {
     "g16_irc_success.out": ("gaussian", "success", None, "Gaussian 16"),
     "g09_opt_pointgroup_success.out": ("gaussian", "success", None, "Gaussian 09"),
     "g16_opt_incomplete.out": ("gaussian", "incomplete", None, "Gaussian 16"),
+    # relaxed scan cut mid-run: 'Number of steps exceeded' of one scan point is only a possible cause
+    "g03_scan_incomplete.out": ("gaussian", "incomplete", "g-l9999-max-opt-steps", "Gaussian 03, Revision D.01"),
     "orca4_scf_memory_fail.out": ("orca", "failed", "o-maxcore-insufficient", "Program Version 4.1.2"),
     "orca4_mdci_cores_fail.out": ("orca", "failed", "o-mdci-too-many-processes", "Program Version 4.2.0"),
     "orca4_wfn_not_converged_fail.out": ("orca", "failed", "o-wavefunction-not-converged", "4.2.0"),
@@ -130,11 +132,14 @@ def _db(entries, meta=True):
 def test_generic_fallback_only_when_nothing_else_matched_and_not_successful():
     db = load_error_db(paths=[ERRORS_YAML])
     ok = (FIX / "qchem_opt_success.out").read_text()
-    # Unknown Q-Chem failure: only the generic 'error' line matches -> used as a fallback.
+    # Unknown Q-Chem failure: only the generic 'error' line matches -> used as a fallback. Without a
+    # termination marker a fallback does not prove failure: reported as a possible cause.
     broken = ok[: ok.rindex("Thank you")].rsplit("\n", 3)[0] + "\n some module error: bad things happened\n"
     d = diagnose_output(content=broken, db=db)
-    assert d.status == "failed"
+    assert d.status == "incomplete" and "possible cause" in d.reason
     assert [e["id"] for e in d.errors] == ["q-generic-error-line"]
+    d = diagnose_output(content=broken + " Q-Chem fatal error occurred in module x\n", db=db)
+    assert d.status == "failed" and d.errors[0]["id"] == "q-generic-error-line"
     # The same line in a normally terminated job is ignored.
     d = diagnose_output(content=ok.replace("Archival summary:", " some module error: harmless\nArchival summary:"),
                         db=db)
@@ -372,3 +377,51 @@ def test_mcp_tool_registration(project):
     assert "FAILED" in out and "o-mdci-too-many-processes" in out
     assert events and events[-1]["tool"] == "diagnose_output" and events[-1]["status"] == "failed"
     assert "UNKNOWN" in tool(content="hello world")
+
+
+# ----------------------------------------------------------------- review fixes
+
+def test_incomplete_is_failed_only_for_messages_that_prove_failure():
+    scan = (FIX / "g03_scan_incomplete.out").read_text()
+    d = diagnose_output(content=scan)
+    assert d.status == "incomplete" and "possible cause" in d.reason
+    assert "Possible cause" in d.format_text() and any("relaxed scan" in n for n in d.notes)
+    # a message that is fatal on its own (no `links`) still turns a marker-less output into failed
+    d = diagnose_output(content=scan + " galloc:  could not allocate memory.\n")
+    assert d.status == "failed" and d.errors[0]["id"] == "g-memory-allocation-failed"
+    # ... and so does a scheduler kill line
+    d = diagnose_output(content=scan + "slurmstepd: error: *** JOB 1 ON n1 CANCELLED AT 2026-01-01T00:00:00 "
+                                        "DUE TO TIME LIMIT ***\n")
+    assert d.status == "failed" and d.errors[0]["id"] == "s-slurm-time-limit"
+    # with the error termination the same scan message is the diagnosis
+    d = diagnose_output(content=scan + " Error termination via Lnk1e in /opt/g03/l9999.exe at Thu Feb  7 2019.\n")
+    assert d.status == "failed" and d.errors[0]["id"] == "g-l9999-max-opt-steps"
+
+
+def test_standalone_field_overrides_default_and_is_linted():
+    base = {"software": "orca", "id": "o-x", "pattern": "SOMETHING ODD", "meaning": "m", "fixes": ["f"],
+            "sources": ["s"]}
+    text = "* O   R   C   A *\n Program Version 6.0.0\n SOMETHING ODD\n"
+    entries = dg._entries_from_data(_db([base]))
+    assert entries[0].proves_failure
+    assert diagnose_output(content=text, db=entries).status == "failed"
+    entries = dg._entries_from_data(_db([{**base, "standalone": False}]))
+    assert not entries[0].proves_failure
+    assert diagnose_output(content=text, db=entries).status == "incomplete"
+    assert any("standalone" in p for p in lint_errors_data(_db([{**base, "standalone": "no"}]), "x"))
+
+
+def test_fallback_scan_is_bounded(tmp_path, monkeypatch):
+    lines = (FIX / "g16_syntax_fail.out").read_text().splitlines()
+    cut = next(i for i, l in enumerate(lines) if "QPErr" in l)
+    filler = [f" padding line {i} " + "x" * 60 for i in range(3000)]
+    path = tmp_path / "late.out"
+    path.write_text("\n".join(filler[:400] + lines[:cut + 1] + filler + lines[cut + 1:]) + "\n")
+    monkeypatch.setattr(dg, "FULL_READ_BYTES", 10_000)
+    monkeypatch.setattr(dg, "FALLBACK_SCAN_BYTES", 50_000)  # the message is ~230 kB before the end
+    d = diagnose_output(path=path, tail_lines=20)
+    assert not d.errors and not d.complete_read
+    assert any("MB of the file were scanned" in n for n in d.notes)
+    monkeypatch.setattr(dg, "FALLBACK_SCAN_BYTES", 400_000)
+    d = diagnose_output(path=path, tail_lines=20)
+    assert d.errors and d.errors[0]["id"] == "g-qperr-syntax"

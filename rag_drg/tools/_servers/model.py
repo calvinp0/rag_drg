@@ -34,6 +34,7 @@ ARC_KEYS = {"path", "max_simultaneous_jobs"}
 
 _SECRET_KEY_RE = re.compile(r"pass(word|wd|phrase)?$|token|secret|api_?key|private_?key", re.I)
 _SECRET_VALUE_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bghp_[A-Za-z0-9]{20,}")
+_EXE_RE = re.compile(r"^/[A-Za-z0-9_./+@%,:=~-]+$")  # it is interpolated into submit scripts
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 # Unix user / group names (POSIX portable set; '$' allowed at the end for machine accounts)
 ACCOUNT_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\$?$")
@@ -145,6 +146,7 @@ class Server:
 
 # ----------------------------------------------------------------- walltime helpers
 
+MAX_PLAUSIBLE_WALLTIME_H = 10000  # a numeric max_walltime above this is surely a YAML mis-parse
 _WALL_RE = re.compile(r"^(?:(\d+)-)?(\d+):(\d{1,2})(?::(\d{1,2}))?$")
 
 
@@ -279,10 +281,17 @@ def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
             if "max_walltime" not in p:
                 problems.append(f"{pw}: 'max_walltime' is required")
             else:
+                mw = p["max_walltime"]
                 try:
-                    parse_walltime(p["max_walltime"])
+                    secs = parse_walltime(mw)
                 except ValueError as e:
                     problems.append(f"{pw}.max_walltime: {e}")
+                else:
+                    if _is_num(mw) and secs > MAX_PLAUSIBLE_WALLTIME_H * 3600:
+                        problems.append(
+                            f"{pw}.max_walltime: {mw!r} would mean {mw} hours; a bare number is read as "
+                            "hours (an unquoted 72:00:00 may have been parsed by YAML as the base-60 "
+                            'number 259200). Quote it: max_walltime: "72:00:00"')
             if not (_is_int(p.get("cores_per_node")) and p["cores_per_node"] > 0):
                 problems.append(f"{pw}: 'cores_per_node' must be a positive integer")
             if not (_is_num(p.get("mem_per_node_gb")) and p["mem_per_node_gb"] > 0):
@@ -362,6 +371,9 @@ def validate_data(raw: Any, label: str = SERVERS_FILE) -> list[str]:
             exe = sw.get("executable")
             if not (isinstance(exe, str) and exe.startswith("/")):
                 problems.append(f"{kw}.executable: must be an absolute path, got {exe!r}")
+            elif not _EXE_RE.match(exe):
+                problems.append(f"{kw}.executable: {exe!r} contains whitespace or shell metacharacters "
+                                "(allowed: letters, digits, / _ . + - @ % , : = ~)")
             if sw.get("parallel") not in PARALLEL:
                 problems.append(f"{kw}.parallel: {sw.get('parallel')!r} not in {list(PARALLEL)}")
             env = sw.get("env") or {}
@@ -451,8 +463,43 @@ def servers_path(cfg) -> Path:
     return Path(cfg.root) / SERVERS_FILE
 
 
+class _ServersLoader(yaml.SafeLoader):
+    """SafeLoader without YAML 1.1 base-60 numbers.
+
+    PyYAML reads an unquoted `max_walltime: 72:00:00` as the sexagesimal int 259200 (and `1:30`
+    as 90), which would then be taken as a number of hours. With this loader such values stay
+    strings, so `72:00:00` means 72 hours whether or not it is quoted.
+    """
+
+
+_ServersLoader.yaml_implicit_resolvers = {
+    ch: [(tag, rx) for tag, rx in resolvers
+         if tag not in ("tag:yaml.org,2002:int", "tag:yaml.org,2002:float")]
+    for ch, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+_ServersLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:int",
+    re.compile(r"""^(?:[-+]?0b[0-1_]+
+                    |[-+]?0[0-7_]+
+                    |[-+]?(?:0|[1-9][0-9_]*)
+                    |[-+]?0x[0-9a-fA-F_]+)$""", re.X),
+    list("-+0123456789"))
+_ServersLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:float",
+    re.compile(r"""^(?:[-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+][0-9]+)?
+                    |\.[0-9][0-9_]*(?:[eE][-+][0-9]+)?
+                    |[-+]?\.(?:inf|Inf|INF)
+                    |\.(?:nan|NaN|NAN))$""", re.X),
+    list("-+0123456789."))
+
+
+def load_yaml_text(text: str) -> Any:
+    """Parse servers.yaml text (no base-60 numbers: `72:00:00` stays a string)."""
+    return yaml.load(text, Loader=_ServersLoader)  # noqa: S506 - SafeLoader subclass
+
+
 def read_raw(path: Path) -> Any:
-    return yaml.safe_load(Path(path).read_text())
+    return load_yaml_text(Path(path).read_text())
 
 
 def check_file(path: str | Path) -> list[str]:

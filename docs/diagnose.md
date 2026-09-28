@@ -8,10 +8,13 @@ many tokens paging through them. `diagnose` reads only what it needs and answers
    of the last job step or ORCA's `!` lines.
 2. **Did it finish?** One of:
    - `success`: the normal-termination marker is present (see `knowledge/ess/capabilities.md`)
-   - `failed`: an error termination or a known error message
-   - `incomplete`: no marker and no known error. The job is still running, or it was killed from outside
+   - `failed`: an error termination, or a known error message that proves failure on its own (see
+     `standalone` below)
+   - `incomplete`: no marker and no message that proves failure. The job is still running, or it was killed from outside
      (walltime, out-of-memory kill, node failure). The result tells you to check the scheduler
      (`sacct -j <id> --format=JobID,State,ExitCode,Elapsed,Timelimit,MaxRSS,ReqMem`, `qstat -xf`, stderr file).
+     Matches that do not prove failure are listed as possible causes: e.g. `-- Number of steps exceeded`
+     is normal for one point of a relaxed scan that goes on, and Gaussian `links` entries need the failing link.
    - `unknown`: the program could not be identified (xTB, TeraChem, empty file, ...).
 3. **Why did it fail?** Curated signatures in `knowledge/ess/errors.yaml` are matched in priority order:
    specific messages first, generic "link lNNN died" entries after them, and fallbacks last. For
@@ -36,8 +39,9 @@ rag-drg diagnose --tail-lines 5000 big.log # read a longer tail
 Exit code: `0` all files succeeded, `1` at least one failed, `2` otherwise (incomplete / unknown / missing).
 
 How much is read: files up to 4 MB are read whole. Bigger files are read as the first 300 lines (banner,
-version, route) plus the last 2000 lines. If the job failed and nothing in the tail explains it, the whole
-file is scanned once (up to 256 MB).
+version, route) plus the last 2000 lines. If the job failed (or is incomplete) and nothing in the tail
+explains it, the head plus the last 8 MB are scanned once (the whole file if it is smaller), which keeps
+a 50 MB log at ~1-2 s.
 
 ### MCP tool (shared server)
 
@@ -85,6 +89,7 @@ errors:
     priority: 60                # optional, default 50; higher wins; <= 0 = fallback only
     severity: error             # optional: error (default) | fatal | warning
     versions: ['09']            # optional: only for these program versions
+    standalone: false           # optional: does a match prove failure without a termination marker?
     meaning: ...                # paraphrased
     fixes: [..., ...]           # ordered, most promising first; "(ARC ...)" = what ARC's troubleshooter does
     sources: [...]
@@ -94,6 +99,10 @@ errors:
   are checked even after a normal-termination marker and turn the status into `failed`. According to a
   comment in ARC's troubleshooter, Q-Chem prints its "Thank you" banner even after
   `MAXIMUM OPTIMIZATION CYCLES REACHED`. `warning` entries are reported but never change the status.
+- `standalone`: when the output has no termination/error marker (running or killed job), only matches that
+  prove failure on their own turn the status into `failed`: `scheduler` and `fatal` entries always do; other
+  entries do unless they have `links` (Gaussian: they need the failing link), are fallbacks, or say
+  `standalone: false`. The rest are reported as possible causes of an `incomplete` job.
 - `scheduler` entries (Slurm walltime / OOM kill, PBS walltime, HTCondor memory holds) are checked for every
   program, because a merged stdout file often ends with such a line.
 - Messages that also occur in successful jobs need extra context in the pattern. For example,

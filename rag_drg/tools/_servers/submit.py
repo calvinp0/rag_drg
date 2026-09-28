@@ -2,14 +2,16 @@
 
 The script bodies mirror knowledge/hpc/templates/*.sh: programs are called by absolute path,
 MPI codes (ORCA, Molpro) get ntasks=N / cpus-per-task=1, threaded codes (Gaussian, Q-Chem,
-Psi4, PySCF) get ntasks=1 / cpus-per-task=N, and each ESS uses a per-job scratch directory
-that is removed at the end.
+Psi4, PySCF) get ntasks=1 / cpus-per-task=N, and each ESS uses a per-job scratch directory.
+A `trap` on EXIT (and TERM/INT, e.g. a walltime kill) copies useful files back (ORCA) and
+removes the scratch directory, so an aborted job does not leave node-local scratch behind.
 """
 
 from __future__ import annotations
 
 import math
 import re
+import shlex
 from pathlib import PurePosixPath
 
 from .access import queue_access
@@ -166,11 +168,11 @@ def input_lines(sw: SoftwareInstall, cores: int, mem_gb: float, gpus: int, input
                 f"(mega-WORDS of 8 bytes PER PROCESS: {nproc} x {words} Mw x 8 B ~ "
                 f"{nproc * words * 8 / 1000:.0f} GB of the {mem_gb:g} GB requested; the script runs `molpro {flag}`)"]
     if ess == "psi4":
-        mem = int(0.88 * mem_gb)
+        mem = int(0.88 * mem_mb)  # MB: whole GB would round small requests down to 0
         if input_file.endswith(".py"):
-            return [f'psi4.set_memory("{mem} GB")', f"psi4.set_num_threads({cores})",
+            return [f'psi4.set_memory("{mem} MB")', f"psi4.set_num_threads({cores})",
                     "(set_memory is TOTAL memory, ~88% of the request)"]
-        return [f"memory {mem} GB",
+        return [f"memory {mem} MB",
                 f"(psithon input; TOTAL memory ~88% of the request; threads come from `psi4 -n {cores}` in the script)"]
     if ess == "pyscf":
         return [f"mol.max_memory = {int(0.88 * mem_mb)}  # MB, TOTAL (or pass max_memory= to gto.M)",
@@ -234,9 +236,9 @@ def _job_vars(scheduler: str) -> tuple[str, str]:
 def _scratch_line(server: Server) -> str:
     base = server.scratch.path
     if base and any(v in base for v in ("$SLURM_JOB_ID", "$PBS_JOBID", "$JOBID", "${SLURM_JOB_ID}")):
-        return f'SCRATCH="{base}"'
+        return f"SCRATCH={_sh(base)}"
     if base:
-        return f'SCRATCH="{base.rstrip("/")}/$JOBID"'
+        return f"SCRATCH={_sh(base.rstrip('/') + '/$JOBID')}"
     return 'SCRATCH="${TMPDIR:-/tmp}/$JOBID"'
 
 
@@ -250,13 +252,20 @@ def _python_for(sw: SoftwareInstall) -> str:
     return str(exe) if exe.name.startswith("python") else str(exe.parent / "python")
 
 
-def _body(sw: SoftwareInstall, cores: int, gpus: int, input_file: str) -> tuple[str, list[str]]:
-    """(executable variable name, body lines) for one ESS."""
+def _body(sw: SoftwareInstall, cores, gpus: int, input_file: str,
+          output_file: str | None = None) -> tuple[str, list[str], list[str]]:
+    """(executable variable name, run lines, cleanup lines) for one ESS.
+
+    The cleanup lines go into a function run by `trap ... EXIT`, so they also run when the job
+    is killed (walltime, scancel/qdel send SIGTERM). `output_file` overrides the output name
+    (ARC expects fixed names).
+    """
     inp = PurePosixPath(input_file)
     stem = str(inp.with_suffix(""))
     ess = sw.ess
+    rm_scratch = ['cd "$WORKDIR" || true', 'rm -rf "$SCRATCH"']
     if ess == "orca":
-        out = stem + ".out"
+        out = output_file or stem + ".out"
         back = "$WORKDIR" if str(inp.parent) == "." else f"$WORKDIR/{inp.parent}"
         return "ORCA_BIN", [
             f'INPUT="{inp.name}"',
@@ -264,37 +273,37 @@ def _body(sw: SoftwareInstall, cores: int, gpus: int, input_file: str) -> tuple[
             '# for MORead / InHess also copy: cp "$WORKDIR"/*.gbw "$WORKDIR"/*.hess "$SCRATCH"/ 2>/dev/null',
             'cd "$SCRATCH"',
             f'"$ORCA_BIN" "$INPUT" > "$WORKDIR/{out}"',
-            "",
+        ], [
             "# copy back everything useful, then clean scratch",
-            f'cp -f *.gbw *.hess *.xyz *.engrad *property.txt *_trj.xyz "{back}"/ 2>/dev/null',
-            'cd "$WORKDIR"',
-            'rm -rf "$SCRATCH"',
+            'if cd "$SCRATCH" 2>/dev/null; then',
+            f'    cp -f *.gbw *.hess *.xyz *.engrad *property.txt "{back}"/ 2>/dev/null',
+            "fi",
+            *rm_scratch,
         ]
     if ess == "gaussian":
         lines = ['export GAUSS_SCRDIR="$SCRATCH"']
         if gpus:
             lines.append('echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"; nvidia-smi -L')
-        lines += ['cd "$WORKDIR"', f'"$GAUSSIAN" < "{input_file}" > "{stem}.log"', "", 'rm -rf "$SCRATCH"']
-        return "GAUSSIAN", lines
+        out = output_file or stem + ".log"
+        # the .chk is written where %chk points (relative to $WORKDIR), not to scratch
+        lines += ['cd "$WORKDIR"', f'"$GAUSSIAN" < "{input_file}" > "{out}"']
+        return "GAUSSIAN", lines, rm_scratch
     if ess == "qchem":
         flag = "-nt" if sw.parallel == "threads" else "-np"
+        out = output_file or stem + ".out"
         return "QCHEM", [
             'export QCSCRATCH="$SCRATCH"',
             'export QCLOCALSCR="$QCSCRATCH/local"',
             'mkdir -p "$QCLOCALSCR"',
             'cd "$WORKDIR"',
-            f'"$QCHEM" {flag} {cores} "{input_file}" "{stem}.out"',
-            "",
-            'rm -rf "$SCRATCH"',
-        ]
+            f'"$QCHEM" {flag} {cores} "{input_file}" "{out}"',
+        ], rm_scratch
     if ess == "molpro":
         flag = "-n" if sw.parallel == "mpi" else "-t"
         return "MOLPRO", [
             'cd "$WORKDIR"',
             f'"$MOLPRO" {flag} {cores} -d "$SCRATCH" "{input_file}"      # writes {stem}.out',
-            "",
-            'rm -rf "$SCRATCH"',
-        ]
+        ], rm_scratch
     if ess in ("psi4", "pyscf"):
         lines = [f"export OMP_NUM_THREADS={cores}", f"export MKL_NUM_THREADS={cores}"]
         if ess == "psi4":
@@ -302,15 +311,33 @@ def _body(sw: SoftwareInstall, cores: int, gpus: int, input_file: str) -> tuple[
         else:
             lines.append('export PYSCF_TMPDIR="$SCRATCH"')
         lines.append('cd "$WORKDIR"')
+        out = output_file or stem + ".out"
         if ess == "psi4" and not input_file.endswith(".py"):
-            lines.append(f'"$PSI4" -n {cores} "{input_file}" "{stem}.out"')
+            lines.append(f'"$PSI4" -n {cores} "{input_file}" "{out}"')
             var = "PSI4"
         else:
-            lines.append(f'"$PYTHON" "{input_file}" > "{stem}.out" 2>&1')
+            lines.append(f'"$PYTHON" "{input_file}" > "{out}" 2>&1')
             var = "PYTHON"
-        lines += ["", 'rm -rf "$SCRATCH"']
-        return var, lines
+        return var, lines, rm_scratch
     raise ValueError(f"unsupported ESS {ess!r}")
+
+
+def _env_lines(sw: SoftwareInstall, var: str) -> list[str]:
+    exe = _python_for(sw) if var == "PYTHON" else sw.executable
+    lines = [f"export {k}={_sh(v)}" for k, v in sw.env.items()]
+    lines += list(sw.setup)
+    lines.append(f"{var}={shlex.quote(exe)}")
+    return lines
+
+
+def _scratch_and_run(server: Server, body: list[str], cleanup: list[str]) -> list[str]:
+    return ["", "# --- per-job scratch" + (" (node-local)" if server.scratch.node_local else "") + " ---",
+            _scratch_line(server), 'mkdir -p "$SCRATCH"', "",
+            "# on exit, also after a walltime kill or scancel/qdel (SIGTERM): copy back and clean up",
+            "cleanup() {", *("    " + c for c in cleanup), "}",
+            "trap cleanup EXIT",
+            "trap 'exit 143' TERM INT",
+            "", *body]
 
 
 def render_submit_script(server: Server, software_key: str, input_file: str, job_name: str | None = None,
@@ -383,8 +410,7 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
     name = _job_name(job_name or PurePosixPath(input_file).stem, server.scheduler)
 
     workdir, jobid = _job_vars(server.scheduler)
-    var, body = _body(sw, cores, gpus, input_file)
-    exe = _python_for(sw) if var == "PYTHON" else sw.executable
+    var, body, cleanup = _body(sw, cores, gpus, input_file)
     label = f"{sw.ess} {sw.version}" if sw.version else sw.ess
     lines = ["#!/bin/bash",
              f"# {software_key} ({label}) on {server.name}:{part.name}; generated by `rag-drg servers submit` "
@@ -396,11 +422,8 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
              'cd "$WORKDIR"',
              "",
              f"# --- {software_key}: absolute paths, no environment modules ---"]
-    lines += [f"export {k}={_sh(v)}" for k, v in sw.env.items()]
-    lines += list(sw.setup)
-    lines.append(f"{var}={exe}")
-    lines += ["", "# --- per-job scratch" + (" (node-local)" if server.scratch.node_local else "") + " ---",
-              _scratch_line(server), 'mkdir -p "$SCRATCH"', "", *body]
+    lines += _env_lines(sw, var)
+    lines += _scratch_and_run(server, body, cleanup)
     script = "\n".join(lines).rstrip() + "\n"
 
     ess_lines = input_lines(sw, cores, mem_gb, gpus, input_file)
@@ -412,3 +435,64 @@ def render_submit_script(server: Server, software_key: str, input_file: str, job
     submit_cmd = {"slurm": "sbatch", "local": "bash"}.get(server.scheduler, "qsub")
     notes.append(f"submit with: {submit_cmd} <this script>.sh")
     return script, notes
+
+
+# ----------------------------------------------------------------- ARC submit_scripts templates
+
+# ARC fills these with str.format (arc/job/adapter.py `write_submit_script`): {name}, {un},
+# {queue}, {t_max}, {memory} (MiB: PER CPU for Slurm --mem-per-cpu, TOTAL for PBS/OGE), {cpus}.
+# Its input/output names are fixed (arc/settings/settings.py input_filenames/output_filenames).
+ARC_FILES = {"gaussian": ("input.gjf", "input.log"), "orca": ("input.in", "input.log"),
+             "molpro": ("input.in", "input.out"), "qchem": ("input.in", "output.out")}
+_ARC_SCHEDULERS = ("slurm", "pbs", "pbspro", "torque")
+
+
+def _ph(key: str) -> str:
+    """Marker for an ARC placeholder; becomes `{key}` after literal braces are escaped."""
+    return f"\0{key}\0"
+
+
+def _arc_header(scheduler: str, mpi: bool) -> list[str]:
+    name, queue, cpus, mem, t_max = (_ph(k) for k in ("name", "queue", "cpus", "memory", "t_max"))
+    if scheduler == "slurm":
+        return [f"#SBATCH --job-name={name}", f"#SBATCH --partition={queue}", "#SBATCH --nodes=1",
+                f"#SBATCH --ntasks={cpus if mpi else 1}", f"#SBATCH --cpus-per-task={1 if mpi else cpus}",
+                f"#SBATCH --mem-per-cpu={mem}", f"#SBATCH --time={t_max}", "#SBATCH -o out.txt", "#SBATCH -e err.txt"]
+    if scheduler in ("pbs", "pbspro"):
+        sel = f"select=1:ncpus={cpus}" + (f":mpiprocs={cpus}" if mpi else "") + f":mem={mem}mb"
+        return [f"#PBS -N {name}", f"#PBS -q {queue}", f"#PBS -l {sel}", f"#PBS -l walltime={t_max}",
+                "#PBS -o out.txt", "#PBS -e err.txt"]
+    return [f"#PBS -N {name}", f"#PBS -q {queue}", f"#PBS -l nodes=1:ppn={cpus}", f"#PBS -l mem={mem}mb",
+            f"#PBS -l walltime={t_max}", "#PBS -o out.txt", "#PBS -e err.txt"]
+
+
+def render_arc_template(server: Server, software_key: str) -> str:
+    """An ARC `submit_scripts[server][ess]` template for `software_key` (same body as
+    render_submit_script, with ARC's str.format placeholders; literal braces are doubled)."""
+    sw = server.software[software_key]
+    if sw.ess not in ARC_FILES:
+        raise SubmitError([_p("error", f"ARC does not submit {sw.ess} jobs to a server")])
+    if server.scheduler not in _ARC_SCHEDULERS:
+        raise SubmitError([_p("error", f"ARC templates for scheduler {server.scheduler!r} are not generated "
+                                       f"(supported: {', '.join(_ARC_SCHEDULERS)})")])
+    inp, out = ARC_FILES[sw.ess]
+    workdir, jobid = _job_vars(server.scheduler)
+    var, body, cleanup = _body(sw, _ph("cpus"), 0, inp, output_file=out)
+    label = f"{sw.ess} {sw.version}" if sw.version else sw.ess
+    lines = ["#!/bin/bash -l",
+             *_arc_header(server.scheduler, sw.parallel == "mpi"),
+             f"# {software_key} ({label}) on {server.name}; generated by `rag-drg servers arc-settings`",
+             "",
+             f"WORKDIR={workdir}",
+             f"JOBID={jobid}",
+             'cd "$WORKDIR"',
+             "touch initial_time",
+             "",
+             f"# --- {software_key}: absolute paths, no environment modules ---"]
+    lines += _env_lines(sw, var)
+    body = [*body, "", "touch final_time"]
+    lines += _scratch_and_run(server, body, cleanup)
+    text = "\n".join(lines).rstrip() + "\n"
+    # escape literal braces for str.format, then turn the markers into ARC placeholders
+    text = text.replace("{", "{{").replace("}", "}}")
+    return re.sub(_ph("([a-z_]+)"), r"{\1}", text)
