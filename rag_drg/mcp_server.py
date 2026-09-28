@@ -240,7 +240,8 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
             rel = path.relative_to(cfg.root) if path.is_relative_to(cfg.root) else path
             # Git/GitHub work happens outside the index lock and never raises.
             pr = submit_lesson(cfg, path, author=author)
-            ctx.emit({"tool": "record_lesson", "args": {"title": title, "domain": domain, "software": software},
+            ctx.emit({"tool": "record_lesson", "args": {"title": title, "domain": domain, "software": software,
+                                                        "version": version, "tags": tags},
                       "path": str(rel), "n_results": 1, "similar": [s.path for s in similar],
                       "pr": pr.pr_url if pr else None, "pr_error": pr.error if pr else None})
             out = f"Lesson saved to {rel} (status: unreviewed) and indexed."

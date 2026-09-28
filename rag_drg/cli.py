@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
                 log(f"[{src.name}] disabled, skipping (pass --source {src.name} to force)")
                 continue
             log(f"[{src.name}] fetching {src.url or f'{len(src.urls)} urls'} -> {src.path}")
-            fetch_source(src)
+            fetch_source(src, cfg)
         return 0
 
     if args.cmd == "ingest":

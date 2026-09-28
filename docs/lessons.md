@@ -115,8 +115,8 @@ the token is only used for the API.
 2. In that clone, set `mode: github`, `repo: <owner>/<repo>`, and `base:` to the branch the
    group merges into, in `conf.d/lessons.yaml` (commit that change so it survives pulls).
 3. Put the token in the service environment, not in the repo, e.g. a root-only
-   `/etc/rag-drg.env` with `GITHUB_TOKEN=github_pat_...` and
-   `EnvironmentFile=/etc/rag-drg.env` in `deploy/rag-drg.service`. Set
+   `/etc/rag-drg/secrets.env` with `GITHUB_TOKEN=github_pat_...` and
+   `EnvironmentFile=/etc/rag-drg/secrets.env` in `deploy/rag-drg.service`. Set
    `RAG_DRG_AUTHOR` there too if the server does not run with per-user token auth.
 4. Keep the serving checkout on `base` and clean. Recorded lessons stay there as untracked
    files until their PR is merged. Because `git pull` refuses to overwrite untracked files,

@@ -219,7 +219,7 @@ __marimo__/
 
 # --- rag-drg ---
 index/
-sources_cache/
+sources_cache
 sources/**/*.pdf
 sources/**/*.html
 sources/**/*.htm
