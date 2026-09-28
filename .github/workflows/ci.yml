@@ -12,7 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e '.[mcp,dev]'
+      # pdf + chem extras so the PDF, basis-set and input-checker tests run (they skip without them)
+      - run: pip install -e '.[mcp,pdf,dev,chem]'
       - name: Lint knowledge cards and lessons
         run: rag-drg lint
       - name: Unit tests
