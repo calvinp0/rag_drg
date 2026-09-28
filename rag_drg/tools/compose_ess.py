@@ -152,10 +152,15 @@ def _resources(spec: Spec, cfg, input_name: str, job_name: str) -> dict:
         raise ComposeError(f"unknown server {name!r}; known: {', '.join(servers) or '(none: no servers.yaml)'}")
     server = servers[name]
     key = _software_key(server, spec.program, spec.version, r.get("software"))
+    # Queue-access rules apply to the requesting user: explicit > per-request context (set by the
+    # REST layer) > env > this process's own identity (never on the shared server).
+    from ._servers.access import client_identity
+
+    user, groups = client_identity()
     try:
         script, snotes = render_submit_script(server, key, input_name, job_name=job_name, cores=r.get("cores"),
                                               mem_gb=r.get("mem_gb"), walltime=r.get("walltime"),
-                                              partition=r.get("partition"))
+                                              partition=r.get("partition"), user=user, groups=groups)
     except SubmitError as e:
         raise ComposeError([f"submit script: {p['message']}" for p in e.problems if p["severity"] == "error"]
                            or [str(e)]) from None
