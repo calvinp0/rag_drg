@@ -2,7 +2,7 @@
 title: zeus cluster card (generated from servers.yaml)
 domain: hpc
 software: pbspro
-doc_type: card
+doc_type: reference
 status: draft
 generated: true
 tags:
