@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""rag-drg-remote: thin client for a shared rag-drg server. Standard library only.
+
+Nothing else to install: copy this one file to ~/bin (or anywhere on PATH), chmod +x.
+
+    export RAG_DRG_URL=http://<main-pc>:8765          # the shared server (no trailing /api)
+    export RAG_DRG_TOKEN=...                          # from `rag-drg tokens add <you>` on the server
+    # (or put the token in ~/.config/rag-drg/token, mode 600)
+
+    rag-drg-remote check job.inp [--submit run.sh]    # input checker (exit 1 on errors)
+    rag-drg-remote diagnose job.log                   # why did this job fail? (sends head + tail only)
+    rag-drg-remote search "ORCA maxcore" [--software orca --version 6 --max-tokens 800]
+    rag-drg-remote level "wb97xd/def2tzvp" [--software orca]
+    rag-drg-remote hook                               # Claude Code PostToolUse hook (JSON on stdin)
+
+Claude Code hook (~/.claude/settings.json), no local rag-drg install needed:
+
+    {"hooks": {"PostToolUse": [{"matcher": "Write|Edit|MultiEdit",
+       "hooks": [{"type": "command", "command": "/home/<you>/bin/rag-drg-remote hook"}]}]}}
+
+The hook only reacts to ESS inputs and submit scripts, never blocks on network problems, and
+exits 2 with the errors on stderr when the file has errors (Claude Code shows them to the agent,
+which then fixes the file). Your Unix user name and groups are sent along so the server can check
+queue access rules for *you* (the server itself runs as a service account).
+"""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+TIMEOUT = float(os.environ.get("RAG_DRG_TIMEOUT", "20"))
+MAX_UPLOAD = 2_000_000
+INPUT_SUFFIXES = {".gjf", ".com", ".inp", ".in", ".dat", ".py", ".nw"}
+SUBMIT_SUFFIXES = {".sh", ".slurm", ".pbs", ".sub", ".job", ".qsub", ".sbatch"}
+ESS_MARKERS = re.compile(
+    r"(?m)^\s*(%(nproc|mem|chk|pal|maxcore)|#[pPnNtT]?\s|!\s*\w|\$molecule|\$rem|\*\*\*,|memory,|geometry=\{|"
+    r"molecule\s*\w*\s*\{)|psi4\.|from pyscf|import pyscf|gto\.M\(",
+    re.IGNORECASE,
+)
+SUBMIT_MARKERS = re.compile(r"(?m)^#(SBATCH|PBS)\b")
+
+
+# ------------------------------------------------------------------ config / HTTP
+def _base_url() -> str:
+    url = os.environ.get("RAG_DRG_URL", "").rstrip("/")
+    if not url:
+        raise SystemExit("rag-drg-remote: set RAG_DRG_URL, e.g. http://main-pc:8765")
+    return url[:-4] if url.endswith("/mcp") else url
+
+
+def _token() -> str | None:
+    tok = os.environ.get("RAG_DRG_TOKEN")
+    if tok:
+        return tok.strip()
+    f = Path(os.environ.get("RAG_DRG_TOKEN_FILE", "~/.config/rag-drg/token")).expanduser()
+    return f.read_text().strip() if f.is_file() else None
+
+
+def _request(method: str, path: str, *, params: dict | None = None, body: dict | None = None) -> dict:
+    url = f"{_base_url()}/api/{path}"
+    if params:
+        url += "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Accept", "application/json")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    tok = _token()
+    if tok:
+        req.add_header("Authorization", f"Bearer {tok}")
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            raw = r.read() or b"{}"
+            if "json" not in (r.headers.get("Content-Type") or ""):
+                return {"text": raw.decode(errors="replace")}
+            return json.loads(raw)
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:300]
+        if e.code == 401:
+            raise ConnectionError("401 unauthorized: check RAG_DRG_TOKEN") from e
+        raise ConnectionError(f"HTTP {e.code}: {detail}") from e
+    except (urllib.error.URLError, OSError) as e:
+        raise ConnectionError(f"cannot reach {url.split('?')[0]}: {e}") from e
+
+
+def _identity() -> tuple[str | None, list[str] | None]:
+    try:
+        user = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        user = None
+    groups = None
+    try:
+        import grp
+
+        groups = sorted({grp.getgrgid(g).gr_name for g in os.getgroups()})
+    except Exception:  # noqa: BLE001 - e.g. Windows
+        pass
+    return user, groups
+
+
+# ------------------------------------------------------------------ file helpers
+def _read(path: Path) -> str:
+    data = path.read_bytes()
+    if len(data) > MAX_UPLOAD:
+        raise SystemExit(f"{path}: larger than {MAX_UPLOAD // 1_000_000} MB; is this really an input file?")
+    return data.decode(errors="replace")
+
+
+def _is_submit(path: Path, text: str) -> bool:
+    return bool(SUBMIT_MARKERS.search(text)) and (path.suffix.lower() in SUBMIT_SUFFIXES or text.startswith("#!"))
+
+
+def _is_input(path: Path, text: str) -> bool:
+    if path.suffix.lower() not in INPUT_SUFFIXES:
+        return False
+    if path.suffix.lower() == ".py":
+        return bool(re.search(r"\b(pyscf|psi4)\b", text))
+    return bool(ESS_MARKERS.search(text))
+
+
+def _find_submit(inp: Path) -> Path | None:
+    """A submit script in the same directory that mentions the input's file name."""
+    try:
+        cands = sorted(p for p in inp.parent.iterdir() if p.is_file() and p.suffix.lower() in SUBMIT_SUFFIXES)
+    except OSError:
+        return None
+    for p in cands:
+        try:
+            t = p.read_text(errors="replace")
+        except OSError:
+            continue
+        if SUBMIT_MARKERS.search(t) and inp.name in t:
+            return p
+    return None
+
+
+def _head_tail(path: Path, head: int = 120, tail: int = 400) -> str:
+    """First/last lines of a (possibly huge) output file, without reading all of it."""
+    size = path.stat().st_size
+    with open(path, "rb") as f:
+        if size <= 1_500_000:
+            return f.read().decode(errors="replace")
+        first = b"".join(f.readline() for _ in range(head))
+        f.seek(max(0, size - 400_000))
+        last = f.read().splitlines()[-tail:]
+    return (first.decode(errors="replace") + f"\n[... {size // 1_000_000} MB, lines omitted ...]\n"
+            + b"\n".join(last).decode(errors="replace"))
+
+
+# ------------------------------------------------------------------ commands
+def check(path: Path, submit: Path | None = None) -> tuple[int, str]:
+    text = _read(path)
+    body: dict = {"filename": path.name, "content": text}
+    if _is_submit(path, text):
+        pass  # checked on its own
+    else:
+        submit = submit or _find_submit(path)
+        if submit is not None:
+            body["submit_content"] = _read(submit)
+            body["submit_filename"] = submit.name
+    user, groups = _identity()
+    body["client_user"], body["client_groups"] = user, groups
+    res = _request("POST", "check_input", body=body)
+    return int(res.get("counts", {}).get("error", 0)), res.get("text", "")
+
+
+def hook(stdin_text: str) -> int:
+    try:
+        data = json.loads(stdin_text or "{}")
+    except ValueError:
+        return 0
+    ti = data.get("tool_input") or {}
+    fp = ti.get("file_path") or ti.get("path")
+    if not fp:
+        return 0
+    p = Path(fp)
+    if not p.is_absolute() and data.get("cwd"):
+        p = Path(data["cwd"]) / p
+    try:
+        if not p.is_file() or p.stat().st_size > MAX_UPLOAD:
+            return 0
+        text = p.read_text(errors="replace")
+    except OSError:
+        return 0
+    if not (_is_input(p, text) or _is_submit(p, text)):
+        return 0
+    try:
+        n_err, report = check(p)
+    except (ConnectionError, SystemExit) as e:
+        print(f"rag-drg-remote: input check skipped ({e})", file=sys.stderr)
+        return 0
+    if n_err:
+        print(f"rag-drg input check found {n_err} error(s) in {p.name}; fix them:\n{report}", file=sys.stderr)
+        return 2
+    if "warning" in report and "0 warning(s)" not in report:
+        print(report, file=sys.stderr)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rag-drg-remote", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("check")
+    c.add_argument("files", nargs="+", type=Path)
+    c.add_argument("--submit", type=Path)
+    d = sub.add_parser("diagnose")
+    d.add_argument("files", nargs="+", type=Path)
+    d.add_argument("--software")
+    s = sub.add_parser("search")
+    s.add_argument("query", nargs="+")
+    s.add_argument("--software")
+    s.add_argument("--version")
+    s.add_argument("--doc-type")
+    s.add_argument("--k", type=int, default=6)
+    s.add_argument("--max-tokens", type=int)
+    lv = sub.add_parser("level")
+    lv.add_argument("name")
+    lv.add_argument("--software")
+    sub.add_parser("hook")
+    sub.add_parser("ping")
+    a = ap.parse_args(argv)
+    try:
+        if a.cmd == "hook":
+            return hook(sys.stdin.read())
+        if a.cmd == "ping":
+            print(json.dumps(_request("GET", "health")))
+            return 0
+        if a.cmd == "check":
+            worst = 0
+            for f in a.files:
+                n_err, report = check(f, a.submit)
+                print(report)
+                worst = max(worst, 1 if n_err else 0)
+            return worst
+        if a.cmd == "diagnose":
+            worst = 0
+            for f in a.files:
+                res = _request("POST", "diagnose", body={"filename": f.name, "content": _head_tail(f),
+                                                          "software": a.software})
+                print(res.get("text", json.dumps(res, indent=2)))
+                worst = max(worst, {"success": 0, "failed": 1}.get(res.get("status"), 2))
+            return worst
+        if a.cmd == "search":
+            res = _request("GET", "search", params={
+                "q": " ".join(a.query), "software": a.software, "version": a.version,
+                "doc_type": a.doc_type, "k": a.k, "max_tokens": a.max_tokens, "format": "text"})
+            print(res.get("text") if isinstance(res, dict) else res)
+            return 0
+        if a.cmd == "level":
+            print(_request("GET", "level", params={"name": a.name, "software": a.software}).get("text", ""))
+            return 0
+    except ConnectionError as e:
+        print(f"rag-drg-remote: {e}", file=sys.stderr)
+        return 3
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
