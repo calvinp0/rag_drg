@@ -8,7 +8,7 @@ from .chunking import split_front_matter
 from .config import Config
 
 DOMAINS = {"ess", "arc", "hpc", "project", "literature"}
-DOC_TYPES = {"card", "gotcha", "template", "schema", "lesson", "reference", "paper", "scaffold"}
+DOC_TYPES = {"card", "gotcha", "template", "schema", "lesson", "reference", "theory", "paper", "scaffold"}
 STATUSES = {"draft", "unreviewed", "verified", "outdated"}
 LESSON_SECTIONS = ("## Mistake", "## Correct approach")
 

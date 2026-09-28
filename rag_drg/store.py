@@ -343,11 +343,14 @@ def _filters(prefix: str = "", domain=None, software=None, version=None, doc_typ
     add_in("source", source)
     if version:
         # Chunks without a version apply to every version. Multi-version chunks are
-        # stored as "5|6"; a filter of "6" matches "6", "6.0", "5|6.1", ...
-        clauses.append(
-            f"({prefix}version IS NULL OR {prefix}version = '' OR ('|' || LOWER({prefix}version)) LIKE ?)"
-        )
-        args.append(f"%|{str(version).lower()}%")
+        # stored as "5|6"; a filter of "6" matches "6", "6.0", "5|6.1", ... and "9" matches "09".
+        v = str(version).lower().strip()
+        variants = {v, v.lstrip("0") or v}
+        if v.isdigit() and len(v) == 1:
+            variants.add("0" + v)
+        likes = " OR ".join(f"('|' || LOWER({prefix}version)) LIKE ?" for _ in variants)
+        clauses.append(f"({prefix}version IS NULL OR {prefix}version = '' OR {likes})")
+        args.extend(f"%|{x}%" for x in sorted(variants))
     return ("WHERE " + " AND ".join(clauses)) if clauses else "", args
 
 

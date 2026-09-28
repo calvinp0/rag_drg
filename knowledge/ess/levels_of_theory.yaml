@@ -1,0 +1,316 @@
+# Which ESS supports which level of theory, and how each one writes it.
+#
+# One entry per method (or dispersion / solvation model). For every code:
+#   support: yes | no | variant | partial | unknown
+#     variant  = the code has something with a similar name that is NOT the same method
+#     partial  = available with extra packages / restrictions (see notes)
+#     unknown  = not checked yet; look it up in the manual and fill it in
+#   keyword:  exactly how to request it in that code's input
+#   notes:    version limits, required auxiliary basis sets, gotchas
+#
+# Served by the `lookup_level_of_theory` MCP tool / `rag-drg level <name>` and indexed for search.
+# Everything here is status: draft until a group member checks it against the manuals.
+
+meta:
+  title: Levels of theory across ESS
+  domain: ess
+  doc_type: card
+  status: draft
+  tags: [level of theory, method, functional, keyword, support matrix, translation]
+
+codes: [gaussian, orca, qchem, psi4, molpro, pyscf]
+
+levels_of_theory:
+
+  # ------------------------------------------------------------------ SCF
+  - name: HF
+    category: wavefunction / SCF
+    aliases: [hartree-fock, rhf, uhf, scf]
+    codes:
+      gaussian: {support: yes, keyword: "HF (RHF/UHF/ROHF to force the reference)"}
+      orca: {support: yes, keyword: "! HF  (! UHF / ! ROHF)"}
+      qchem: {support: yes, keyword: "METHOD HF  (UNRESTRICTED TRUE/FALSE)"}
+      psi4: {support: yes, keyword: "energy('scf') with set reference rhf|uhf|rohf"}
+      molpro: {support: yes, keyword: "{hf} / {rhf} / {uhf}", notes: "{rhf} with spin>0 is ROHF"}
+      pyscf: {support: yes, keyword: "scf.RHF(mol) / scf.UHF(mol) / scf.ROHF(mol)"}
+
+  # ------------------------------------------------------------------ DFT
+  - name: B3LYP
+    category: DFT hybrid GGA
+    aliases: [b3lyp]
+    notes: >-
+      The VWN correlation piece differs between codes (VWN(III)/RPA vs VWN5), which shifts
+      absolute energies by mEh. Never mix B3LYP energies from different codes.
+    codes:
+      gaussian: {support: yes, keyword: "B3LYP", notes: "VWN(III)/RPA definition"}
+      orca: {support: yes, keyword: "! B3LYP", notes: "VWN5; '! B3LYP/G' is the Gaussian definition"}
+      qchem: {support: yes, keyword: "METHOD B3LYP", notes: "check which VWN variant in the manual"}
+      psi4: {support: yes, keyword: "b3lyp (VWN-RPA) / b3lyp5 (VWN5)"}
+      molpro: {support: yes, keyword: "{rks,b3lyp} / {uks,b3lyp}", notes: "check B3LYP vs B3LYP3/B3LYP5 naming"}
+      pyscf: {support: yes, keyword: "mf.xc = 'b3lyp'", notes: "PySCF >= 2.3: VWN-RPA (Gaussian-like); VWN5 via config"}
+
+  - name: PBE0
+    category: DFT hybrid GGA
+    aliases: [pbe1pbe, pbeh, pbe0]
+    codes:
+      gaussian: {support: yes, keyword: "PBE1PBE", notes: "Gaussian's name for PBE0"}
+      orca: {support: yes, keyword: "! PBE0"}
+      qchem: {support: yes, keyword: "METHOD PBE0"}
+      psi4: {support: yes, keyword: "pbe0"}
+      molpro: {support: unknown, keyword: "{rks,pbe0}?"}
+      pyscf: {support: yes, keyword: "mf.xc = 'pbe0'"}
+
+  - name: M06-2X
+    category: DFT hybrid meta-GGA
+    aliases: [m062x, m06-2x]
+    notes: Meta-GGAs are grid-sensitive; use fine grids (Gaussian UltraFine, ORCA DefGrid3).
+    codes:
+      gaussian: {support: yes, keyword: "M062X"}
+      orca: {support: yes, keyword: "! M062X"}
+      qchem: {support: yes, keyword: "METHOD M06-2X"}
+      psi4: {support: yes, keyword: "m06-2x"}
+      molpro: {support: unknown}
+      pyscf: {support: yes, keyword: "mf.xc = 'm062x' (check alias in pyscf/dft/libxc.py)"}
+
+  - name: ωB97X-D
+    category: DFT range-separated hybrid + empirical dispersion
+    aliases: [wb97xd, wb97x-d, omegab97x-d]
+    notes: >-
+      Chai & Head-Gordon 2008 (own damped dispersion). Not the same functional as
+      ωB97X-D3 or ωB97X-D3(BJ). ARC's default-style level 'wb97xd/def2tzvp' means this one.
+    codes:
+      gaussian: {support: yes, keyword: "wB97XD", notes: "do not add EmpiricalDispersion; it is built in"}
+      orca: {support: variant, keyword: "! wB97X-D3 (or wB97X-D4, wB97X-V)", notes: "ORCA's wB97X-D3 is a different parametrisation; check whether your ORCA version has the original wB97X-D"}
+      qchem: {support: yes, keyword: "METHOD wB97X-D"}
+      psi4: {support: yes, keyword: "wb97x-d"}
+      molpro: {support: unknown}
+      pyscf: {support: partial, notes: "check whether your PySCF handles the dispersion part of 'wb97x-d'"}
+
+  - name: ωB97X-D3
+    category: DFT range-separated hybrid + D3 dispersion
+    aliases: [wb97x-d3, wb97xd3]
+    notes: Lin, Li, Mao, Chai 2013 re-fit of ωB97X with D3(0). Common in ORCA workflows.
+    codes:
+      gaussian: {support: unknown, notes: "not a standard keyword; do not substitute wB97XD silently"}
+      orca: {support: yes, keyword: "! wB97X-D3"}
+      qchem: {support: unknown}
+      psi4: {support: unknown}
+      molpro: {support: unknown}
+      pyscf: {support: unknown}
+
+  - name: ωB97X-V
+    category: DFT range-separated hybrid + VV10 non-local correlation
+    aliases: [wb97x-v, wb97xv]
+    codes:
+      gaussian: {support: no, notes: "no VV10 functionals in G09/G16 (verify)"}
+      orca: {support: yes, keyword: "! wB97X-V"}
+      qchem: {support: yes, keyword: "METHOD wB97X-V"}
+      psi4: {support: yes, keyword: "wb97x-v"}
+      molpro: {support: unknown}
+      pyscf: {support: yes, keyword: "mf.xc = 'wb97x-v'", notes: "VV10 via mf.nlc; check it is enabled"}
+
+  - name: ωB97M-V
+    category: DFT range-separated hybrid meta-GGA + VV10
+    aliases: [wb97m-v, wb97mv]
+    codes:
+      gaussian: {support: no, notes: "no VV10 functionals in G09/G16 (verify)"}
+      orca: {support: yes, keyword: "! wB97M-V"}
+      qchem: {support: yes, keyword: "METHOD wB97M-V"}
+      psi4: {support: yes, keyword: "wb97m-v"}
+      molpro: {support: unknown}
+      pyscf: {support: yes, keyword: "mf.xc = 'wb97m-v'", notes: "VV10 via mf.nlc"}
+
+  - name: r2SCAN-3c
+    category: DFT composite (meta-GGA + mTZVPP basis + D4 + gCP)
+    aliases: [r2scan-3c, r2scan3c]
+    notes: The '3c' composites fix the basis set; do not add a separate basis or dispersion keyword.
+    codes:
+      gaussian: {support: no}
+      orca: {support: yes, keyword: "! r2SCAN-3c", notes: "ORCA 5 and later"}
+      qchem: {support: unknown}
+      psi4: {support: unknown}
+      molpro: {support: unknown}
+      pyscf: {support: unknown}
+
+  - name: B2PLYP
+    category: DFT double hybrid
+    aliases: [b2plyp]
+    notes: The MP2-like part scales like MP2; use RI and a /C auxiliary basis where the code allows.
+    codes:
+      gaussian: {support: yes, keyword: "B2PLYP", notes: "add EmpiricalDispersion=GD3BJ for B2PLYP-D3(BJ)"}
+      orca: {support: yes, keyword: "! B2PLYP def2-TZVP def2-TZVP/C", notes: "needs a /C basis for the RI-MP2 part"}
+      qchem: {support: unknown, notes: "Q-Chem has double hybrids (e.g. ωB97X-2, XYG3); check B2PLYP"}
+      psi4: {support: yes, keyword: "b2plyp"}
+      molpro: {support: unknown}
+      pyscf: {support: partial, notes: "DFT part via libxc plus a separate MP2 step; check examples/dft"}
+
+  - name: DSD-PBEP86
+    category: DFT double hybrid (spin-component scaled)
+    aliases: [dsd-pbep86, dsdpbep86]
+    codes:
+      gaussian: {support: unknown}
+      orca: {support: yes, keyword: "! DSD-PBEP86 (check the /2013 variant naming)", notes: "needs /C basis"}
+      qchem: {support: unknown}
+      psi4: {support: unknown}
+      molpro: {support: unknown}
+      pyscf: {support: unknown}
+
+  # ------------------------------------------------------------------ correlated wavefunction
+  - name: MP2
+    category: wavefunction correlation
+    aliases: [mp2, ri-mp2, rimp2, df-mp2]
+    codes:
+      gaussian: {support: yes, keyword: "MP2", notes: "frozen core is the default (MP2=Full for all electrons)"}
+      orca: {support: yes, keyword: "! MP2  or  ! RI-MP2 cc-pVTZ cc-pVTZ/C"}
+      qchem: {support: yes, keyword: "METHOD MP2  or  METHOD RIMP2 + AUX_BASIS"}
+      psi4: {support: yes, keyword: "mp2", notes: "mp2_type defaults to DF; set mp2_type conv for canonical"}
+      molpro: {support: yes, keyword: "{mp2} ; open shell {rmp2} / {ump2}"}
+      pyscf: {support: yes, keyword: "mp.MP2(mf).run()  (DF: mp.dfmp2)"}
+
+  - name: CCSD(T)
+    category: wavefunction coupled cluster
+    aliases: [ccsd(t), ccsdt]
+    codes:
+      gaussian: {support: yes, keyword: "CCSD(T)", notes: "CPU only; slow compared with ORCA/Molpro/Psi4"}
+      orca: {support: yes, keyword: "! CCSD(T)"}
+      qchem: {support: yes, keyword: "METHOD CCSD(T)"}
+      psi4: {support: yes, keyword: "ccsd(t)", notes: "use scf_type pk for canonical references"}
+      molpro: {support: yes, keyword: "{ccsd(t)} ; open shell {rccsd(t)} or {uccsd(t)}"}
+      pyscf: {support: yes, keyword: "mycc = cc.CCSD(mf).run(); mycc.ccsd_t()"}
+
+  - name: DLPNO-CCSD(T)
+    category: local coupled cluster
+    aliases: [dlpno-ccsd(t), dlpno-ccsd(t1), dlpno]
+    notes: Local approximation; accuracy controlled by PNO thresholds (LoosePNO/NormalPNO/TightPNO).
+    codes:
+      gaussian: {support: no}
+      orca: {support: yes, keyword: "! DLPNO-CCSD(T) cc-pVTZ cc-pVTZ/C TightPNO", notes: "DLPNO-CCSD(T1) for iterative triples; -F12 variant exists"}
+      qchem: {support: unknown}
+      psi4: {support: partial, keyword: "energy('dlpno-ccsd(t)')  /  energy('dlpno-ccsd(t0)')", notes: "closed-shell RHF only; documented in the Psi4 master manual (dlpnocc.rst), so check your installed version has it. Psi4's default is iterative (T), ORCA's DLPNO-CCSD(T) is (T0)"}
+      molpro: {support: variant, keyword: "{pno-lccsd(t)}", notes: "Molpro's PNO-LCCSD(T) is a different local scheme"}
+      pyscf: {support: no}
+
+  - name: CCSD(T)-F12
+    category: explicitly correlated coupled cluster
+    aliases: [ccsd(t)-f12, ccsd(t)-f12a, ccsd(t)-f12b]
+    notes: Use the matching -F12 basis sets (cc-pVnZ-F12) with their CABS and fitting sets.
+    codes:
+      gaussian: {support: no}
+      orca: {support: yes, keyword: "! CCSD(T)-F12 cc-pVTZ-F12 cc-pVTZ-F12-CABS cc-pVTZ/C", notes: "check exact keyword for your version"}
+      qchem: {support: unknown}
+      psi4: {support: unknown}
+      molpro: {support: yes, keyword: "{ccsd(t)-f12} ; open shell {rccsd(t)-f12}", notes: "prints F12a and F12b energies; say which you use"}
+      pyscf: {support: no}
+
+  # ------------------------------------------------------------------ multireference
+  - name: CASSCF
+    category: multireference
+    aliases: [casscf, mcscf]
+    codes:
+      gaussian: {support: yes, keyword: "CASSCF(n,m)", notes: "n electrons in m orbitals"}
+      orca: {support: yes, keyword: "%casscf nel n norb m mult 1 end"}
+      qchem: {support: unknown}
+      psi4: {support: yes, keyword: "energy('casscf') with restricted_docc / active arrays"}
+      molpro: {support: yes, keyword: "{casscf; closed,..; occ,..; wf,..}"}
+      pyscf: {support: yes, keyword: "mcscf.CASSCF(mf, norb, nelec).run()"}
+
+  - name: NEVPT2
+    category: multireference perturbation theory
+    aliases: [nevpt2, sc-nevpt2, pc-nevpt2]
+    codes:
+      gaussian: {support: no}
+      orca: {support: yes, keyword: "! SC-NEVPT2 (or FIC-NEVPT2) with a %casscf block", notes: "ORCA 4 used a PTMethod setting inside %casscf instead; check the manual for your version"}
+      qchem: {support: unknown}
+      psi4: {support: unknown}
+      molpro: {support: yes, keyword: "{nevpt2} after {casscf}"}
+      pyscf: {support: yes, keyword: "mrpt.NEVPT(mc).kernel()"}
+
+  - name: CASPT2
+    category: multireference perturbation theory
+    aliases: [caspt2, rs2, rs2c]
+    codes:
+      gaussian: {support: no}
+      orca: {support: unknown}
+      qchem: {support: unknown}
+      psi4: {support: no}
+      molpro: {support: yes, keyword: "{rs2c} (or {rs2}) after {casscf}"}
+      pyscf: {support: no, notes: "not in core PySCF"}
+
+  - name: MRCI
+    category: multireference CI
+    aliases: [mrci, mrci+q, mrcisd]
+    codes:
+      gaussian: {support: no}
+      orca: {support: partial, keyword: "%mrci block", notes: "check manual"}
+      qchem: {support: unknown}
+      psi4: {support: unknown}
+      molpro: {support: yes, keyword: "{mrci} after {casscf}", notes: "Davidson-corrected energy printed as MRCI+Q"}
+      pyscf: {support: unknown}
+
+  # ------------------------------------------------------------------ composite
+  - name: CBS-QB3
+    category: composite thermochemistry
+    aliases: [cbs-qb3, cbsqb3]
+    codes:
+      gaussian: {support: yes, keyword: "CBS-QB3"}
+      orca: {support: unknown}
+      qchem: {support: unknown}
+      psi4: {support: no, notes: "Psi4's cbs() builds custom extrapolation schemes, not CBS-QB3"}
+      molpro: {support: unknown}
+      pyscf: {support: no}
+
+  - name: G4
+    category: composite thermochemistry
+    aliases: [g4, g4mp2]
+    codes:
+      gaussian: {support: yes, keyword: "G4  /  G4MP2"}
+      orca: {support: unknown}
+      qchem: {support: unknown}
+      psi4: {support: no, notes: "Psi4 has energy('gaussian-2') (G2) but not G4"}
+      molpro: {support: unknown}
+      pyscf: {support: no}
+
+  # ------------------------------------------------------------------ add-ons
+  - name: D3(BJ) dispersion
+    category: dispersion correction
+    aliases: [d3bj, d3(bj), gd3bj, empiricaldispersion]
+    codes:
+      gaussian: {support: yes, keyword: "EmpiricalDispersion=GD3BJ"}
+      orca: {support: yes, keyword: "! D3BJ"}
+      qchem: {support: yes, keyword: "DFT_D D3_BJ"}
+      psi4: {support: partial, keyword: "functional suffix, e.g. b3lyp-d3bj", notes: "needs the dftd3 / s-dftd3 program installed"}
+      molpro: {support: unknown}
+      pyscf: {support: partial, keyword: "mf.disp = 'd3bj'", notes: "needs the pyscf-dispersion package; check your version"}
+
+  - name: D4 dispersion
+    category: dispersion correction
+    aliases: [d4, dftd4]
+    codes:
+      gaussian: {support: no, notes: "not built in (verify)"}
+      orca: {support: yes, keyword: "! D4"}
+      qchem: {support: unknown}
+      psi4: {support: partial, keyword: "suffix -d4", notes: "needs dftd4 installed"}
+      molpro: {support: unknown}
+      pyscf: {support: partial, keyword: "mf.disp = 'd4'", notes: "needs pyscf-dispersion"}
+
+  - name: SMD solvation
+    category: implicit solvation
+    aliases: [smd]
+    codes:
+      gaussian: {support: yes, keyword: "SCRF=(SMD,Solvent=Water)"}
+      orca: {support: yes, keyword: "%cpcm smd true SMDsolvent \"water\" end"}
+      qchem: {support: yes, keyword: "SOLVENT_METHOD SMD + $smx solvent water $end"}
+      psi4: {support: no, notes: "PCM via PCMSolver only (verify for your version)"}
+      molpro: {support: unknown}
+      pyscf: {support: unknown, notes: "recent PySCF/gpu4pyscf have SMD; check your version"}
+
+  - name: PCM / C-PCM solvation
+    category: implicit solvation
+    aliases: [pcm, cpcm, iefpcm, c-pcm]
+    codes:
+      gaussian: {support: yes, keyword: "SCRF=(PCM,Solvent=Water)", notes: "IEF-PCM by default"}
+      orca: {support: yes, keyword: "! CPCM(Water)"}
+      qchem: {support: yes, keyword: "SOLVENT_METHOD PCM + $solvent SolventName Water $end"}
+      psi4: {support: partial, keyword: "set pcm true + pcm = { ... } block", notes: "requires PCMSolver"}
+      molpro: {support: unknown}
+      pyscf: {support: yes, keyword: "mf = mf.PCM()  or  solvent.ddCOSMO(mf)"}

@@ -17,13 +17,14 @@ import threading
 
 from .config import Config
 from .ingest import embed_missing
+from .levels import lookup
 from .lessons import index_lesson, write_lesson
 from .search import Searcher, format_hits
 from .store import Store, dumps
 
 INSTRUCTIONS = """\
 Research-group knowledge base: electronic structure software (ORCA 5/6, Gaussian 09/16,
-Psi4, Molpro 2024/2026, PySCF), the ARC codebase (input/output schema, settings,
+Q-Chem 6.1, Psi4, Molpro 2024/2026, PySCF), the ARC codebase (input/output schema, settings,
 capabilities), HPC cluster usage (submit scripts, queues, quotas) and project literature.
 
 Use it BEFORE you:
@@ -32,7 +33,9 @@ Use it BEFORE you:
 - write a submit script or run scheduler/quota commands on a cluster,
 - make claims about what a program/method can or cannot do.
 
-Pass `software` (orca, gaussian, psi4, molpro, pyscf, arc) and `version` when you know them.
+Pass `software` (orca, gaussian, qchem, psi4, molpro, pyscf, arc) and `version` when you know them.
+Use `doc_type="reference"` for keywords/syntax and `doc_type="theory"` for method background.
+Use `lookup_level_of_theory` before translating a method/functional between codes.
 Results tagged `lesson` or `gotcha` are corrections the group has already made - follow them.
 When a human corrects you on something this knowledge base should have told you, call
 `record_lesson` so the next agent does not repeat the mistake.
@@ -80,12 +83,13 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
         Args:
             query: Natural-language question or exact keywords, e.g. "ORCA TS optimisation
                 with numerical Hessian" or "%maxcore".
-            software: Restrict to one program: orca, gaussian, psi4, molpro, pyscf, arc,
+            software: Restrict to one program: orca, gaussian, qchem, psi4, molpro, pyscf, arc,
                 or a scheduler such as slurm / pbs.
-            version: Restrict to a version, e.g. "6" (ORCA 6.x), "16" (Gaussian 16), "2024".
+            version: Restrict to a version, e.g. "6" (ORCA 6.x), "16" or "09" (Gaussian), "6.1" (Q-Chem), "2024".
                 Chunks without a version always match.
             domain: ess | arc | hpc | project | literature | lessons
-            doc_type: lesson | gotcha | card | template | schema | reference | code | paper
+            doc_type: lesson | gotcha | card | template | schema | reference (keywords/usage) |
+                theory (method background from manuals) | code | paper
             k: Number of results (default 6, max 20).
         """
         with lock:
@@ -150,6 +154,21 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
             st = f" [{r['status']}]" if r["status"] else ""
             lines.append(f"- {r['source']}:{r['path']}  ({scope}{v}, {r['doc_type']}{st}) {(r['title'] or '').split(' > ')[0]}")
         return "\n".join(lines)
+
+    @mcp.tool()
+    def lookup_level_of_theory(name: str = "", software: str | None = None) -> str:
+        """Which ESS supports a method/functional/dispersion/solvation model, and how each writes it.
+
+        Use this before translating a level of theory between codes (e.g. an ARC level
+        'wb97xd/def2tzvp' to ORCA) or choosing a code for a method. Names are matched loosely
+        ("wB97X-D", "wb97xd", "DLPNO-CCSD(T)/cc-pVTZ"). Empty name lists all known entries.
+
+        Args:
+            name: Method, functional or model name, optionally with '/basis'.
+            software: Only show this code's row (gaussian, orca, qchem, psi4, molpro, pyscf),
+                plus which other codes support it as-is.
+        """
+        return lookup(cfg, name or None, software)
 
     @mcp.tool()
     def list_knowledge_sources() -> str:

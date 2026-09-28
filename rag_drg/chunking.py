@@ -35,6 +35,7 @@ class Chunk:
     url: str | None = None
     status: str | None = None  # e.g. "verified", "unreviewed" for curated cards / lessons
     ordinal: int = 0  # position of the chunk within its file
+    kind: str | None = None  # chunker's own classification, e.g. "theory" for manual background sections
 
     @property
     def key(self) -> str:
@@ -438,22 +439,170 @@ def html_to_markdown(html: str) -> tuple[str, str]:
 # PDF (ORCA manual, Molpro manual, papers)
 # --------------------------------------------------------------------------- #
 
-def pdf_pages(path: Path) -> list[tuple[int, str]]:
+def _pdf_reader(path: Path):
     try:
         from pypdf import PdfReader
     except ImportError as e:  # pragma: no cover - depends on optional dep
         raise RuntimeError("PDF ingestion needs `pip install rag-drg[pdf]` (pypdf)") from e
-    reader = PdfReader(str(path))
-    pages = []
-    for i, page in enumerate(reader.pages, start=1):
+    return PdfReader(str(path))
+
+
+_TOC_LINE = re.compile(r"(\.\s*){4,}\s*\d+\s*$")
+
+
+def _page_texts(reader) -> list[str]:
+    texts = []
+    for page in reader.pages:
         try:
             txt = page.extract_text() or ""
         except Exception:  # noqa: BLE001 - malformed pages should not abort ingestion
             txt = ""
         txt = re.sub(r"-\n(\w)", r"\1", txt)  # re-join hyphenated line breaks
-        if txt.strip():
-            pages.append((i, txt))
-    return pages
+        # Drop table-of-contents style lines ("3.2 Geometry optimization ........ 45").
+        txt = "\n".join(l for l in txt.splitlines() if not _TOC_LINE.search(l))
+        texts.append(txt)
+    return texts
+
+
+def pdf_pages(path: Path) -> list[tuple[int, str]]:
+    return [(i, t) for i, t in enumerate(_page_texts(_pdf_reader(path)), start=1) if t.strip()]
+
+
+def pdf_outline(reader) -> list[tuple[int, int, str]]:
+    """Flatten PDF bookmarks into (page_index, depth, title), in document order."""
+    out: list[tuple[int, int, str]] = []
+
+    def walk(items, depth):
+        for it in items:
+            if isinstance(it, list):
+                walk(it, depth + 1)
+                continue
+            try:
+                page = reader.get_destination_page_number(it)
+            except Exception:  # noqa: BLE001 - broken destinations are common
+                continue
+            title = re.sub(r"\s+", " ", str(getattr(it, "title", "") or "")).strip()
+            if page is not None and page >= 0 and title:
+                out.append((page, depth, title))
+
+    try:
+        walk(reader.outline, 0)
+    except Exception:  # noqa: BLE001
+        return []
+    # Stable sort by page keeps sibling order for several headings on one page.
+    return sorted(out, key=lambda e: e[0])
+
+
+def _find_title(text: str, title: str, start: int) -> int:
+    # Headings in extracted text often carry a section number and odd spacing.
+    words = [re.escape(w) for w in re.findall(r"\w+", re.sub(r"^[\d.\s]+", "", title))]
+    if not words:
+        return -1
+    m = re.compile(r"\W+".join(words), re.IGNORECASE).search(text, start)
+    if not m:
+        return -1
+    pos = m.start()
+    # Include a preceding section number ("2.1 ") on the same line.
+    while pos > start and text[pos - 1] in "0123456789. \t":
+        pos -= 1
+    return pos
+
+
+_SKIP_SECTIONS = re.compile(r"^(index|bibliography|references|contents|table of contents)$", re.IGNORECASE)
+
+
+def pdf_sections(path: Path, doc_title: str | None = None) -> list[tuple[list[str], str, int, int]]:
+    """Split a PDF along its bookmarks: (breadcrumbs, text, first_page, last_page) per section.
+
+    Falls back to one section per page when the PDF has no bookmarks. Manuals such as the
+    ORCA, Q-Chem, Gaussian and Molpro PDFs have them, which gives chunks titled like
+    "ORCA manual > Geometry Optimization > Transition State Searches (pp. 312-314)".
+    """
+    reader = _pdf_reader(path)
+    pages = _page_texts(reader)
+    doc_title = doc_title or path.stem
+    outline = pdf_outline(reader)
+    if not outline:
+        return [([doc_title], t, i, i) for i, t in enumerate(pages, start=1) if t.strip()]
+
+    # Locate every heading as (page, offset) within the extracted text.
+    starts: list[tuple[int, int]] = []
+    cursor_page, cursor_off = 0, 0
+    for page, _depth, title in outline:
+        if page != cursor_page:
+            cursor_page, cursor_off = page, 0
+        off = _find_title(pages[page], title, cursor_off) if page < len(pages) else -1
+        if off < 0:
+            off = cursor_off
+        starts.append((page, off))
+        cursor_off = off
+
+    def text_between(a: tuple[int, int], b: tuple[int, int] | None) -> str:
+        (pa, oa) = a
+        (pb, ob) = b if b else (len(pages) - 1, len(pages[-1]))
+        if pa == pb:
+            return pages[pa][oa:ob]
+        parts = [pages[pa][oa:]] + pages[pa + 1: pb] + [pages[pb][:ob]]
+        return "\n".join(parts)
+
+    sections: list[tuple[list[str], str, int, int]] = []
+    stack: list[tuple[int, str]] = []
+    for i, (page, depth, title) in enumerate(outline):
+        while stack and stack[-1][0] >= depth:
+            stack.pop()
+        stack.append((depth, title))
+        nxt = starts[i + 1] if i + 1 < len(starts) else None
+        if _SKIP_SECTIONS.match(title):
+            continue
+        body = text_between(starts[i], nxt).strip()
+        last_page = (nxt[0] if nxt and nxt[1] > 0 else (nxt[0] - 1 if nxt else len(pages) - 1))
+        if body:
+            sections.append(([doc_title] + [t for _, t in stack], body, page + 1, max(page, last_page) + 1))
+    return sections
+
+
+# --------------------------------------------------------------------------- #
+# Theory vs. parameters: manuals mix method background with keyword documentation.
+# Agents asking "what is the keyword" should not get pages of equations, and vice versa.
+# --------------------------------------------------------------------------- #
+
+_THEORY_TITLE = re.compile(
+    r"\b(theor\w*|background|formalism|derivation|equations?|mathematical|foundations?|"
+    r"working equations|the \w+ (method|approximation|model)|introduction to)\b",
+    re.IGNORECASE,
+)
+_PARAM_TITLE = re.compile(
+    r"(\bkeywords?\b|\binput\b|\boptions?\b|\bparameters?\b|\bblock\b|\bsyntax\b|\busage\b|"
+    r"\bexamples?\b|\blist of\b|\bsummary\b|\bvariables?\b|\bdirectives?\b|\$rem|%\w+|\bhow to\b|"
+    r"\brunning\b|\bjob control\b)",
+    re.IGNORECASE,
+)
+_CODE_LINE = re.compile(
+    r"^\s*(!|%\w|\$\w|#[pPnNtT]?\s|end\b|\*\s*(xyz|int|gzmt|xyzfile)|@@@|\{|}|[A-Z][A-Z0-9_]{2,}\s+\S+\s*$)"
+)
+_MATH_CHARS = set("=∑∫∂αβγδεζηθλμνξπρστφχψωΓΔΘΛΞΠΣΦΨΩ∆∇≤≥±×·⟨⟩†∈√∞")
+
+
+def classify_section(crumbs: list[str], text: str) -> str:
+    """Return "theory" or "reference" (keywords/usage) for a manual section."""
+    leaf = crumbs[-1] if crumbs else ""
+    if _PARAM_TITLE.search(leaf):
+        return "reference"
+    if _THEORY_TITLE.search(leaf):
+        return "theory"
+    lines = [l for l in text.splitlines() if l.strip()]
+    if not lines:
+        return "reference"
+    code_frac = sum(1 for l in lines if _CODE_LINE.match(l)) / len(lines)
+    math_density = sum(1 for ch in text if ch in _MATH_CHARS) / max(1, len(text))
+    if code_frac >= 0.12:
+        return "reference"
+    if math_density >= 0.008 and code_frac < 0.05:
+        return "theory"
+    # Inherit from an enclosing "Theory" chapter when the section itself is neutral.
+    if any(_THEORY_TITLE.search(c) for c in crumbs[:-1]) and not any(_PARAM_TITLE.search(c) for c in crumbs[:-1]):
+        return "theory"
+    return "reference"
 
 
 # --------------------------------------------------------------------------- #
@@ -474,9 +623,12 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
 
     if suffix == ".pdf":
         chunks: list[Chunk] = []
-        for page_no, txt in pdf_pages(path):
+        for crumbs, txt, first, last in pdf_sections(path):
+            pages = f"p. {first}" if first == last else f"pp. {first}-{last}"
+            title = f"{' > '.join(crumbs)} ({pages})"
+            kind = classify_section(crumbs, txt)
             for piece in split_long(txt, size, overlap):
-                chunks.append(Chunk(text=piece, title=f"{path.stem} (p. {page_no})", path=rel_path, ordinal=len(chunks)))
+                chunks.append(Chunk(text=piece, title=title, path=rel_path, ordinal=len(chunks), kind=kind))
         return meta, chunks
 
     text = path.read_text(errors="replace")
@@ -491,6 +643,15 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
         return meta, _sections_to_chunks(markdown_sections(md), rel_path, size, overlap, title or None)
     if path.name == "read_options.cc":
         return meta, _sections_to_chunks(psi4_options_sections(text), rel_path, size, overlap)
+    if suffix in (".yml", ".yaml") and "levels_of_theory" in text:
+        from .levels import is_levels_file, levels_sections
+
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError:
+            data = None
+        if is_levels_file(data):
+            return dict(data.get("meta") or {}), _sections_to_chunks(levels_sections(data, path.name), rel_path, 4000, 0)
     if suffix == ".json":
         return meta, _sections_to_chunks(json_sections(text, path.name), rel_path, size, overlap)
     if suffix == ".py":

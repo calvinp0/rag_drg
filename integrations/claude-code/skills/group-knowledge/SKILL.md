@@ -1,6 +1,6 @@
 ---
 name: group-knowledge
-description: Consult the research group's knowledge base (rag-drg MCP server) before writing or editing electronic-structure inputs (ORCA, Gaussian, Psi4, Molpro, PySCF), ARC input/settings/output parsing code, HPC submit scripts or cluster commands, and when a user corrects a mistake in any of those areas. Use it whenever the task involves quantum-chemistry software keywords, levels of theory, ARC, Slurm/PBS, or queue/quota questions.
+description: Consult the research group's knowledge base (rag-drg MCP server) before writing or editing electronic-structure inputs (ORCA, Gaussian, Q-Chem, Psi4, Molpro, PySCF), ARC input/settings/output parsing code, HPC submit scripts or cluster commands, and when a user corrects a mistake in any of those areas. Use it whenever the task involves quantum-chemistry software keywords, levels of theory, ARC, Slurm/PBS, or queue/quota questions.
 ---
 
 # Group knowledge base
@@ -16,9 +16,14 @@ ESS manuals and cluster notes.
    `("output.yml transition_states", software="arc")`, `("GEOM_MAXITER", software="psi4")`.
 2. Follow results marked `lesson` or `gotcha` over your own prior knowledge. `verified` beats
    `draft`/`unreviewed`; raw manuals (`reference`) and source code (`code`) are ground truth for syntax.
-3. Need more around a hit? `get_context(chunk_id)`. Need a whole template/card? `read_document(path)`.
-4. For cluster work, `list_documents(domain="hpc")` first: use the cluster card and the
-   matching submit template instead of writing a script from scratch.
+3. Translating a level of theory between codes, or choosing a code for a method?
+   `lookup_level_of_theory("wb97xd/def2tzvp", software="orca")` first; `variant` means the
+   code has a different method with a similar name, so do not substitute silently.
+   Use `doc_type="theory"` for method background and `doc_type="reference"` for input syntax.
+4. Need more around a hit? `get_context(chunk_id)`. Need a whole template/card? `read_document(path)`.
+5. For cluster work, `list_documents(domain="hpc")` first: use the cluster card and the
+   matching submit template instead of writing a script from scratch. Programs are called by
+   absolute path (no `module load`); take the paths from the cluster card.
 
 ## When you are corrected
 

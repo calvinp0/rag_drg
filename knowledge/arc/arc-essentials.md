@@ -4,7 +4,7 @@ domain: arc
 software: arc
 doc_type: card
 status: draft
-tags: [input.yml, output.yml, schema, level_of_theory, job_types, ess_settings, servers, settings.py, restart.yml, specific_job_type, ts_adapters]
+tags: [levels_ess, qchem, input.yml, output.yml, schema, level_of_theory, job_types, ess_settings, servers, settings.py, restart.yml, specific_job_type, ts_adapters]
 ---
 # ARC input, output and settings essentials
 
@@ -50,6 +50,13 @@ The ARC repository itself is indexed (docs, examples, `arc/` source, and
   is required for in-core ESS such as `pyscf`.
 * ARC does **not** read `~/.ssh/config` (no ProxyJump/IdentityFile); set `key` per server or use
   an ssh-agent.
+* ARC chooses the ESS for a level from `levels_ess` in settings (phrase matching on the method,
+  e.g. `'orca': ['dlpno']`, `'qchem': ['m06-2x']`) unless the level dict sets `software`. Set
+  `software` explicitly when several ESS could run the method.
+* Q-Chem adapter (`arc/job/adapters/qchem.py`), as of the indexed commit: the IRC branch writes
+  Gaussian syntax (`irc=(CalcAll, ...)`) into the Q-Chem job type (Q-Chem IRC is `JOBTYPE rpath`),
+  and the constraint loop overwrites `input_dict['constraint']` instead of appending. Don't rely on
+  ARC for Q-Chem IRCs or multi-constraint Q-Chem jobs until someone confirms or fixes this.
 * Put personal settings in `~/.arc/settings.py` (and `~/.arc/submit.py`), which override
   `arc/settings/settings.py`. Do not edit the repo copy for personal servers.
 

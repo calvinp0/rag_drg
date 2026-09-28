@@ -11,11 +11,11 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=%x-%j.log
 
-module load <molpro-module>
+MOLPRO=<abs path to molpro install>/bin/molpro     # 2024 or 2026 install
 SCRATCH=${TMPDIR:-/scratch/$USER}/$SLURM_JOB_ID
 mkdir -p "$SCRATCH"
 
 cd "$SLURM_SUBMIT_DIR"
-molpro -n "$SLURM_NTASKS" -d "$SCRATCH" <job>.in
+"$MOLPRO" -n "$SLURM_NTASKS" -d "$SCRATCH" <job>.in
 
 rm -rf "$SCRATCH"

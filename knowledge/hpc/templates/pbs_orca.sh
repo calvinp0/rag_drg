@@ -8,8 +8,12 @@
 #PBS -j oe
 
 cd "$PBS_O_WORKDIR"
-module load <orca-module> <openmpi-module>
-ORCA_BIN=$(which orca)
+# --- software paths (absolute; see the cluster card for the real values) ---
+ORCA_DIR=<abs path to orca_6_0_x or orca_5_0_4>   # directory that contains the `orca` binary
+OMPI_DIR=<abs path to the OpenMPI this ORCA build expects>
+export PATH=$ORCA_DIR:$OMPI_DIR/bin:$PATH
+export LD_LIBRARY_PATH=$ORCA_DIR:$OMPI_DIR/lib:$LD_LIBRARY_PATH
+ORCA_BIN=$ORCA_DIR/orca
 
 INPUT=<job>.inp
 SCRATCH=${TMPDIR:-/scratch/$USER}/${PBS_JOBID%%.*}
