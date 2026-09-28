@@ -45,9 +45,12 @@ servers = {
         'cpus': 384,
         'memory': 1511,
         'queues': {'alon_q': '3600:00:00', 'mafat_new_q': '3600:00:00', 'alon_comb_q': '24:00:00', 'zeus_combined_q': '24:00:00', 'zeus_long_q': '336:00:00', 'zeus_short_q': '03:00:00', 'zeus_comb_short': '03:00:00'},
+        'excluded_queues': ['gpu_v100_q', 'mafat_gm_q'],
         # queue 'alon_q' is restricted (groups grinberg-dana_prj, halupovich_prj); drop it if you are not one of them
         # queue 'mafat_new_q' is restricted (groups amouyal_prj, arad_prj, ben-gida_prj, bitton_prj, cukurel_prj, eichen_prj, frankel_prj, freydin_prj, grinberg-dana_prj, grisaro_prj, halupovich_prj, jacobi_prj, karpas_prj, lahav_prj, manor_prj, michaels_prj, pollini_prj, shmulevich_prj, tartakovsky_prj, yuvallevy_prj); drop it if you are not one of them
         # queue 'alon_comb_q' is restricted (groups grinberg-dana_prj, halupovich_prj); drop it if you are not one of them
+        # queue 'gpu_v100_q' excluded: not in arc.ess_queues
+        # queue 'mafat_gm_q' excluded: not in arc.ess_queues
         'un': __import__('getpass').getuser(),  # ARC runs as you on the cluster
     },
 }
@@ -64,6 +67,8 @@ servers = {
 | `zeus_long_q` | `336:00:00` | 80 | 377 | 0 | 1 | no | everyone | open to all zeus users; only 10 queued and 20 running jobs per user (ARC can exceed this quickly); 1120 cores running in total |
 | `zeus_short_q` | `03:00:00` | 80 | 377 | 0 | 1 | no | everyone | open to all zeus users; 600 jobs and 600 cores running per user |
 | `zeus_comb_short` | `03:00:00` | 80 | 377 | 0 | 1 | no | everyone | open to all zeus users; priority 80; 1000 jobs and 600 cores running per user |
+| `gpu_v100_q` | `480:00:00` | 40 | 376 | 4 x V100-SXM2-32GB | 2 | no | everyone | GPU jobs only; open to all zeus users (acl_group_enable = False); 8 GPUs and 80 cores in the whole queue; request GPUs with select=...:ngpus=N; default_chunk.ncpus = 1 |
+| `mafat_gm_q` | `3600:00:00` | 40 | 754 | 4 x V100-SXM2-32GB | 1 | no | everyone | GPU jobs only; a single node (4 GPUs). qstat lists acl_groups arad_prj, dagan_prj, frankel_prj but acl_group_enable is not set, so the list is not enforced (the group uses this queue) |
 
 Restricted queues (servers.yaml `access:`): only the listed users, or members of ANY listed group, may submit there. Check yours with `rag-drg servers access zeus` (add `--live` to ask the scheduler itself).
 
