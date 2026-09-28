@@ -1,0 +1,171 @@
+# rag-drg test fixture - SYNTHETIC Q-Chem failure. Header lines 1-110 copied from ARC arc/testing/trsh/qchem/H2_opt.out (ARC commit d9f47ab, MIT License); the SCF block below is made up. The failure line contains 'SCF failed', the string ARC's arc/job/trsh.py (determine_ess_status, l.240) matches for Q-Chem.
+
+Running Job 1 of 1 input.in
+qchem input.in_23519.0 /tmp/qchem23519/ 1
+/global/common/cori/software/qchem/5.1/exe/qcprog.exe input.in_23519.0 /tmp/qchem23519/
+Check license passed
+
+                  Welcome to Q-Chem
+     A Quantum Leap Into The Future Of Chemistry
+
+
+ Q-Chem 5.1, Q-Chem, Inc., Pleasanton, CA (2018)
+
+ Yihan Shao,  Zhengting Gan,  E. Epifanovsky,  A. T. B. Gilbert,  M. Wormit,  
+ J. Kussmann,  A. W. Lange,  A. Behn,  Jia Deng,  Xintian Feng,  D. Ghosh,  
+ M. Goldey,  P. R. Horn,  L. D. Jacobson,  I. Kaliman,  T. Kus,  A. Landau,  
+ Jie Liu,  E. I. Proynov,  R. M. Richard,  R. P. Steele,  E. J. Sundstrom,  
+ H. L. Woodcock III,  P. M. Zimmerman,  D. Zuev,  B. Albrecht,  E. Alguire,  
+ S. A. Baeppler,  D. Barton,  Z. Benda,  Y. A. Bernard,  E. J. Berquist,  
+ K. B. Bravaya,  H. Burton,  D. Casanova,  Chun-Min Chang,  Yunqing Chen,  
+ A. Chien,  K. D. Closser,  M. P. Coons,  S. Coriani,  S. Dasgupta,  
+ A. L. Dempwolff,  M. Diedenhofen,  Hainam Do,  R. G. Edgar,  Po-Tung Fang,  
+ S. Faraji,  S. Fatehi,  Qingguo Feng,  K. D. Fenk,  J. Fosso-Tande,  
+ Qinghui Ge,  A. Ghysels,  G. Gidofalvi,  J. Gomes,  J. Gonthier,  A. Gunina,  
+ D. Hait,  M. W. D. Hanson-Heine,  P. H. P. Harbach,  A. W. Hauser,  
+ J. E. Herr,  E. G. Hohenstein,  Z. C. Holden,  Kerwin Hui,  B. C. Huynh,  
+ T.-C. Jagau,  Hyunjun Ji,  B. Kaduk,  K. Khistyaev,  Jaehoon Kim,  
+ P. Klunzinger,  K. Koh,  D. Kosenkov,  L. Koulias,  T. Kowalczyk,  
+ C. M. Krauter,  A. Kunitsa,  Ka Un Lao,  A. Laurent,  K. V. Lawler,  
+ Joonho Lee,  D. Lefrancois,  S. Lehtola,  D. S. Levine,  Yi-Pei Li,  
+ You-Sheng Lin,  Fenglai Liu,  E. Livshits,  A. Luenser,  P. Manohar,  
+ E. Mansoor,  S. F. Manzer,  Shan-Ping Mao,  Yuezhi Mao,  N. Mardirossian,  
+ A. V. Marenich,  T. Markovich,  L. A. Martinez-Martinez,  S. A. Maurer,  
+ N. J. Mayhall,  S. C. McKenzie,  J.-M. Mewes,  A. F. Morrison,  
+ J. W. Mullinax,  K. Nanda,  T. S. Nguyen-Beck,  R. Olivares-Amaya,  
+ J. A. Parkhill,  T. M. Perrine,  F. Plasser,  P. Pokhilko,  S. Prager,  
+ A. Prociuk,  E. Ramos,  D. R. Rehn,  F. Rob,  M. Schneider,  N. Sergueev,  
+ S. M. Sharada,  S. Sharma,  D. W. Small,  T. Stauch,  T. Stein,  
+ Yu-Chuan Su,  A. J. W. Thom,  A. Tkatchenko,  T. Tsuchimochi,  N. M. Tubman,  
+ L. Vogt,  M. L. Vidal,  O. Vydrov,  M. A. Watson,  J. Wenzel,  
+ M. de Wergifosse,  T. A. Wesolowski,  A. White,  J. Witte,  A. Yamada,  
+ Jun Yang,  K. Yao,  S. Yeganeh,  S. R. Yost,  Zhi-Qiang You,  A. Zech,  
+ Igor Ying Zhang,  Xing Zhang,  Yan Zhao,  Ying Zhu,  B. R. Brooks,  
+ G. K. L. Chan,  C. J. Cramer,  M. S. Gordon,  W. J. Hehre,  A. Klamt,  
+ M. W. Schmidt,  C. D. Sherrill,  D. G. Truhlar,  A. Aspuru-Guzik,  R. Baer,  
+ A. T. Bell,  N. A. Besley,  Jeng-Da Chai,  R. A. DiStasio Jr.,  A. Dreuw,  
+ B. D. Dunietz,  T. R. Furlani,  Chao-Ping Hsu,  Yousung Jung,  Jing Kong,  
+ D. S. Lambrecht,  WanZhen Liang,  C. Ochsenfeld,  V. A. Rassolov,  
+ L. V. Slipchenko,  J. E. Subotnik,  T. Van Voorhis,  J. M. Herbert,  
+ A. I. Krylov,  P. M. W. Gill,  M. Head-Gordon
+
+ Contributors to earlier versions of Q-Chem not listed above: 
+ R. D. Adamson,  B. Austin,  J. Baker,  G. J. O. Beran,  K. Brandhorst,  
+ S. T. Brown,  E. F. C. Byrd,  A. K. Chakraborty,  C.-L. Cheng,  
+ Siu Hung Chien,  D. M. Chipman,  D. L. Crittenden,  H. Dachsel,  
+ R. J. Doerksen,  A. D. Dutoi,  L. Fusti-Molnar,  W. A. Goddard III,  
+ A. Golubeva-Zadorozhnaya,  S. R. Gwaltney,  G. Hawkins,  A. Heyden,  
+ S. Hirata,  G. Kedziora,  F. J. Keil,  C. Kelley,  Jihan Kim,  R. A. King,  
+ R. Z. Khaliullin,  P. P. Korambath,  W. Kurlancheek,  A. M. Lee,  M. S. Lee,  
+ S. V. Levchenko,  Ching Yeh Lin,  D. Liotard,  R. C. Lochan,  I. Lotan,  
+ P. E. Maslen,  N. Nair,  D. P. O'Neill,  D. Neuhauser,  E. Neuscamman,  
+ C. M. Oana,  R. Olson,  B. Peters,  R. Peverati,  P. A. Pieniazek,  
+ Y. M. Rhee,  J. Ritchie,  M. A. Rohrdanz,  E. Rosta,  N. J. Russ,  
+ H. F. Schaefer III,  N. E. Schultz,  N. Shenvi,  A. C. Simmonett,  A. Sodt,  
+ D. Stuck,  K. S. Thanthiriwatte,  V. Vanovschi,  Tao Wang,  A. Warshel,  
+ C. F. Williams,  Q. Wu,  X. Xu,  W. Zhang
+
+ Please cite Q-Chem as follows:
+ Y. Shao et al., Mol. Phys. 113, 184-215 (2015)
+ DOI: 10.1080/00268976.2014.952696
+
+ Q-Chem 5.1.0 for Intel X86 EM64T Linux
+
+ Parts of Q-Chem use Armadillo 8.300.2 (Tropical Shenanigans).
+ http://arma.sourceforge.net/
+
+ Q-Chem begins on Thu Sep 19 06:53:30 2019  
+
+Host: cori11
+0
+
+     Scratch files written to /tmp/qchem23519//
+ Jun2518 |scratch|qcdevops|jenkins|workspace|build_RNUM -1
+Processing $rem in /global/common/cori/software/qchem/5.1/config/preferences.
+ MEM_TOTAL  96000 
+
+Checking the input file for inconsistencies... 	...done.
+
+--------------------------------------------------------------
+User input:
+--------------------------------------------------------------
+$molecule
+0 1
+H         -4.12347       -0.08887        0.00000
+H         -3.70381        0.48134        0.00000
+$end
+
+$rem
+JOBTYPE       opt
+METHOD        b3lyp
+UNRESTRICTED  False
+BASIS         6-31g*
+$end
+
+
+--------------------------------------------------------------
+ ----------------------------------------------------------------
+             Standard Nuclear Orientation (Angstroms)
+    I     Atom           X                Y                Z
+ ----------------------------------------------------------------
+    1      H       0.0000000000     0.0000000000    -0.3539964547
+ [... lines omitted ...]
+ A unrestricted SCF calculation will be
+ performed using DIIS
+ SCF converges when DIIS error is below 1.0e-08
+ ---------------------------------------
+  Cycle       Energy         DIIS error
+ ---------------------------------------
+    1    -150.2031000000      1.70e-03  
+    2    -150.2015500000      2.50e-03  
+    3    -150.2025833333      1.70e-03  
+    4    -150.2018083333      2.50e-03  
+    5    -150.2024283333      1.70e-03  
+    6    -150.2019116667      2.50e-03  
+    7    -150.2023545238      1.70e-03  
+    8    -150.2019670238      2.50e-03  
+    9    -150.2023114683      1.70e-03  
+   10    -150.2020014683      2.50e-03  
+   11    -150.2022832864      1.70e-03  
+   12    -150.2020249531      2.50e-03  
+   13    -150.2022634146      1.70e-03  
+   14    -150.2020419861      2.50e-03  
+   15    -150.2022486527      1.70e-03  
+   16    -150.2020549027      2.50e-03  
+   17    -150.2022372557      1.70e-03  
+   18    -150.2020650335      2.50e-03  
+   19    -150.2022281913      1.70e-03  
+   20    -150.2020731913      2.50e-03  
+   21    -150.2022208104      1.70e-03  
+   22    -150.2020799013      2.50e-03  
+   23    -150.2022146839      1.70e-03  
+   24    -150.2020855172      2.50e-03  
+   25    -150.2022095172      1.70e-03  
+   26    -150.2020902865      2.50e-03  
+   27    -150.2022051013      1.70e-03  
+   28    -150.2020943870      2.50e-03  
+   29    -150.2022012836      1.70e-03  
+   30    -150.2020979502      2.50e-03  
+   31    -150.2021979502      1.70e-03  
+   32    -150.2021010752      2.50e-03  
+   33    -150.2021950146      1.70e-03  
+   34    -150.2021038382      2.50e-03  
+   35    -150.2021924096      1.70e-03  
+   36    -150.2021062985      2.50e-03  
+   37    -150.2021900823      1.70e-03  
+   38    -150.2021085033      2.50e-03  
+   39    -150.2021879905      1.70e-03  
+   40    -150.2021104905      2.50e-03  
+   41    -150.2021861002      1.70e-03  
+   42    -150.2021122907      2.50e-03  
+   43    -150.2021843837      1.70e-03  
+   44    -150.2021139292      2.50e-03  
+   45    -150.2021828181      1.70e-03  
+   46    -150.2021154268      2.50e-03  
+   47    -150.2021813842      1.70e-03  
+   48    -150.2021168009      2.50e-03  
+   49    -150.2021800662      1.70e-03  
+   50    -150.2021180662      2.50e-03  
+ ---------------------------------------
+ SCF failed to converge
+

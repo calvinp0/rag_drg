@@ -1,0 +1,75 @@
+# rag-drg test fixture - excerpt of ARC arc/testing/irc/irc_failed.out (ARC commit d9f47ab, MIT License, github.com/ReactionMechanismGenerator/ARC); kept lines 1-5, 56-90, 10170-10201
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /gpfs/apps/medsci/stacks/noOS/software/gaussian/g16.a03.avx2/g16/l1.exe "/localscratch/grinba/g16/a36620-542927/Gau-425862.inp" -scrdir="/localscratch/grinba/g16/a36620-542927/"
+ Default is to use a total of  40 processors:
+                               40 via shared-memory
+ [... 50 lines omitted ...]
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 16, Revision A.03,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2016.
+ 
+ ******************************************
+ Gaussian 16:  ES64L-G16RevA.03 25-Dec-2016
+                24-Feb-2020 
+ ******************************************
+ %chk=check.chk
+ %mem=14336mb
+ %NProcShared=40
+ Will use up to   40 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P irc=(CalcAll,reverse,maxpoints=50,stepsize=7) guess=read SCRF=(pcm,
+ Solvent=water) b3lyp/cbsb7 scf=xqc iop(2/9=2000)
+ ----------------------------------------------------------------------
+ [... 10079 lines omitted ...]
+      PEZero:  N= 8 I= 4 D=  3.81D-04 Err=  8.46D-04
+      PEZero:  N= 8 I= 3 D=  5.50D-04 Err=  2.30D-03
+    Cycle     8 NS=   512 Truncation Error =  0.000845712
+      PEZero:  N= 9 I= 8 D=  4.23D-05 Err=  4.62D-03
+      PEZero:  N= 9 I= 7 D=  8.47D-05 Err=  1.64D-02
+    Cycle     9 NS=   768 Truncation Error =  0.004622869
+      PEZero:  N=10 I= 9 D=  2.12D-05 Err=  3.78D-05
+      PEZero:  N=10 I= 8 D=  6.35D-05 Err=  4.57D-03
+    Cycle    10 NS=  1024 Truncation Error =  0.000037767
+      PEZero:  N=11 I=10 D=  2.12D-05 Err=  2.50D-05
+      PEZero:  N=11 I= 9 D=  4.23D-05 Err=  2.22D-07
+      PEZero:  N=11 I= 8 D=  8.47D-05 Err=  5.84D-03
+    Cycle    11 NS=  1536 Truncation Error =  0.000000222
+ BS completed in   11 cycles and    5008 integration steps.
+ Maximum DWI energy   std dev =  0.000003060 at pt    -1
+ Maximum DWI gradient std dev =  1.600139784 at pt     1
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =  -306.074249
+   Old End Point Energy       =  -306.074243
+   Corrected End Point Energy =  -306.074253
+   Predictor End-Start Dist.  =     0.130064
+   Old End-Start Dist.        =     0.043769
+   New End-Start Dist.        =     0.126309
+   New End-Old End Dist.      =     0.122213
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence NOT Met
+ Maximum number of corrector steps exceded.
+ Error termination via Lnk1e in /gpfs/apps/medsci/stacks/noOS/software/gaussian/g16.a03.avx2/g16/l123.exe at Mon Feb 24 10:27:38 2020.
+ Job cpu time:       0 days  2 hours 10 minutes  0.8 seconds.
+ Elapsed time:       0 days  0 hours  3 minutes 50.2 seconds.
+ File lengths (MBytes):  RWF=    112 Int=      0 D2E=      0 Chk=     15 Scr=      1
