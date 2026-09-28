@@ -53,6 +53,11 @@ qsub submit_cpu.sh
      only through its memory use.
   5. If no GPU qualifies, the job stops with exit code 2 before running `g16`, and prints the
      GPU table.
+* **Input checks before g16 starts.**
+  * The input needs at least 3 blank lines and a blank last line. Copying through a terminal or
+    chat can drop them, and Gaussian then fails with `QPErr --- A syntax error`.
+  * A GPU needs at least `%mem` of free memory. Gaussian reserves about `%mem` on each GPU: with
+    `%mem=24GB` the log shows `2879845171 words ... on each GPU`, about 23 GB.
 * **Cores.** zeus does not confine a job to its cores either: `allowed cores: 0-39` on n302.
   With `%CPU=0-3`, every GPU job would pin itself to the same four cores. The script therefore
   gives each GPU its own block of the node's cores (40 cores / 4 GPUs = 10: GPU 1 gets cores

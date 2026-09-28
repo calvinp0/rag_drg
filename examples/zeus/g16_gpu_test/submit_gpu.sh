@@ -26,6 +26,23 @@ if [ ! -f "$INPUT.gjf" ]; then
     fi
 fi
 
+# Gaussian needs blank lines after the route, the title and the geometry (and at the end);
+# copying a file through a terminal or chat can drop them ("QPErr --- A syntax error").
+BLANKS=$(grep -c '^[[:space:]]*$' "$INPUT.gjf")
+if [ "$BLANKS" -lt 3 ] || [ -n "$(tail -n 1 "$INPUT.gjf" | tr -d '[:space:]')" ]; then
+    echo "ERROR: $INPUT.gjf needs a blank line after the route, after the title and after the geometry" \
+         "(found $BLANKS blank line(s)); not starting g16" >&2
+    exit 1
+fi
+
+# Gaussian reserves about %mem of memory on each GPU (log: "... words of memory will be used on
+# each GPU"), so a GPU needs at least %mem free, whatever MIN_FREE_MIB says
+MEM_GB=$(grep -ioE '^%mem=[0-9]+GB' "$INPUT.gjf" | grep -oE '[0-9]+' | head -1)
+if [ -n "$MEM_GB" ] && [ $((MEM_GB * 1024)) -gt "$MIN_FREE_MIB" ]; then
+    MIN_FREE_MIB=$((MEM_GB * 1024))
+    echo "%mem=${MEM_GB}GB: a GPU needs >= $MIN_FREE_MIB MiB free"
+fi
+
 export GAUSS_SCRDIR="/gtmp/$USER/scratch/g16/$PBS_JOBID"
 mkdir -p "$GAUSS_SCRDIR"
 
