@@ -70,6 +70,9 @@ class Config:
     sources: list[SourceConfig]
     chunk_size: int = 1500
     chunk_overlap: int = 200
+    # The whole merged YAML, so feature plugins can read their own top-level sections
+    # (e.g. cfg.extra.get("zotero")) without changes to this file.
+    extra: dict = field(default_factory=dict)
 
     def source(self, name: str) -> SourceConfig:
         for s in self.sources:
@@ -115,6 +118,19 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
     cfg_path = _find_config(path)
     root = cfg_path.parent
     raw = yaml.safe_load(cfg_path.read_text()) or {}
+    # conf.d/*.yaml next to the main file: `sources` lists are appended, other keys merged.
+    # Lets each feature keep its own config file.
+    conf_d = root / "conf.d"
+    if conf_d.is_dir():
+        for extra_file in sorted(conf_d.glob("*.yaml")):
+            part = yaml.safe_load(extra_file.read_text()) or {}
+            for key, value in part.items():
+                if key == "sources":
+                    raw["sources"] = list(raw.get("sources") or []) + list(value or [])
+                elif isinstance(value, dict) and isinstance(raw.get(key), dict):
+                    raw[key] = {**raw[key], **value}
+                else:
+                    raw[key] = value
 
     def resolve(p: str | None, default: str) -> Path:
         p = os.path.expandvars(os.path.expanduser(p or default))
@@ -175,4 +191,5 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
         sources=sources,
         chunk_size=int(raw.get("chunk_size", 1500)),
         chunk_overlap=int(raw.get("chunk_overlap", 200)),
+        extra=raw,
     )

@@ -75,11 +75,21 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("stats", help="show index contents")
     sub.add_parser("sources", help="list configured sources")
 
+    from .plugins import plugin_modules
+
+    plugin_handlers: dict = {}
+    for mod in plugin_modules():
+        if hasattr(mod, "register_cli"):
+            plugin_handlers.update(mod.register_cli(sub) or {})
+
     args = parser.parse_args(argv)
     # stdout is the MCP channel for stdio transport; keep logs on stderr.
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, stream=sys.stderr, format="%(message)s")
     cfg = load_config(args.config)
     log = lambda msg: print(msg, file=sys.stderr)  # noqa: E731
+
+    if args.cmd in plugin_handlers:
+        return int(plugin_handlers[args.cmd](args, cfg) or 0)
 
     if args.cmd == "fetch":
         from .ingest import fetch_source
