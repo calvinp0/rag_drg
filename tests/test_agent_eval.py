@@ -1,6 +1,7 @@
 """rag-drg agent-eval: graders, task validation, the eval-of-the-eval, and a full run with a fake agent."""
 
 import json
+import os
 import shutil
 import sys
 import textwrap
@@ -228,3 +229,44 @@ def test_without_answers_citing_repo_paths_are_reported_as_leaks():
     assert s["leaks"] == [{"task": "t", "rep": 1, "paths": ["knowledge/"]}]
     assert "cite repository paths" in runner.format_report(s)
     assert runner.LEAK.findall("see `knowledge/hpc/servers/zeus.md` and servers.yaml") == ["knowledge/", "servers.yaml"]
+
+
+FAKE_CODEX = r'''#!/usr/bin/env python3
+import os, sys, pathlib
+a = sys.argv[1:]
+assert a[0] == "exec", a
+cd = pathlib.Path(a[a.index("--cd") + 1]); out = pathlib.Path(a[a.index("--output-last-message") + 1])
+if "FAIL" in a[-1]:
+    print("error: not logged in", file=sys.stderr); sys.exit(1)
+home = pathlib.Path(os.environ["CODEX_HOME"])
+has_mcp = "[mcp_servers.rag-drg]" in (home / "config.toml").read_text()
+(cd / "made.txt").write_text("x")
+print("progress chatter on stdout")
+out.write_text(("mcp=yes" if has_mcp else "mcp=no") + " auth=" + str((home / "auth.json").is_symlink())
+               + (" model=" + a[a.index("--model") + 1] if "--model" in a else ""))
+'''
+
+
+def test_codex_preset_isolates_mcp_per_condition_and_reads_the_answer_file(tmp_path, monkeypatch):
+    bindir = tmp_path / "bin"; bindir.mkdir()
+    (bindir / "codex").write_text(FAKE_CODEX); (bindir / "codex").chmod(0o755)
+    user_home = tmp_path / "user-codex"; user_home.mkdir(); (user_home / "auth.json").write_text("{}")
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    monkeypatch.setenv("CODEX_HOME", str(user_home))
+    (tmp_path / "tasks.yaml").write_text(yaml.safe_dump({"tasks": [
+        {"id": "t", "prompt": "p", "why": "w",
+         "checks": [{"type": "file_exists", "path": "made.txt"}, {"type": "answer_regex", "pattern": "auth=True"}]},
+        {"id": "crash", "prompt": "FAIL", "why": "w", "checks": [{"type": "file_exists", "path": "x"}]}]}))
+    suite = load_suite(tmp_path / "tasks.yaml")
+    out = tmp_path / "run"
+    runner.run(runner.RunSpec(suite, suite.tasks, ["with", "without"], 1, out, model="gpt-x",
+                              agent_name="codex"), progress=lambda m: None)
+    res = {(r["task"], r["condition"]): r for r in runner.load_results(out)}
+    assert res[("t", "with")]["passed"] and res[("t", "without")]["passed"]
+    assert (out / "t" / "with" / "rep1" / "answer.txt").read_text() == "mcp=yes auth=True model=gpt-x"
+    assert (out / "t" / "without" / "rep1" / "answer.txt").read_text().startswith("mcp=no")
+    assert (out / "codex-home-with" / "auth.json").is_symlink()  # linked, never copied
+    assert "RAG_DRG_CONFIG" not in (out / "codex-home-without" / "config.toml").read_text()
+    # a Codex that exits with an error and no final answer is an agent error, not a task failure
+    assert res[("crash", "with")]["agent_error"] and "not logged in" in res[("crash", "with")]["agent_error"]
+    assert "Codex" in json.loads((out / "run.json").read_text())["isolation_note"]

@@ -1,0 +1,78 @@
+name: Nightly retrieval eval (all sources)
+
+# The PR workflow (ci.yml) indexes only curated + lessons, so it is deterministic. This one fetches
+# every enabled remote source (ARC, Psi4, PySCF, DRGScripts; upstream repos are unpinned) and runs
+# the whole eval/qa.yaml twice: keyword-only, as the group's servers run today, and with local
+# semantic embeddings (sentence-transformers). A lesson or card that pushes another card out of the
+# top 6, or an upstream change that breaks a source, fails here instead of going unnoticed.
+# Licensed manuals (sources/, git-ignored) are not available here, so items that need them are skipped.
+
+on:
+  schedule:
+    - cron: "17 2 * * *"     # daily, 02:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/nightly-eval.yml
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        retrieval: [keyword, semantic]
+    # Semantic search is still being evaluated: report its numbers without failing the run.
+    continue-on-error: ${{ matrix.retrieval == 'semantic' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          if [ "${{ matrix.retrieval }}" = semantic ]; then
+            # CPU-only torch: the default wheel pulls ~2 GB of CUDA libraries
+            pip install torch --index-url https://download.pytorch.org/whl/cpu
+            pip install -e '.[mcp,pdf,chem,st]'
+          else
+            pip install -e '.[mcp,pdf,chem]'
+          fi
+      - name: Cache the embedding model
+        if: matrix.retrieval == 'semantic'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('rag_drg.yaml') }}
+      - name: Use local embeddings
+        if: matrix.retrieval == 'semantic'
+        run: |
+          sed -i 's/^  provider: none$/  provider: sentence-transformers/' rag_drg.yaml
+          grep -n 'provider:' rag_drg.yaml
+      - name: Fetch every enabled source and index
+        run: rag-drg ingest --fetch ${{ matrix.retrieval == 'keyword' && '--no-embed' || '' }}
+      - run: rag-drg stats
+      - name: Retrieval eval (all indexed sources)
+        run: |
+          rag-drg eval --json > eval-${{ matrix.retrieval }}.json || true
+          python - "${{ matrix.retrieval }}" <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          mode = sys.argv[1]
+          d = json.load(open(f"eval-{mode}.json"))
+          o = d["overall"]
+          print(f"### Retrieval eval: {mode} ({d.get('embeddings') or 'keyword only'})\n")
+          print(f"| n | hit@1 | hit@{d['k']} | MRR | skipped |\n|---|---|---|---|---|")
+          print(f"| {o['n']} | {o['hit@1']:.3f} | {o['hit@' + str(d['k'])]:.3f} | {o['mrr']:.3f} | {len(d.get('skipped', []))} |\n")
+          misses = [r for r in d["results"] if not r["hit"]]
+          if misses:
+              print("Misses:\n")
+              for r in misses:
+                  top = r["top"][0] if r["top"] else {}
+                  print(f"- `{r['id']}`: {r['q']} (top: {top.get('source')}:{top.get('path')})")
+          EOF
+          rag-drg eval --min-hit-rate 0.95 --show-failures
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-${{ matrix.retrieval }}
+          path: eval-${{ matrix.retrieval }}.json

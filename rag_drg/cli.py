@@ -69,11 +69,11 @@ def main(argv: list[str] | None = None) -> int:
                         "minimal: search_knowledge + find_tool + run_tool, for small-context/local models "
                         "(also $RAG_DRG_PROFILE or `mcp: {profile: ...}` in the config)")
 
-    p = sub.add_parser("lesson", help="record a lesson learned (a correction)")
-    p.add_argument("--title", required=True)
-    p.add_argument("--mistake", required=True)
-    p.add_argument("--correction", required=True)
-    p.add_argument("--domain", required=True)
+    p = sub.add_parser("lesson", help="record a lesson learned (a correction); asks for missing fields in a terminal")
+    p.add_argument("--title")
+    p.add_argument("--mistake")
+    p.add_argument("--correction")
+    p.add_argument("--domain", help="ess, arc, hpc, project or literature")
     p.add_argument("--software")
     p.add_argument("--version")
     p.add_argument("--evidence")
@@ -161,6 +161,24 @@ def main(argv: list[str] | None = None) -> int:
         from .store import Store
         from .tools.lessons_workflow import submit_lesson
 
+        # Fill missing fields interactively (a person at a terminal); scripts must pass them all.
+        prompts = [("title", "Title (the rule, one line)"), ("mistake", "What was wrong"),
+                   ("correction", "What is right (keywords, paths, values)"),
+                   ("domain", "Domain [ess/arc/hpc/project/literature]"),
+                   ("software", "Software (optional, e.g. orca, gaussian, arc)"),
+                   ("evidence", "Evidence (optional: job output, manual section, who confirmed)")]
+        required = {"title", "mistake", "correction", "domain"}
+        missing = [k for k, _ in prompts if k in required and not getattr(args, k)]
+        if missing and not sys.stdin.isatty():
+            print(f"error: missing --{', --'.join(missing)} (run in a terminal to be asked)", file=sys.stderr)
+            return 2
+        if missing:
+            for key, label in prompts:
+                while not getattr(args, key):
+                    value = input(f"{label}: ").strip()
+                    if value or key not in required:
+                        setattr(args, key, value or None)
+                        break
         try:
             check_lesson_meta(args.domain, args.software)
         except ValueError as e:
