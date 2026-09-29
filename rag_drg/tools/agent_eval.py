@@ -44,7 +44,9 @@ def register_cli(subparsers) -> dict:
     r.add_argument("--split", choices=["dev", "holdout", "all"], default="all")
     r.add_argument("--ids", nargs="+", help="only these task ids")
     r.add_argument("--tags", nargs="+", help="only tasks with any of these tags")
-    r.add_argument("--model", help="agent model (Claude Code: --model)")
+    r.add_argument("--agent", choices=["claude", "codex"],
+                   help="agent preset (default: Claude Code, or the task file's `agent:`)")
+    r.add_argument("--model", help="agent model (Claude Code --model, Codex --model)")
     r.add_argument("--timeout", type=int, help="seconds per agent run (default from the task file, 900)")
     r.add_argument("--out", help="run directory (default eval/runs/<timestamp>); an existing one is resumed")
     g = sub.add_parser("regrade", help="re-grade a finished run with the current checks")
@@ -83,7 +85,7 @@ def cmd_agent_eval(args, cfg) -> int:
         out = Path(args.out) if args.out else Path(cfg.root) / "eval" / "runs" / time.strftime("%Y%m%d-%H%M%S")
         spec = RunSpec(suite, tasks, args.conditions, args.repeats or int(suite.defaults["repeats"]), out, cfg=cfg,
                        cfg_path=Path(cfg.root) / "rag_drg.yaml", model=args.model,
-                       timeout_s=args.timeout or int(suite.defaults["timeout_s"]))
+                       timeout_s=args.timeout or int(suite.defaults["timeout_s"]), agent_name=args.agent)
         print(f"{len(tasks)} task(s) x {len(spec.conditions)} condition(s) x {spec.repeats} repeat(s) -> {out}",
               file=sys.stderr)
         run(spec, progress=lambda m: print(m, file=sys.stderr))

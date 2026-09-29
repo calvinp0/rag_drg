@@ -143,6 +143,18 @@ Then give agents the habit:
 The Claude Code `PostToolUse` hook (below) does not carry over to Codex, so in Codex, input
 checks rely on that instruction (`check_input` via MCP, or `rag-drg check-input <file>`).
 
+**Recording lessons.** When you correct an agent, turn the correction into a lesson so the next
+agent doesn't repeat it:
+* **Claude Code:** `cp integrations/claude-code/commands/lesson.md ~/.claude/commands/`, then type
+  `/lesson` (optionally `/lesson the Q-Chem path was wrong`). The agent drafts the lesson from the
+  conversation, shows it to you, and records it with `record_lesson` after your OK.
+* **Codex:** `cp integrations/codex/prompts/lesson.md ~/.codex/prompts/`. Invoke it as a custom
+  prompt; recent Codex versions list custom prompts under `/`, so check `/` in your version.
+* **Terminal:** `rag-drg lesson` asks for the title, mistake, correction, domain and so on.
+  Scripts pass them as flags instead.
+
+Lessons start as `unreviewed`; `rag-drg lessons report` lists them for review (docs/lessons.md).
+
 Local models: see [`integrations/local-models.md`](integrations/local-models.md) (MCP, or the
 `rag-drg search --json` CLI as a tool).
 

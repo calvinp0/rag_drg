@@ -44,6 +44,40 @@ DEFAULT_AGENT = {
 }
 
 
+# Codex CLI, non-interactive. Each condition gets its own CODEX_HOME whose config.toml holds rag-drg
+# only for `with`, so the user's ~/.codex config, MCP servers and AGENTS.md reach neither condition;
+# the login (auth.json) is linked in. Codex has a shell and its sandbox does not stop reads outside
+# the work dir, so isolation relies on the temp work dir and the leak check.
+CODEX_AGENT = {
+    "command": ["codex", "exec", "--skip-git-repo-check", "--sandbox", "workspace-write",
+                "--cd", "{workdir}", "--output-last-message", "{answer_file}", "{prompt}"],
+    "codex_home": True,
+}
+AGENTS = {"claude": DEFAULT_AGENT, "codex": CODEX_AGENT}
+
+
+def codex_home(root: Path, condition: str, cfg_path: Path | None) -> Path:
+    """A CODEX_HOME for one condition: rag-drg as the only MCP server for `with`, none for `without`."""
+    home = root / f"codex-home-{condition}"
+    home.mkdir(parents=True, exist_ok=True)
+    toml = ""
+    if condition == "with":
+        server = mcp_config("with", cfg_path)["mcpServers"]["rag-drg"]
+        toml = ("[mcp_servers.rag-drg]\n"
+                f"command = {json.dumps(server['command'])}\n"
+                f"args = {json.dumps(server['args'])}\n"
+                "startup_timeout_sec = 60\n")
+        if server.get("env"):
+            toml += "\n[mcp_servers.rag-drg.env]\n" + "".join(
+                f"{k} = {json.dumps(v)}\n" for k, v in server["env"].items())
+    (home / "config.toml").write_text(toml)
+    user_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    auth, link = user_home / "auth.json", home / "auth.json"
+    if auth.exists() and not link.exists():
+        link.symlink_to(auth)  # a link, so the credentials are not copied into the run directory
+    return home
+
+
 def mcp_config(condition: str, cfg_path: Path | None) -> dict:
     if condition == "without":
         return {"mcpServers": {}}
@@ -64,19 +98,23 @@ def denied_tools(hidden: list[Path]) -> str:
 
 
 def build_command(agent: dict, condition: str, prompt: str, mcp_path: Path, work: Path,
-                  model: str | None, hidden: list[Path] | None = None) -> list[str]:
+                  model: str | None, hidden: list[Path] | None = None,
+                  answer_file: Path | None = None) -> list[str]:
     tools = (agent.get("allowed_tools") or {}).get(condition, "")
     values = {"prompt": prompt, "mcp_config": str(mcp_path), "allowed_tools": tools,
               "denied_tools": denied_tools(hidden if hidden is not None else [REPO]),
-              "workdir": str(work), "model": model or ""}
+              "workdir": str(work), "model": model or "", "answer_file": str(answer_file or "")}
     cmd = []
     for part in agent["command"]:
         filled = part
         for k, v in values.items():
             filled = filled.replace("{" + k + "}", v)
         cmd.append(filled)
-    if model and not any("{model}" in part for part in agent["command"]) and cmd and Path(cmd[0]).name == "claude":
-        cmd += ["--model", model]
+    if model and not any("{model}" in part for part in agent["command"]) and cmd:
+        if Path(cmd[0]).name == "claude":
+            cmd += ["--model", model]
+        elif Path(cmd[0]).name == "codex" and len(cmd) > 1 and cmd[1] == "exec":
+            cmd[2:2] = ["--model", model]
     return cmd
 
 
@@ -106,6 +144,7 @@ class RunSpec:
     cfg_path: Path | None = None
     model: str | None = None
     timeout_s: int = 900
+    agent_name: str | None = None  # "claude" / "codex" preset; None = claude or the task file's agent
 
 
 def _auth_compatible(agent: dict) -> tuple[dict, str | None]:
@@ -122,8 +161,15 @@ def _auth_compatible(agent: dict) -> tuple[dict, str | None]:
 
 
 def run(spec: RunSpec, progress=print) -> Path:
-    agent = {**DEFAULT_AGENT, **(spec.suite.agent or {})}
+    if spec.agent_name:
+        agent = dict(AGENTS[spec.agent_name])
+    else:
+        agent = {**DEFAULT_AGENT, **(spec.suite.agent or {})}
     agent, isolation = _auth_compatible(agent)
+    if agent.get("codex_home"):
+        isolation = ((isolation + " ") if isolation else "") + (
+            "Codex: per-condition CODEX_HOME (rag-drg only for `with`); Codex has a shell and can read "
+            "outside its work dir, so check the leak warnings.")
     if isolation:
         progress(f"note: {isolation}")
     # the agent runs with cwd=<rep>/work, so every path handed to it (the MCP config) must be absolute
@@ -134,9 +180,13 @@ def run(spec: RunSpec, progress=print) -> Path:
         "model": spec.model, "agent_command": agent["command"], "isolation_note": isolation,
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }, indent=2))
+    envs: dict[str, dict | None] = {}
     for cond in spec.conditions:
         mcp_path = spec.out / f"mcp-{cond}.json"
         mcp_path.write_text(json.dumps(mcp_config(cond, spec.cfg_path), indent=2))
+        envs[cond] = ({**os.environ, "CODEX_HOME": str(codex_home(spec.out, cond, spec.cfg_path))}
+                      if agent.get("codex_home") else None)
+    uses_answer_file = any("{answer_file}" in part for part in agent["command"])
     hidden = [REPO] + ([Path(spec.cfg_path).resolve().parent] if spec.cfg_path else [])
     hidden = list(dict.fromkeys(hidden))
     for task in spec.tasks:
@@ -149,11 +199,14 @@ def run(spec: RunSpec, progress=print) -> Path:
                 work = _scratch_dir(task.id)
                 for name, text in task.files.items():
                     (work / name).write_text(text)
+                answer_file = d / "agent_answer.txt"  # outside work/, so file checks never see it
+                answer_file.unlink(missing_ok=True)
                 cmd = build_command(agent, cond, task.prompt, spec.out / f"mcp-{cond}.json", work, spec.model,
-                                    hidden)
+                                    hidden, answer_file)
                 t0 = time.time()
                 try:
-                    p = subprocess.run(cmd, cwd=work, capture_output=True, text=True, timeout=spec.timeout_s)
+                    p = subprocess.run(cmd, cwd=work, capture_output=True, text=True, timeout=spec.timeout_s,
+                                       env=envs[cond])
                     stdout, stderr, rc = p.stdout, p.stderr, p.returncode
                 except subprocess.TimeoutExpired as e:
                     stdout = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
@@ -163,12 +216,18 @@ def run(spec: RunSpec, progress=print) -> Path:
                 (d / "agent.out").write_text(stdout)
                 (d / "agent.err").write_text(stderr)
                 answer, meta = parse_answer(stdout)
+                file_answer = answer_file.read_text() if answer_file.exists() else ""
+                if uses_answer_file:
+                    answer = file_answer
                 (d / "answer.txt").write_text(answer)
                 result = grade_run(task, work, answer, spec.cfg)
                 leaks = sorted(set(LEAK.findall(answer))) if cond == "without" else []
                 result.update(task=task.id, split=task.split, condition=cond, rep=rep, returncode=rc,
                               seconds=round(time.time() - t0, 1), agent=meta,
-                              agent_error=agent_error(rc, meta, stderr, stdout), leaks=leaks)
+                              agent_error=agent_error(rc, meta, stderr, stdout)
+                              or (f"agent exited {rc} without a final answer: {stderr.strip()[-200:]}"
+                                  if uses_answer_file and rc != 0 and not file_answer.strip() else None),
+                              leaks=leaks)
                 shutil.rmtree(d / "work", ignore_errors=True)
                 shutil.copytree(work, d / "work")
                 shutil.rmtree(work, ignore_errors=True)

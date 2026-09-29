@@ -74,6 +74,15 @@ rag-drg eval --json > eval-embeddings.json      # header says "keyword + embeddi
 rag-drg eval --tags paraphrase                  # the number that should move most
 ```
 
+**Nightly on GitHub.** `.github/workflows/nightly-eval.yml` runs every night (and on demand from the
+Actions tab):
+* It fetches every enabled remote source (ARC, Psi4, PySCF, DRGScripts) and runs the whole
+  `eval/qa.yaml` twice: keyword-only, and with `sentence-transformers` (`BAAI/bge-small-en-v1.5`, CPU).
+* Each run's summary shows hit@1/hit@6/MRR and every miss. The JSON is kept as an artifact.
+* The keyword run fails below hit@6 0.95. The semantic run only reports, until embeddings are
+  enabled for real.
+* The PR workflow stays on curated + lessons, so upstream repos can't break unrelated PRs.
+
 Compare overall hit@1/MRR and the `paraphrase` row. Embeddings are worth enabling if
 `paraphrase` improves clearly **and** the keyword-style questions (exact tokens like
 `%maxcore`, `GEOM_MAXITER`) do not get worse. Keep the JSON files: they contain the per-item
