@@ -161,3 +161,35 @@ def test_missing_agent_binary_is_recorded(tmp_path):
 def test_api_error_json_is_an_agent_error():
     _, meta = runner.parse_answer(json.dumps({"result": "", "terminal_reason": "api_error", "total_cost_usd": 0}))
     assert runner.agent_error(0, meta, "")
+
+
+def test_relative_run_dir_gives_the_agent_an_absolute_mcp_config(tmp_path, monkeypatch):
+    """The agent runs in <rep>/work; a relative --out once made the MCP config path unreadable."""
+    import sys
+    check = "import os,sys; p=sys.argv[1]; print('found' if os.path.isabs(p) and os.path.exists(p) else 'missing')"
+    (tmp_path / "tasks.yaml").write_text(yaml.safe_dump({
+        "agent": {"command": [sys.executable, "-c", check, "{mcp_config}"]},
+        "tasks": [{"id": "t", "prompt": "p", "why": "w", "checks": [{"type": "answer_regex", "pattern": "^found"}]}]}))
+    suite = load_suite(tmp_path / "tasks.yaml")
+    monkeypatch.chdir(tmp_path)
+    runner.run(runner.RunSpec(suite, suite.tasks, ["with"], 1, Path("run")), progress=lambda m: None)
+    res = runner.load_results(tmp_path / "run")[0]
+    assert res["passed"], res
+
+
+def test_agent_exiting_with_an_error_and_no_output_is_an_agent_error():
+    err = runner.agent_error(1, {}, "Error: Invalid MCP configuration:\nMCP config file not found", "")
+    assert err and "Invalid MCP configuration" in err
+    assert runner.agent_error(1, {}, "", "some answer text") is None  # the agent answered: grade it
+    assert runner.agent_error(0, {}, "", "") is None
+
+
+def test_bare_is_dropped_without_an_api_key(monkeypatch):
+    """--bare never reads an OAuth (subscription) login, so without ANTHROPIC_API_KEY it cannot authenticate."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    agent, note = runner._auth_compatible(runner.DEFAULT_AGENT)
+    assert "--bare" not in agent["command"] and note and "--strict-mcp-config" in agent["command"]
+    assert "--bare" in runner.DEFAULT_AGENT["command"]  # the default itself is not mutated
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    agent, note = runner._auth_compatible(runner.DEFAULT_AGENT)
+    assert "--bare" in agent["command"] and note is None

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 import subprocess
 import time
@@ -90,12 +91,31 @@ class RunSpec:
     timeout_s: int = 900
 
 
+def _auth_compatible(agent: dict) -> tuple[dict, str | None]:
+    """Claude Code's --bare authenticates only with ANTHROPIC_API_KEY (it never reads the OAuth
+    login of a Claude subscription). Without a key, drop --bare so the run can log in; user
+    settings, hooks and MCP servers are still kept out by --setting-sources/--strict-mcp-config."""
+    cmd = list(agent["command"])
+    if "--bare" in cmd and not os.environ.get("ANTHROPIC_API_KEY"):
+        cmd.remove("--bare")
+        return {**agent, "command": cmd}, (
+            "no ANTHROPIC_API_KEY, so running without --bare (OAuth login). Your ~/.claude/CLAUDE.md and "
+            "skills are visible to both conditions alike; set ANTHROPIC_API_KEY for strict isolation.")
+    return agent, None
+
+
 def run(spec: RunSpec, progress=print) -> Path:
     agent = {**DEFAULT_AGENT, **(spec.suite.agent or {})}
+    agent, isolation = _auth_compatible(agent)
+    if isolation:
+        progress(f"note: {isolation}")
+    # the agent runs with cwd=<rep>/work, so every path handed to it (the MCP config) must be absolute
+    spec.out = Path(spec.out).resolve()
     spec.out.mkdir(parents=True, exist_ok=True)
     (spec.out / "run.json").write_text(json.dumps({
         "tasks": [t.id for t in spec.tasks], "conditions": spec.conditions, "repeats": spec.repeats,
-        "model": spec.model, "agent_command": agent["command"], "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "model": spec.model, "agent_command": agent["command"], "isolation_note": isolation,
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }, indent=2))
     for cond in spec.conditions:
         mcp_path = spec.out / f"mcp-{cond}.json"
@@ -127,7 +147,7 @@ def run(spec: RunSpec, progress=print) -> Path:
                 result = grade_run(task, work, answer, spec.cfg)
                 result.update(task=task.id, split=task.split, condition=cond, rep=rep, returncode=rc,
                               seconds=round(time.time() - t0, 1), agent=meta,
-                              agent_error=agent_error(rc, meta, stderr))
+                              agent_error=agent_error(rc, meta, stderr, stdout))
                 (d / "result.json").write_text(json.dumps(result, indent=2))
                 if result["agent_error"]:
                     progress(f"{task.id:32s} {cond:8s} rep{rep}: AGENT ERROR  ({result['agent_error']})")
@@ -137,11 +157,14 @@ def run(spec: RunSpec, progress=print) -> Path:
     return spec.out
 
 
-def agent_error(rc: int, meta: dict, stderr: str) -> str | None:
+def agent_error(rc: int, meta: dict, stderr: str, stdout: str = "") -> str | None:
     """Why the agent itself failed to run (not a task failure): these runs are left out of the pass
-    rates, because an outage or a missing login says nothing about rag-drg."""
+    rates, because an outage, a missing login or a bad agent config says nothing about rag-drg."""
     if rc in (-1, -2):
         return stderr.strip()[:200] or "agent did not run"
+    if rc != 0 and not stdout.strip():
+        # exited with an error and produced nothing, e.g. "Invalid MCP configuration"
+        return f"agent exited {rc} without output: {stderr.strip()[:200]}".rstrip(": ")
     if meta.get("terminal_reason") in ("api_error",) or meta.get("subtype") in ("error_during_execution",):
         return f"agent error: {meta.get('terminal_reason') or meta.get('subtype')}"
     if meta.get("is_error") and not meta.get("num_turns"):
