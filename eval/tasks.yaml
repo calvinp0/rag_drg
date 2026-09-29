@@ -63,3 +63,28 @@ tasks:
       - {type: answer_regex, pattern: "(not (exactly )?the same|not identical|different (functional|parametri[sz]ation|method)|no exact|isn't the same|not available)", flags: i, name: flags-not-identical}
       - {type: answer_not_regex, pattern: '!\s*wB97XD\b', flags: i, name: no-gaussian-spelling-in-orca}
 
+  - id: arkane-corrections-disabled
+    split: holdout
+    tags: [arkane, arc, thermo, aec]
+    why: without AEC/BAC ARC still writes thermo but H298 is not meaningful; the group fits AEC with ARC-driven scripts (AE_Corr*, write_arc_input.py, fit_aec.py/AEJob)
+    prompt: |
+      My ARC thermo run finished, but arc.log says: "SP level ... is not recognized by Arkane and
+      has no AEC entry in ARC. Atom and bond energy corrections will be DISABLED for this Arkane
+      run." Can I use the H298 values it wrote? If not, what exactly should I do to get corrected
+      thermo for this level of theory? Answer briefly.
+    checks:
+      - {type: answer_regex, pattern: "(not (be )?(meaningful|reliable|usable|trustworthy|accurate|correct)|unreliable|meaningless|should(n't| not) (be )?use|can(no|')t (be )?use|don't use|do not use|not safe)", flags: i, name: says-not-usable}
+      - {type: answer_regex, pattern: '(AE_Corr|fit_aec|write_arc_input|AEJob)', name: group-aec-route}
+
+  - id: g09-maxcycles-raise
+    split: holdout
+    tags: [gaussian, g09, optimisation, lesson]
+    why: "lesson 2026-09-29: on G09 D.01 Opt=(MaxCycles=N) can only lower the Berny limit min(N, max(100, 6*NAtoms)); raising it does nothing"
+    prompt: |
+      A Gaussian 09 (Revision D.01) geometry optimisation of a 12-atom molecule on zeus stopped with
+      "Number of steps exceeded, NStep= 100". I'm going to resubmit with Opt=(MaxCycles=300). Will
+      that let it run for up to 300 steps? What should I do instead? Answer briefly.
+    checks:
+      - {type: answer_regex, pattern: '(only lower|can only (be used to )?lower|can(no|'')t raise|cannot raise|won''t raise|will not raise|doesn''t raise|does not raise|no effect|min\(|max\(100|6\s*[x×*]\s*N)', flags: i, name: says-cannot-raise}
+      - {type: answer_regex, pattern: '(last|final|latest|current) (geometry|structure|point)|geom\s*=\s*(all)?check|restart from|RFO|GDIIS|cartesian', flags: i, name: gives-alternative}
+      - {type: answer_not_regex, pattern: '^\s*yes\b', flags: i, name: does-not-say-yes}
