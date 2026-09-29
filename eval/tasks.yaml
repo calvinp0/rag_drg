@@ -259,7 +259,7 @@ tasks:
       run." Can I use the H298 values it wrote? If not, what exactly should I do to get corrected
       thermo for this level of theory? Answer briefly.
     checks:
-      - {type: answer_regex, pattern: "(not (be )?(meaningful|reliable|usable|trustworthy|accurate|correct)|unreliable|meaningless|should(n't| not) (be )?use|can(no|')t (be )?use|don't use|do not use|not safe)", flags: i, name: says-not-usable}
+      - {type: answer_regex, pattern: "(not (be )?(meaningful|reliable|usable|trustworthy|accurate|correct)|unreliable|meaningless|should(n't| not) (be )?use|can(no|')t (be )?use|don't use|do not use|not safe|(don't|do not|can't|cannot|shouldn't|should not) trust)", flags: i, name: says-not-usable}
       - {type: answer_regex, pattern: '(AE_Corr|fit_aec|write_arc_input|AEJob)', name: group-aec-route}
 
   - id: arc-on-atlas
