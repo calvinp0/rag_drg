@@ -20,7 +20,8 @@ def main():
     # output_directory keeps a copy of the fit next to the run (output.py, appended, and
     # <jobnum>_<level>.csv), independent of the database checkout. Distinct jobnums keep both CSVs.
     BACJob(level_of_theory=lot, bac_type="p", **KWARGS).execute(output_directory=".", jobnum=1)
-    BACJob(level_of_theory=lot, bac_type="m", fit_mol_corr=True, global_opt=True, global_opt_iter=5,
+    # global_opt_iter=10 is the RMG-Py default; its BAC example recommends at least 10.
+    BACJob(level_of_theory=lot, bac_type="m", fit_mol_corr=True, global_opt=True, global_opt_iter=10,
            **KWARGS).execute(output_directory=".", jobnum=2)
     # A failed database write is only logged as a warning ("Could not write BACs to database").
     print("Check the log for 'Could not write BACs to database', then commit data.py in your RMG-database.")

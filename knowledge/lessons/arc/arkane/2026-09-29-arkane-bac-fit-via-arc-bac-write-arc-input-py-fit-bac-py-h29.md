@@ -61,7 +61,7 @@ db.save()   # rewrites the YAMLs under RMG-database/input/reference_sets/main
    Use `--dry-run` to print the values without saving. For a composite level, use `CompositeLevelOfTheory`
    as the key.
 4. `run_bac_fit.py`: `BACJob(lot, bac_type="p", weighted=False, write_to_database=True, overwrite=True)`,
-   then `bac_type="m"` with `fit_mol_corr=True, global_opt=True, global_opt_iter=5`. The results go into
+   then `bac_type="m"` with `fit_mol_corr=True, global_opt=True, global_opt_iter=10` (RMG-Py default; its example recommends at least 10). The results go into
    `pbac` and `mbac` in `data.py`. A failed database write is only logged as a warning.
 If the AECs change later, redo steps 3 and 4. The `lot` key must be the same in every step and match the
 level ARC uses for thermo. Commit the RMG-database changes, or a later pull/reset of that checkout loses
