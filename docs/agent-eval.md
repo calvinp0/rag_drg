@@ -33,19 +33,28 @@ By default the agent is Claude Code in headless mode:
 ```
 claude -p "<task>" --output-format json --bare --setting-sources project \
        --permission-mode acceptEdits --strict-mcp-config --mcp-config <with|without>.json \
-       --allowedTools "Read Write Edit Glob Grep [mcp__rag-drg]"
+       --allowedTools "Read Write Edit Glob Grep [mcp__rag-drg]" \
+       --disallowedTools "Read(//<repo>/**) Glob(//<repo>/**) ..."
 ```
 
 * `--strict-mcp-config` + `--mcp-config` make the two conditions differ in exactly one thing.
-* `--bare` and `--setting-sources project` keep your own hooks, plugins and user settings out.
-* The work directory is outside the repository, so its `.mcp.json` and `CLAUDE.md` can't leak
-  rag-drg into `without`.
+* `--setting-sources project` keeps your own hooks, plugins and user settings out.
+  * With `ANTHROPIC_API_KEY` set, `--bare` also keeps out your `~/.claude/CLAUDE.md` and skills.
+  * `--bare` never reads a Claude subscription's OAuth login, so without a key the runner drops it.
+    Your `~/.claude/CLAUDE.md` and skills are then visible to both conditions alike, and
+    `run.json` says so.
+* Each run works in a fresh directory in the system temp dir, outside the repository. It is
+  copied to `<rep>/work` afterwards.
+* The file tools are denied on the repository (`--disallowedTools`), so rag-drg's cards reach the
+  agent only through MCP. In the first real run, `without` agents working inside `eval/runs/` read
+  `knowledge/` and `servers.yaml` from disk and passed everything.
+* A `without` answer citing repository paths is counted as a leak, with a warning in the report.
 * The agent gets no shell (no Bash): it writes files; it does not run jobs.
 * `--model M` picks the model.
 
 **Other agents.** A local model with a tool-calling wrapper, aider, and so on: set `agent.command`
 in `eval/tasks.yaml`, using the placeholders `{prompt}`, `{mcp_config}`, `{allowed_tools}`,
-`{workdir}` and `{model}`. The command runs in the work directory. Its stdout is the final
+`{denied_tools}`, `{workdir}` and `{model}`. The command runs in the work directory. Its stdout is the final
 answer, or it can print Claude Code's JSON (`{"result": ...}`).
 
 ## Graders
