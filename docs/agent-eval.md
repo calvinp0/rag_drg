@@ -144,11 +144,24 @@ correct answer, or passes a wrong one, is a bug in the eval, not in the agent.
 cards, `servers.yaml` or lessons:
 * `zeus-qchem-sp`: Q-Chem 6.1 path and `qcenv.sh` on zeus, `/gtmp` scratch.
 * `atlas-wasting-memory`: Atlas holds jobs that request more than 8 GB and use less than 20%.
-* `arkane-corrections-disabled`: H298 without AEC/BAC is not meaningful; the group's
-  `AE_Corr*` / `fit_aec.py` route.
+* `arkane-corrections-disabled`: H298 without AEC/BAC is not meaningful; the group's route is
+  the templates in `knowledge/arc/templates/aec_bac` (`fit_aec.py` / `AEJob`), not a personal path.
 * `arc-on-atlas`: ARC runs on the head node in `screen`; its ESS jobs are checked with `condor_q`.
 * `g09-maxcycles-raise`: the 2026-09-29 lesson, MaxCycles can lower but not raise the G09 step limit.
 
 Holdout is now 8 of 15 tasks. That is more than the usual third, because the old holdout set
 was too easy to show a difference. The references pass and 10 new bad variants fail
 (`check-graders`: 15 references, 27 bad solutions).
+
+**2026-09-29, second full run and the new holdout tasks** (same setup)
+* The original 10 tasks, re-run on current `main` (named-program search boost, card fixes):
+  with 30/30, without 5/30, identical per task to the first clean run. Cost $5.00 vs $2.41.
+* The five new holdout tasks: with **15/15**, without **0/15** (CIs 80-100% vs 0-20%). Cost $1.53 vs $0.72.
+  * `g09-maxcycles-raise`: without, the agent answers "Yes, 300 will let it run that long", the
+    exact mistake the lesson records. With, it cites the lesson and notes that it is unreviewed.
+  * `atlas-wasting-memory`: both conditions lower `request_memory` (8192 MB). Only with rag-drg
+    does the agent explain Atlas's rule (more than 8 GB requested, less than 20% used).
+  * `zeus-qchem-sp`: without, the agent writes `module load qchem` and no `qcenv.sh`.
+  * Grader fix: `says-not-usable` now accepts "don't trust" (a correct answer phrased that way);
+    re-graded, with no change to the scores.
+* All holdout tasks together (old + new): with 24/24, without 5/24.
