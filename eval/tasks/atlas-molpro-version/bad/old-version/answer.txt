@@ -1,0 +1,1 @@
+Use /Local/ce_dana/molpro-mpp-2021.2.1/bin/molpro (Molpro 2021.2.1).

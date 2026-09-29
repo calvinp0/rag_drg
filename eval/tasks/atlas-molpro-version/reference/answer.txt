@@ -1,0 +1,1 @@
+Use the latest Molpro on Atlas, 2022.2.3: /Local/ce_dana/molpro-mpp-2022.2.3/bin/molpro

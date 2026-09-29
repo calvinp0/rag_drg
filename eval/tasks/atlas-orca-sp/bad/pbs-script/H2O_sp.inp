@@ -1,0 +1,10 @@
+# sp B3LYP/def2-SVP H2O charge 0 mult 1
+# composed by rag-drg (compose_ess_job); check the notes before running
+! B3LYP def2-SVP
+%pal nprocs 4 end
+%maxcore 768
+* xyz 0 1
+  O      0.00099388     0.39781396     0.00000000
+  H     -0.76396225    -0.19699980     0.00000000
+  H      0.76296837    -0.20081416     0.00000000
+*
