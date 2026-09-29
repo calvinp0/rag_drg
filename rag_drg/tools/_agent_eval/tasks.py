@@ -31,7 +31,7 @@ from .graders import CHECK_TYPES
 
 DEFAULT_TASKS = "eval/tasks.yaml"
 SPLITS = ("dev", "holdout")
-PLACEHOLDERS = {"prompt", "mcp_config", "allowed_tools", "workdir", "model"}
+PLACEHOLDERS = {"prompt", "mcp_config", "allowed_tools", "denied_tools", "workdir", "model"}
 
 
 @dataclass
