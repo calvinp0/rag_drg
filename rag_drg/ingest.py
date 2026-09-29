@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Iterator
 
-from .chunking import SUPPORTED_SUFFIXES, Chunk, chunk_file, chunk_html_string
+from .chunking import SUPPORTED_SUFFIXES, Chunk, chunk_file, chunk_html_string, read_text_file
 from .config import Config, SourceConfig
 from .embeddings import make_embedder
 from .store import Store
@@ -273,7 +273,7 @@ def chunks_for_source(cfg: Config, src: SourceConfig) -> list[Chunk]:
         try:
             if path.suffix.lower() in (".html", ".htm") and path.name in url_map:
                 meta, chunks = {}, chunk_html_string(
-                    path.read_text(errors="replace"), rel, cfg.chunk_size, cfg.chunk_overlap
+                    read_text_file(path), rel, cfg.chunk_size, cfg.chunk_overlap
                 )
             else:
                 meta, chunks = chunk_file(path, rel, cfg.chunk_size, cfg.chunk_overlap)
