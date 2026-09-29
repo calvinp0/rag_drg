@@ -275,6 +275,11 @@
   tags: [hpc, templates, gaussian]
 
 # ------------------------------------------------ paraphrased: little or no keyword overlap
+- id: pyscf-spin-error-message
+  q: "RuntimeError: Electron number 9 and spin 2 are not consistent"
+  expect: ["curated:ess/pyscf/pyscf-essentials.md"]
+  tags: [pyscf, spin, errors]
+
 - id: para-radical-electron-count
   q: "The Python chemistry library refuses my radical, complaining the number of electrons doesn't fit. What am I getting wrong?"
   expect: ["curated:ess/pyscf/pyscf-essentials.md", "curated:ess/capabilities.md"]
