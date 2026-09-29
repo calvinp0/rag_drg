@@ -1,6 +1,7 @@
 """rag-drg agent-eval: graders, task validation, the eval-of-the-eval, and a full run with a fake agent."""
 
 import json
+import shutil
 import sys
 import textwrap
 from pathlib import Path
@@ -161,3 +162,67 @@ def test_missing_agent_binary_is_recorded(tmp_path):
 def test_api_error_json_is_an_agent_error():
     _, meta = runner.parse_answer(json.dumps({"result": "", "terminal_reason": "api_error", "total_cost_usd": 0}))
     assert runner.agent_error(0, meta, "")
+
+
+def test_relative_run_dir_gives_the_agent_an_absolute_mcp_config(tmp_path, monkeypatch):
+    """The agent runs in <rep>/work; a relative --out once made the MCP config path unreadable."""
+    import sys
+    check = "import os,sys; p=sys.argv[1]; print('found' if os.path.isabs(p) and os.path.exists(p) else 'missing')"
+    (tmp_path / "tasks.yaml").write_text(yaml.safe_dump({
+        "agent": {"command": [sys.executable, "-c", check, "{mcp_config}"]},
+        "tasks": [{"id": "t", "prompt": "p", "why": "w", "checks": [{"type": "answer_regex", "pattern": "^found"}]}]}))
+    suite = load_suite(tmp_path / "tasks.yaml")
+    monkeypatch.chdir(tmp_path)
+    runner.run(runner.RunSpec(suite, suite.tasks, ["with"], 1, Path("run")), progress=lambda m: None)
+    res = runner.load_results(tmp_path / "run")[0]
+    assert res["passed"], res
+
+
+def test_agent_exiting_with_an_error_and_no_output_is_an_agent_error():
+    err = runner.agent_error(1, {}, "Error: Invalid MCP configuration:\nMCP config file not found", "")
+    assert err and "Invalid MCP configuration" in err
+    assert runner.agent_error(1, {}, "", "some answer text") is None  # the agent answered: grade it
+    assert runner.agent_error(0, {}, "", "") is None
+
+
+def test_bare_is_dropped_without_an_api_key(monkeypatch):
+    """--bare never reads an OAuth (subscription) login, so without ANTHROPIC_API_KEY it cannot authenticate."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    agent, note = runner._auth_compatible(runner.DEFAULT_AGENT)
+    assert "--bare" not in agent["command"] and note and "--strict-mcp-config" in agent["command"]
+    assert "--bare" in runner.DEFAULT_AGENT["command"]  # the default itself is not mutated
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    agent, note = runner._auth_compatible(runner.DEFAULT_AGENT)
+    assert "--bare" in agent["command"] and note is None
+
+
+def test_agent_works_outside_the_repo_and_is_denied_repo_files(tmp_path):
+    """The first real run leaked: `without` agents read knowledge/ from the repo around their work dir."""
+    check = ("import os,sys,pathlib; cwd=pathlib.Path.cwd().resolve(); "
+             f"print('outside' if not cwd.is_relative_to(pathlib.Path({str(runner.REPO)!r})) else 'inside', "
+             "sys.argv[1]); pathlib.Path('made.txt').write_text('x')")
+    (tmp_path / "tasks.yaml").write_text(yaml.safe_dump({
+        "agent": {"command": [sys.executable, "-c", check, "{denied_tools}"]},
+        "tasks": [{"id": "t", "prompt": "p", "why": "w",
+                   "checks": [{"type": "answer_regex", "pattern": "^outside"}, {"type": "file_exists", "path": "made.txt"}]}]}))
+    suite = load_suite(tmp_path / "tasks.yaml")
+    out = runner.REPO / "eval" / "runs" / f"pytest-{tmp_path.name}"  # a run dir inside the repo, as by default
+    try:
+        runner.run(runner.RunSpec(suite, suite.tasks, ["without"], 1, out), progress=lambda m: None)
+        res = runner.load_results(out)[0]
+        assert res["passed"], res  # cwd outside the repo; the work dir is copied back for re-grading
+        assert (out / "t" / "without" / "rep1" / "work" / "made.txt").exists()
+        answer = (out / "t" / "without" / "rep1" / "answer.txt").read_text()
+        assert f"Read(/{runner.REPO}/**)" in answer and f"Grep(/{runner.REPO}/**)" in answer
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_without_answers_citing_repo_paths_are_reported_as_leaks():
+    base = {"task": "t", "split": "dev", "passed": True, "failed": [], "agent": {}}
+    results = [{**base, "condition": "without", "rep": 1, "leaks": ["knowledge/"]},
+               {**base, "condition": "with", "rep": 1, "leaks": []}]
+    s = runner.summarize(results)
+    assert s["leaks"] == [{"task": "t", "rep": 1, "paths": ["knowledge/"]}]
+    assert "cite repository paths" in runner.format_report(s)
+    assert runner.LEAK.findall("see `knowledge/hpc/servers/zeus.md` and servers.yaml") == ["knowledge/", "servers.yaml"]
