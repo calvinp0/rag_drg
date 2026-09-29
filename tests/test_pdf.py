@@ -67,3 +67,26 @@ def test_classify_section_heuristics():
     assert classify_section(["Manual", "Running jobs"], code) == "reference"
     maths = "The energy is E = Σ ⟨φ|h|φ⟩ + ½ Σ (J − K) where α, β, γ, δ ≤ ε. " * 5
     assert classify_section(["Manual", "Correlation energy"], maths) == "theory"
+
+
+def test_fonttools_warning_is_shown_once(caplog):
+    """pypdf's per-font "fontTools is required" warning is collapsed to one actionable line."""
+    import logging
+
+    from rag_drg.chunking import _OnceFontToolsWarning
+
+    _OnceFontToolsWarning.seen = False
+    logger = logging.getLogger("pypdf._cmap")
+    flt = _OnceFontToolsWarning()
+    logger.addFilter(flt)
+    try:
+        with caplog.at_level(logging.WARNING, logger="pypdf._cmap"):
+            for font in ("CMEX10", "CMMI5", "Courier"):
+                logger.warning("fontTools is required to fully parse the encoding of a CFF Type1 font %s", font)
+            logger.warning("some other pypdf warning")
+    finally:
+        logger.removeFilter(flt)
+    msgs = [r.getMessage() for r in caplog.records]
+    assert sum("fontTools" in m for m in msgs) == 1
+    assert "pip install fonttools" in msgs[0]
+    assert "some other pypdf warning" in msgs
