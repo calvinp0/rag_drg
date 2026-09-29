@@ -144,8 +144,8 @@ correct answer, or passes a wrong one, is a bug in the eval, not in the agent.
 cards, `servers.yaml` or lessons:
 * `zeus-qchem-sp`: Q-Chem 6.1 path and `qcenv.sh` on zeus, `/gtmp` scratch.
 * `atlas-wasting-memory`: Atlas holds jobs that request more than 8 GB and use less than 20%.
-* `arkane-corrections-disabled`: H298 without AEC/BAC is not meaningful; the group's
-  `AE_Corr*` / `fit_aec.py` route.
+* `arkane-corrections-disabled`: H298 without AEC/BAC is not meaningful; the group's route is
+  the templates in `knowledge/arc/templates/aec_bac` (`fit_aec.py` / `AEJob`), not a personal path.
 * `arc-on-atlas`: ARC runs on the head node in `screen`; its ESS jobs are checked with `condor_q`.
 * `g09-maxcycles-raise`: the 2026-09-29 lesson, MaxCycles can lower but not raise the G09 step limit.
 
