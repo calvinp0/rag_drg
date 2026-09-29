@@ -43,6 +43,13 @@ wget --recursive --level=inf --no-parent --adjust-extension --wait=1 \
      https://www.faccts.de/docs/orca/6.0/manual/      # use the current manual URL
 ```
 
+**Gaussian 09 keyword pages** ship as individual `.htm` files: copy them as they are into
+`sources/gaussian/09/` (sub-folders fine). Each page becomes its own entry; old
+Windows-1252 pages are decoded correctly.
+
+**Molpro as one PDF:** `python scripts/molpro_manual_pdf.py --out sources/molpro/<version>/molpro_manual_web.pdf`
+crawls the online manual from its table of contents (in TOC order) and prints it with Chrome/Chromium.
+
 **3. Save pages from the browser** ("Save page as", *Webpage, Complete* or *HTML only*) into
 the folder. The `<page>_files/` asset folders the browser creates are ignored, and the
 `saved from url=` note the browser writes lets rag-drg link each page back to its URL.

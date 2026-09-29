@@ -731,6 +731,28 @@ TEXT_SUFFIXES = {
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".rst", ".html", ".htm", ".pdf"} | TEXT_SUFFIXES
 
 
+_CHARSET = re.compile(rb"""<meta[^>]+charset\s*=\s*["']?([A-Za-z0-9_-]+)""", re.I)
+
+
+def read_text_file(path: Path) -> str:
+    """Decode a (possibly old) HTML page: declared charset, else UTF-8, else Windows-1252.
+
+    Older manuals (e.g. the Gaussian 09 .htm pages) are often Windows-1252, which UTF-8
+    decoding would turn into replacement characters.
+    """
+    data = path.read_bytes()
+    m = _CHARSET.search(data[:4096])
+    if m:
+        try:
+            return data.decode(m.group(1).decode("ascii"), errors="replace")
+        except LookupError:
+            pass
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
 def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) -> tuple[dict, list[Chunk]]:
     """Chunk one file. Returns (front-matter metadata, chunks)."""
     suffix = path.suffix.lower()
@@ -746,7 +768,7 @@ def chunk_file(path: Path, rel_path: str, size: int = 1500, overlap: int = 200) 
                 chunks.append(Chunk(text=piece, title=title, path=rel_path, ordinal=len(chunks), kind=kind))
         return meta, chunks
 
-    text = path.read_text(errors="replace")
+    text = read_text_file(path) if suffix in (".html", ".htm") else path.read_text(errors="replace")
     if suffix in (".md", ".markdown"):
         meta, body = split_front_matter(text)
         doc_title = meta.get("title")

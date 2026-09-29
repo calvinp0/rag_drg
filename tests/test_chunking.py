@@ -135,3 +135,22 @@ def test_chunk_file_markdown_uses_title(tmp_path):
     assert meta["title"] == "Card"
     assert chunks[0].title == "Card > Sec"
     assert [c.ordinal for c in chunks] == list(range(len(chunks)))
+
+
+def test_old_htm_pages_decode_windows_1252(tmp_path):
+    """Gaussian 09 .htm pages are Windows-1252; they must not turn into replacement characters."""
+    from rag_drg.chunking import chunk_file, read_text_file
+
+    page = "<html><head><title>Opt</title></head><body><h1>Opt</h1><p>Distances in Å – see Freq.</p></body></html>"
+    plain = tmp_path / "k_opt.htm"
+    plain.write_bytes(page.encode("cp1252"))
+    assert "Å –" in read_text_file(plain)
+    _, chunks = chunk_file(plain, "k_opt.htm")
+    assert "Å" in " ".join(c.text for c in chunks) and "�" not in " ".join(c.text for c in chunks)
+
+    declared = tmp_path / "declared.htm"
+    declared.write_bytes(page.replace("<head>", '<head><meta charset="iso-8859-1">').replace("–", "-").encode("latin-1"))
+    assert "Å" in read_text_file(declared)
+    utf8 = tmp_path / "utf8.html"
+    utf8.write_text(page, encoding="utf-8")
+    assert "Å –" in read_text_file(utf8)
