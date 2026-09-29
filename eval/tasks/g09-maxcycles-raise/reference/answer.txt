@@ -1,0 +1,1 @@
+No. On G09 D.01 Opt=(MaxCycles=N) can only lower the step limit, not raise it: the applied limit is min(MaxCycles, max(100, 6*NAtoms)), so for 12 atoms it stays 100. Restart from the last geometry (e.g. Geom=AllCheck with the checkpoint) or change the optimiser (RFO/GDIIS, cartesian).

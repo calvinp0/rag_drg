@@ -1,0 +1,1 @@
+Atlas holds jobs automatically (WastingMemory) when they request more than 8 GB and, after the first hour, use less than 20% of it. 64 GB requested with ~6 GB used is under 20%, so the job was held (and held jobs are removed after 24 h). I set request_memory = 8GB in submit.sub: close to the real need, and 8 GB or less is never held for WastingMemory.

@@ -1,0 +1,1 @@
+Write a runner.sub with executable = run_arc.sh that calls python ARC.py input.yml, submit it with condor_submit runner.sub, and check it with condor_q.

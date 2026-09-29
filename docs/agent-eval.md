@@ -23,7 +23,7 @@ bin/rag-drg agent-eval run --split dev                              # the dev se
 bin/rag-drg agent-eval report eval/runs/<id>
 ```
 
-A full run is 10 tasks × 2 conditions × 3 repeats, i.e. 60 agent sessions. They cost time and
+A full run is 15 tasks × 2 conditions × 3 repeats, i.e. 90 agent sessions. They cost time and
 API money; each result shows `total_cost_usd`. Start small.
 
 ## The agent
@@ -137,6 +137,18 @@ correct answer, or passes a wrong one, is a bug in the eval, not in the agent.
   * `says-no-g16` rejected correct answers phrased "Atlas doesn't have Gaussian 16". Widened
     and re-graded.
 * Next:
-  * Add holdout tasks where general knowledge is not enough, since two of the three current
-    ones are solvable without rag-drg.
+  * ~~Add holdout tasks where general knowledge is not enough~~: done, see below.
   * Re-run with `ANTHROPIC_API_KEY` for strict isolation.
+
+**2026-09-29, five harder holdout tasks.** Each needs a fact that exists only in the group's
+cards, `servers.yaml` or lessons:
+* `zeus-qchem-sp`: Q-Chem 6.1 path and `qcenv.sh` on zeus, `/gtmp` scratch.
+* `atlas-wasting-memory`: Atlas holds jobs that request more than 8 GB and use less than 20%.
+* `arkane-corrections-disabled`: H298 without AEC/BAC is not meaningful; the group's
+  `AE_Corr*` / `fit_aec.py` route.
+* `arc-on-atlas`: ARC runs on the head node in `screen`; its ESS jobs are checked with `condor_q`.
+* `g09-maxcycles-raise`: the 2026-09-29 lesson, MaxCycles can lower but not raise the G09 step limit.
+
+Holdout is now 8 of 15 tasks. That is more than the usual third, because the old holdout set
+was too easy to show a difference. The references pass and 10 new bad variants fail
+(`check-graders`: 15 references, 27 bad solutions).

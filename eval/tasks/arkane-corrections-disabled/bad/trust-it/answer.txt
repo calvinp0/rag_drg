@@ -1,0 +1,1 @@
+Yes, the H298 values are fine to use; the warning only affects bond corrections, which are small.
