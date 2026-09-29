@@ -1,0 +1,1 @@
+%maxcore is memory PER CORE in MB, so 64000 x 16 cores asked for ~1 TB. With 64 GB for 16 cores use about 75% of 4000 MB: %maxcore 3000.
