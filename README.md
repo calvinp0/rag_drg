@@ -121,6 +121,19 @@ Then give agents the habit:
 * copy `integrations/claude-code/skills/group-knowledge/` to `~/.claude/skills/`, and/or
 * append `integrations/claude-code/CLAUDE.md.snippet` to `~/.claude/CLAUDE.md` or to your project's `CLAUDE.md`.
 
+### Connect Codex
+
+```bash
+codex mcp add rag-drg -- /ABS/PATH/TO/rag_drg/bin/rag-drg serve   # or edit ~/.codex/config.toml
+codex mcp list
+```
+[`integrations/codex/config.toml.example`](integrations/codex/config.toml.example) has the
+`config.toml` form, including a start-up timeout and the shared HTTP server. Codex reads
+`AGENTS.md` rather than `CLAUDE.md`: append `integrations/claude-code/CLAUDE.md.snippet` to
+`~/.codex/AGENTS.md` (all projects) or a project's `AGENTS.md`. The Claude Code `PostToolUse` hook
+config does not carry over to Codex, so input checks rely on that instruction (`check_input` via MCP, or
+`bin/rag-drg check-input <file>`).
+
 Local models: see [`integrations/local-models.md`](integrations/local-models.md) (MCP, or the
 `rag-drg search --json` CLI as a tool).
 
