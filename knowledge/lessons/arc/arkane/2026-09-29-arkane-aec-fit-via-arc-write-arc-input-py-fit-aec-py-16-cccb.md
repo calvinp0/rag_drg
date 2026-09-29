@@ -1,6 +1,5 @@
 ---
-title: 'Arkane AEC fit via ARC: write_arc_input.py + fit_aec.py (16 CCCBDB species,
-  sp only)'
+title: 'Arkane AEC fit via ARC: write_arc_input.py + fit_aec.py (16 CCCBDB species, sp only)'
 domain: arc
 software: arkane
 doc_type: lesson
@@ -15,7 +14,7 @@ tags:
 - quantum_corrections
 - data.py
 - arkane
-- zeus
+- template
 author: calvin
 date: '2026-09-29'
 similar:
@@ -26,39 +25,39 @@ similar:
 
 ## Mistake
 
-Treated the AEC fit as a hand-written Arkane ae() input, collecting the 16 single-point energies by hand. The group builds it with two scripts around an ARC sp-only run (zeus:~/runs/ARC/AE_Corr_wb97xd3).
+Treated the AEC fit as a hand-written Arkane ae() input, with the 16 single-point energies collected by
+hand. The group runs them as one ARC sp-only job and fits with a script: `write_arc_input.py` and
+`fit_aec.py` in `knowledge/arc/templates/aec_bac/`.
 
 ## Correct approach
 
-Run both scripts in rmg_env and ARC in arc_env. Set the same LOT dict in both scripts, e.g. {"method": "wb97x-d3", "basis": "def2tzvp", "software": "orca"}.
-The label map is used by both scripts (ARC label -> Arkane reference label, which must match SPECIES_LABELS in arkane/encorr/ae.py):
-```python
-SPECIES_LABELS = {"Br2": "Dibromine", "BrH": "Hydrogen bromide", "CH3": "Methyl", "CH3Cl": "Chloromethane",
-    "CH4": "Methane", "Cl2": "Dichlorine", "ClH": "Hydrogen chloride", "F2": "Difluorine", "FH": "Hydrogen fluoride",
-    "H2": "Dihydrogen", "H2O": "Water", "H2S": "Hydrogen sulfide", "H3N": "Ammonia", "N2": "Dinitrogen",
-    "O2": "Dioxygen", "S2": "Disulfur"}
-```
-1. write_arc_input.py writes input.yml using the experimental CCCBDB geometry. Do not optimise:
+Copy the template folder into a fresh directory, set `LEVEL` in `aec_bac_common.py`, and run the scripts
+in rmg_env and ARC in arc_env.
+1. `write_arc_input.py` writes `input.yml` with the experimental CCCBDB geometry of each species:
 ```python
 from arkane.encorr.reference import ReferenceDatabase
 db = ReferenceDatabase(); db.load()
-ref = db.get_species_from_label(human_label)[0]
-xyz_dict = ref.reference_data["CCCBDB"].xyz_dict   # also use ref.smiles, ref.charge, ref.multiplicity
+ref = db.get_species_from_label(ref_label)[0]          # e.g. "Methane"; labels = SPECIES_LABELS in arkane/encorr/ae.py
+xyz_dict = ref.reference_data["CCCBDB"].xyz_dict       # plus ref.smiles, ref.charge, ref.multiplicity
 ```
-input.yml header: `sp_level: {method, basis, software}`, `compute_thermo: false`, `job_types: {conf_opt: false, opt: false, fine_grid: false, freq: false, sp: true, rotors: false}`. Each species gets label = formula, plus smiles, charge, multiplicity and xyz.
-2. Run ARC (submit.sh on alon_q: `conda activate arc_env; python ~/Code/ARC/ARC.py input.yml`).
-3. fit_aec.py: for each species, take input.log from the newest calcs/Species/<label>/sp_* folder (by mtime; folders are named sp_a<N>, so ignore failed attempts that have no log). Then:
-```python
-import rmgpy.constants as constants
-from arkane.ess.factory import ess_factory
-from arkane.encorr.ae import AEJob
-from arkane.modelchem import LevelOfTheory
-e_h = ess_factory(path).load_energy() / (constants.E_h * constants.Na)   # electronic energy only, Hartree
-energies[human_label] = e_h
-AEJob(species_energies=energies, level_of_theory=LevelOfTheory(**LOT)).execute(output_directory=".")
-```
-4. AEJob writes AEC_<method>_<basis>.out in append mode, with a 95% CI per element and a ready-to-paste dict. Paste the dict into RMG-database/input/quantum_corrections/data.py under atom_energies, or pass write_to_database=True. Start each fit in a fresh directory, or delete old AEC_*.out first: because of append mode, a copied directory can end up with a file labelled for one level but holding another level's numbers.
+   The geometries must not be optimised, so `job_types` sets `conf_opt`, `opt`, `fine`, `freq` and
+   `rotors` to false, and `sp` to true. ARC defaults the omitted ones to true, and it does not recognise an
+   old key such as `conformers: false` (that leaves `conf_opt` on). `compute_thermo: false`.
+2. Run ARC.
+3. `fit_aec.py` takes the ESS output of the newest `calcs/Species/<label>/sp_a<N>` folder and ignores
+   attempts that left no output. It converts `ess_factory(path).load_energy()` (J/mol, electronic only)
+   to Hartree and runs
+   `AEJob(species_energies, level_of_theory=LevelOfTheory(**LEVEL)).execute(output_directory=".")`.
+4. `AEJob` writes `AEC_<method>_<basis>.out` in append mode, with a 95% CI per element and a dict to paste
+   into RMG-database `input/quantum_corrections/data.py` under `atom_energies` (or pass
+   `write_to_database=True`). Because of append mode, a leftover file in a copied directory ends up holding
+   two fits, or a file named after one level holds another level's numbers. Start in a fresh directory;
+   the template refuses to run when the file already exists.
 
 ## Evidence / source
 
-zeus:~/runs/ARC/AE_Corr_wb97xd3/{write_arc_input.py,input.yml,fit_aec.py,submit.sh} and AE_Corr (the DLPNO-CCSD(T)/cc-pVTZ version), read 2026-09-29. RMG-Py arkane/encorr/ae.py (AEJob.execute opens the output file with 'a'). In AE_Corr_wb97xd3, AEC_dlpnoccsd(t)_ccpvtz.out holds the wB97X-D3 numbers.
+An earlier group AEC run (2026-01), in a directory copied from a run at another level: the
+`AEC_<other level>.out` there held the new level's numbers. The `write_arc_input.py` there writes
+`conformers: false`, while the `input.yml` that ran has `conf_opt: false`. The template reproduces that run's AECs exactly
+(2026-09-29). RMG-Py arkane/encorr/ae.py (AEJob.execute opens the output with 'a'); ARC arc/common.py
+(job_types defaults, legacy alias fine_grid -> fine).
