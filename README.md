@@ -39,11 +39,54 @@ so a mistake only has to be fixed once.
 
 ## Quick start
 
+### Install
+
+rag-drg is a normal Python package (Python >= 3.10), so venv, uv or conda all work. Extras:
+`mcp` (MCP server), `pdf` (PDF manuals), `chem` (basis-set checks, SMILES via RDKit),
+`st` (local embeddings), `dev` (tests).
+
+**venv**
+
 ```bash
 git clone <this repo> rag_drg && cd rag_drg
 python -m venv .venv && . .venv/bin/activate
-pip install -e '.[mcp,pdf]'          # add ,st for local sentence-transformers embeddings
+pip install -e '.[mcp,pdf,chem]'
+```
 
+**uv**, also on a machine that has conda. uv makes the same `.venv`, so nothing else changes.
+
+```bash
+conda deactivate                     # repeat until no env is active (not even base): uv would
+                                     # otherwise install into the active conda env
+uv venv --python 3.12                # uv's own Python, independent of conda
+uv pip install --python .venv/bin/python -e '.[mcp,pdf,chem]'
+```
+
+**conda**
+
+```bash
+conda create -n rag-drg python=3.12 && conda activate rag-drg
+pip install -e '.[mcp,pdf,chem]'      # or: conda install -c conda-forge rdkit, then pip the rest
+export RAG_DRG_BIN="$(which rag-drg)" # put this in ~/.bashrc, so tools find it without activating
+```
+
+**`bin/rag-drg`** is a small launcher that finds the install, trying in order:
+1. `$RAG_DRG_BIN`;
+2. `.venv/bin/rag-drg`;
+3. the active conda env;
+4. `rag-drg` on PATH.
+
+It also points `RAG_DRG_CONFIG` at this repository's `rag_drg.yaml`. `.mcp.json`, the hooks,
+`deploy/refresh.sh` and `deploy/rag-drg.service` all call it, so they work with any of the three
+setups. In a service or cron job, set `RAG_DRG_BIN` there, because conda isn't activated.
+
+For the MCP server, don't use `conda run -n rag-drg rag-drg serve`: `conda run` captures the
+program's output by default, and MCP talks over that output. Use the launcher or the env's own
+`rag-drg` path.
+
+### First steps
+
+```bash
 rag-drg ingest --fetch               # clones ARC/Psi4/PySCF docs (~200 MB) and builds index/ (~15 MB), ~15 s
 rag-drg search "ORCA TS optimisation hessian" --software orca
 rag-drg search "GEOM_MAXITER"
@@ -57,7 +100,7 @@ rag-drg level "wb97xd/def2tzvp" --software orca   # is it supported, and how is 
 Each person, local index (simplest):
 
 ```bash
-claude mcp add --scope user rag-drg -- /path/to/rag_drg/.venv/bin/rag-drg serve
+claude mcp add --scope user rag-drg -- /path/to/rag_drg/bin/rag-drg serve
 # if you run it from outside the repo:  -e RAG_DRG_CONFIG=/path/to/rag_drg/rag_drg.yaml
 ```
 

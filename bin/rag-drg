@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Launcher: runs the real `rag-drg` of whatever environment it was installed into, so
+# .mcp.json, hooks, deploy/refresh.sh and the systemd unit need no hard-coded .venv path.
+#
+# Lookup order (first hit wins):
+#   1. $RAG_DRG_BIN                 explicit path, e.g. ~/miniforge3/envs/rag-drg/bin/rag-drg
+#   2. <repo>/.venv/bin/rag-drg     python -m venv .venv  or  uv venv
+#   3. $CONDA_PREFIX/bin/rag-drg    the active conda env
+#   4. rag-drg on PATH              (never this launcher itself)
+# It also points RAG_DRG_CONFIG at this repo's rag_drg.yaml when that is unset, so a
+# non-editable install (e.g. into a conda env) still finds the config.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+repo="$(dirname "$here")"
+self="$here/$(basename "${BASH_SOURCE[0]}")"
+
+if [ -z "${RAG_DRG_CONFIG:-}" ] && [ -f "$repo/rag_drg.yaml" ]; then
+    export RAG_DRG_CONFIG="$repo/rag_drg.yaml"
+fi
+
+# an explicit RAG_DRG_BIN must work: a typo there should fail, not silently run another install
+if [ -n "${RAG_DRG_BIN:-}" ]; then
+    if [ -f "$RAG_DRG_BIN" ] && [ -x "$RAG_DRG_BIN" ]; then exec "$RAG_DRG_BIN" "$@"; fi
+    echo "rag-drg: RAG_DRG_BIN=$RAG_DRG_BIN is not an executable file" >&2
+    exit 127
+fi
+candidates=("$repo/.venv/bin/rag-drg")
+[ -n "${CONDA_PREFIX:-}" ] && candidates+=("$CONDA_PREFIX/bin/rag-drg")
+for c in "${candidates[@]}"; do
+    if [ -f "$c" ] && [ -x "$c" ]; then exec "$c" "$@"; fi
+done
+
+# PATH, skipping this launcher (bin/ may itself be on PATH)
+IFS=: read -ra dirs <<< "${PATH:-}"
+for d in "${dirs[@]}"; do
+    [ -n "$d" ] || continue
+    c="$d/rag-drg"
+    if [ -f "$c" ] && [ -x "$c" ]; then
+        real="$(cd "$(dirname "$c")" && pwd -P)/rag-drg"
+        [ "$real" = "$self" ] && continue
+        exec "$c" "$@"
+    fi
+done
+
+cat >&2 <<MSG
+rag-drg: no installation found. Install it (see README "Install"), or point RAG_DRG_BIN at it:
+  venv/uv : $repo/.venv/bin/rag-drg
+  conda   : export RAG_DRG_BIN=\$(conda run -n <env> which rag-drg)
+MSG
+exit 127
