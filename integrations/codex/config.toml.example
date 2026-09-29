@@ -1,0 +1,15 @@
+# Codex CLI: add to ~/.codex/config.toml (or run the equivalent
+#   codex mcp add rag-drg -- /ABS/PATH/TO/rag_drg/bin/rag-drg serve
+# ). Use the absolute path; `~` is not expanded. bin/rag-drg finds the install and the
+# repo's rag_drg.yaml itself, so no env is needed.
+[mcp_servers.rag-drg]
+command = "/ABS/PATH/TO/rag_drg/bin/rag-drg"
+args = ["serve"]
+# Loading the index can take a few seconds on first start; raise this if Codex times out.
+startup_timeout_sec = 30
+
+# Shared group server instead (streamable HTTP; needs a Codex version with HTTP MCP support -
+# check `codex mcp add --help` for --url / --bearer-token-env-var):
+# [mcp_servers.rag-drg]
+# url = "http://<server>:8765/mcp"
+# bearer_token_env_var = "RAG_DRG_TOKEN"

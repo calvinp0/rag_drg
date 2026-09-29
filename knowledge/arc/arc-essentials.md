@@ -17,6 +17,10 @@ one chunk per key: search "ARC input > job_memory"). Search with `software=arc`;
 `check_arc_input(content)` (unknown keys with did-you-mean, types, species/reaction consistency,
 job types, levels vs. the ESS ARC routes them to, `ess_settings`). See `docs/arc-input.md`.
 
+**Thermo with Arkane:** if the sp level has no Arkane AEC/BAC, ARC only warns and writes thermo *without*
+corrections. See the card "Arkane energy corrections (AEC/BAC)" (`software=arkane`) for the check and the
+fitting recipe.
+
 ## Input file (`input.yml`)
 
 * A YAML dict passed straight to `ARC(**input_dict)`. Top-level keys must be `ARC.__init__` arguments
