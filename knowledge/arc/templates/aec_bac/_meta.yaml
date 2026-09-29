@@ -1,0 +1,7 @@
+# Metadata for the AEC/BAC template scripts in this folder (README.md has its own front matter).
+domain: arc
+software: arkane
+doc_type: template
+status: draft
+tags: [arkane, arc, aec, bac, atom energy corrections, bond additivity corrections, AEJob, BACJob,
+       fit_aec, fit_bac, reference_sets, quantum_corrections, template]
