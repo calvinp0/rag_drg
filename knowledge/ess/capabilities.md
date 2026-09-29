@@ -19,6 +19,7 @@ For "does code X support method Y, and how is it written?" use the structured ta
 | DFT on GPU | Gaussian 16 GPU build, or PySCF + gpu4pyscf | G16 GPUs speed up HF/DFT energies, gradients and frequencies only. |
 | DLPNO-CCSD(T) single points | ORCA | `DLPNO-CCSD(T)`, `DLPNO-CCSD(T1)`; needs a `/C` auxiliary basis. |
 | Canonical CCSD(T), CCSD(T)-F12, MRCI, CASPT2 | Molpro | Molpro is the reference for multireference and F12 work. |
+| Strong static correlation (multireference character: bond breaking, diradicals, near-degenerate states) | Molpro | Single-reference CCSD(T)/DFT is unreliable here. Use CASSCF, then CASPT2 (`{rs2c}`), MRCI(+Q) or NEVPT2 in Molpro. ORCA offers CASSCF + NEVPT2; PySCF offers CASSCF + NEVPT2. See `levels_of_theory.yaml` (CASSCF, CASPT2, NEVPT2, MRCI). |
 | SAPT, quick scripted workflows, open-source reproducibility | Psi4 | Python API; SAPT0/2+/(DFT). |
 | Job types | all | TS: Gaussian `Opt=TS`, ORCA `OptTS`, Q-Chem `JOBTYPE ts`, Psi4 `opt_type ts`, Molpro `{optg,root=2}`. IRC: Gaussian `IRC`, ORCA `IRC`, Q-Chem `JOBTYPE rpath`, Psi4 `opt_type irc`. |
 | Custom methods, ML/data pipelines, in-Python loops | PySCF | Everything is a Python object; easy to batch and to get integrals/densities. |

@@ -101,6 +101,23 @@ about that using the levels table (`knowledge/ess/levels_of_theory.yaml`).
 * `servers = {name: {'cluster_soft': 'Slurm'|'PBS'|'OGE'|'SGE'|'HTCondor'|'local', 'address', 'un',
   'key', 'path', 'cpus', 'memory', 'queues': {'queue': 'HH:MM:SS'}, 'excluded_queues',
   'max_simultaneous_jobs'}}`. Remote runs go under `<path>/<un>/runs/ARC_Projects/`.
+* Defining a cluster: add an entry to the `servers` dictionary in your own `~/.arc/settings.py`.
+  A Slurm cluster, as in ARC's example (`server2`):
+  ```python
+  servers = {
+      'server2': {
+          'cluster_soft': 'Slurm',          # or 'PBS', 'OGE', 'SGE', 'HTCondor', 'local'
+          'address': 'server2.host.edu',
+          'path': '/home',                  # runs go under <path>/<un>/runs/ARC_Projects/
+          'un': '<username>',
+          'key': 'path_to_rsa_key',
+          'cpus': 24,                       # cores per node (default 8)
+          'memory': 256,                    # GB per node (default 16)
+      },
+  }
+  ```
+  Then point each ESS at it in `global_ess_settings`. For a cluster that is already in
+  `servers.yaml`, `rag-drg servers arc-settings <name>` prints the entry.
 * `global_ess_settings = {'gaussian': ['local', 'server2'], 'orca': 'local', ...}` (list = priority).
 * `supported_ess`, `ts_adapters` (default heuristics, linear, AutoTST, GCN, xtb_gsm, orca_neb),
   `default_job_types`, and per-ESS submit script templates in `arc/settings/submit.py`.
