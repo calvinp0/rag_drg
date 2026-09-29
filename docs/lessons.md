@@ -138,10 +138,10 @@ the token is only used for the API.
    lint problems are reported there but do not stop the re-index):
 
    ```bash
-   .venv/bin/rag-drg lessons tidy || true
+   bin/rag-drg lessons tidy || true
    git pull --ff-only
-   .venv/bin/rag-drg lint || true
-   .venv/bin/rag-drg ingest --fetch
+   bin/rag-drg lint || true
+   bin/rag-drg ingest --fetch
    ```
 
    Lessons whose PR was closed without merging stay as local files; delete them by hand
@@ -177,7 +177,7 @@ You maintain the group's rag-drg knowledge base (this repository). Monthly conso
 
 1. Setup: `python -m venv .venv && .venv/bin/pip install -q -e '.[mcp,pdf,dev]'`, then
    `git fetch origin && git switch -c consolidate/$(date +%Y-%m) origin/main`.
-2. Run `.venv/bin/rag-drg lessons report --json` and read it.
+2. Run `bin/rag-drg lessons report --json` and read it.
 3. For every lesson under "verified_by_software": read the lesson and the card named in
    "fold_into" (if it is a folder, pick the card whose topic matches, or create a new card
    from knowledge/README.md's format with `status: draft`). Fold the lesson in:
@@ -191,7 +191,7 @@ You maintain the group's rag-drg knowledge base (this repository). Monthly conso
    another lesson, merge them into one (keep the better-evidenced one) and delete the other.
    Leave unreviewed lessons alone, but list those marked stale in the PR description so a
    human can review them.
-5. Run `.venv/bin/rag-drg lint` and `.venv/bin/python -m pytest -q`; fix any problem you caused.
+5. Run `bin/rag-drg lint` and `.venv/bin/python -m pytest -q`; fix any problem you caused.
 6. Commit ("Consolidate verified lessons into cards (<month>)"), push the branch, and open a
    pull request against main whose description has: one bullet per folded lesson
    (lesson -> card/section), the merged duplicates, and the list of stale unreviewed lessons.
