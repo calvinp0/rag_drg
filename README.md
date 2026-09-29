@@ -67,18 +67,21 @@ uv pip install --python .venv/bin/python -e '.[mcp,pdf,chem]'
 ```bash
 conda create -n rag-drg python=3.12 && conda activate rag-drg
 pip install -e '.[mcp,pdf,chem]'      # or: conda install -c conda-forge rdkit, then pip the rest
-export RAG_DRG_BIN="$(which rag-drg)" # put this in ~/.bashrc, so tools find it without activating
 ```
+Name the env `rag-drg` (or `rag_drg`) and the launcher finds it even when another env is active,
+e.g. Claude Code started from `arc_env`. With another name, set `RAG_DRG_CONDA_ENV=<name>`, or pin
+the exact install with `RAG_DRG_BIN=$(which rag-drg)`.
 
 **`bin/rag-drg`** is a small launcher that finds the install, trying in order:
 1. `$RAG_DRG_BIN`;
 2. `.venv/bin/rag-drg`;
 3. the active conda env;
-4. `rag-drg` on PATH.
+4. a conda env named `rag-drg`/`rag_drg` (or `$RAG_DRG_CONDA_ENV`), whichever env is active;
+5. `rag-drg` on PATH.
 
 It also points `RAG_DRG_CONFIG` at this repository's `rag_drg.yaml`. `.mcp.json`, the hooks,
 `deploy/refresh.sh` and `deploy/rag-drg.service` all call it, so they work with any of the three
-setups. In a service or cron job, set `RAG_DRG_BIN` there, because conda isn't activated.
+setups. In a service or cron job, set `RAG_DRG_BIN` there unless the env is named `rag-drg`.
 
 For the MCP server, don't use `conda run -n rag-drg rag-drg serve`: `conda run` captures the
 program's output by default, and MCP talks over that output. Use the launcher or the env's own

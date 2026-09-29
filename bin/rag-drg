@@ -6,7 +6,10 @@
 #   1. $RAG_DRG_BIN                 explicit path, e.g. ~/miniforge3/envs/rag-drg/bin/rag-drg
 #   2. <repo>/.venv/bin/rag-drg     python -m venv .venv  or  uv venv
 #   3. $CONDA_PREFIX/bin/rag-drg    the active conda env
-#   4. rag-drg on PATH              (never this launcher itself)
+#   4. a conda env named rag-drg / rag_drg (or $RAG_DRG_CONDA_ENV), whichever env is active,
+#      looked up next to $CONDA_EXE / $MAMBA_ROOT_PREFIX, in ~/.conda/envs and in the usual
+#      install folders (~/miniforge3, ~/mambaforge, ~/miniconda3, ~/anaconda3)
+#   5. rag-drg on PATH              (never this launcher itself)
 # It also points RAG_DRG_CONFIG at this repo's rag_drg.yaml when that is unset, so a
 # non-editable install (e.g. into a conda env) still finds the config.
 set -euo pipefail
@@ -27,6 +30,16 @@ if [ -n "${RAG_DRG_BIN:-}" ]; then
 fi
 candidates=("$repo/.venv/bin/rag-drg")
 [ -n "${CONDA_PREFIX:-}" ] && candidates+=("$CONDA_PREFIX/bin/rag-drg")
+# a named conda env, so an MCP client started from another env (e.g. arc_env) still finds it
+conda_roots=()
+[ -n "${CONDA_EXE:-}" ] && conda_roots+=("$(dirname "$(dirname "$CONDA_EXE")")")
+[ -n "${MAMBA_ROOT_PREFIX:-}" ] && conda_roots+=("$MAMBA_ROOT_PREFIX")
+for d in miniforge3 mambaforge miniconda3 anaconda3; do conda_roots+=("${HOME:-/nonexistent}/$d"); done
+env_names=("${RAG_DRG_CONDA_ENV:-rag-drg}" rag_drg)
+for name in "${env_names[@]}"; do
+    candidates+=("${HOME:-/nonexistent}/.conda/envs/$name/bin/rag-drg")
+    for root in "${conda_roots[@]}"; do candidates+=("$root/envs/$name/bin/rag-drg"); done
+done
 for c in "${candidates[@]}"; do
     if [ -f "$c" ] && [ -x "$c" ]; then exec "$c" "$@"; fi
 done
@@ -46,6 +59,7 @@ done
 cat >&2 <<MSG
 rag-drg: no installation found. Install it (see README "Install"), or point RAG_DRG_BIN at it:
   venv/uv : $repo/.venv/bin/rag-drg
-  conda   : export RAG_DRG_BIN=\$(conda run -n <env> which rag-drg)
+  conda   : name the env rag-drg (found automatically), or
+            export RAG_DRG_BIN=\$(conda run -n <env> which rag-drg)
 MSG
 exit 127
