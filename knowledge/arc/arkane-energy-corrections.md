@@ -55,12 +55,13 @@ ARC computes a frequency scale factor if none is found).
 
 ## Recipe: new corrections for a new ESS / level of theory
 
-**The group's way is scripted around ARC runs on zeus.** Copy the templates in `~/runs/ARC/AE_Corr*`
-(AEC) and `~/runs/ARC/BAC_wb97xd3` (BAC) and change the level of theory. See the lessons
-"Arkane AEC/BAC for a new level: use the group's ARC-driven scripts", "Arkane AEC fit via ARC" and
-"Arkane BAC fit via ARC" (`knowledge/lessons/arc/arkane/`). Those scripts do the steps below:
-ARC runs the reference species, then `AEJob` / `BACJob` fit. The steps explain what they do and
-what to check.
+**The group's way is scripted around ARC runs**, using the templates in `knowledge/arc/templates/aec_bac/`.
+Copy the folder into a fresh run directory and set `LEVEL` in `aec_bac_common.py`. Then:
+`write_arc_input.py` → ARC → `fit_aec.py` (`AEJob`) for AEC, and
+`bac_write_arc_input.py` → ARC → `fit_bac.py` → `run_bac_fit.py` (`BACJob`) for BAC. The folder's
+README ("Template: fit Arkane AEC and BAC for a new level of theory") has the full procedure and how to
+adapt the scripts. The steps below explain what the scripts do and
+what to check. The hand-written `ae()`/`bac()` Arkane inputs are the manual alternative.
 
 **1. AEC (needed for any meaningful thermo).**
 * Compute **single-point electronic energies (Hartree, no ZPE)** at the target level for the fitting species.
@@ -86,7 +87,8 @@ As a stop-gap without touching the database, put the fitted values directly in a
 **2. BAC (optional; improves thermo).**
 * `bac()` takes its training data **from the reference database**. Each reference species needs
   `calculated_data` for your `LevelOfTheory`.
-* So first run the reference species at that level through Arkane and add the results. `ReferenceSpecies`
+* So first compute H298 for the reference species at that level and store it (the template `fit_bac.py`
+  does this from the ARC outputs). By hand: run them through Arkane and add the results. `ReferenceSpecies`
   has `update_from_arkane_spcs(arkane_species)`, which stores H298 and geometry under the Arkane species'
   level of theory; save with `save_yaml`.
 
