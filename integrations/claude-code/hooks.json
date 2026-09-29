@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rag-drg check-input --hook"
+            "command": "/path/to/rag_drg/bin/rag-drg check-input --hook"
           }
         ]
       }

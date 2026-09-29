@@ -1,6 +1,6 @@
 # systemd unit for the shared group server (MCP + REST over HTTP, token auth; see docs/auth.md).
 #   sudo cp deploy/rag-drg.service /etc/systemd/system/ && edit paths/user/host name
-#   sudo -u <service-user> /opt/rag_drg/.venv/bin/rag-drg tokens add <member>   # once per member
+#   sudo -u <service-user> /opt/rag_drg/bin/rag-drg tokens add <member>   # once per member
 #   sudo systemctl daemon-reload && sudo systemctl enable --now rag-drg
 # Members then run:
 #   claude mcp add --transport http rag-drg http://<host>:8765/mcp --header "Authorization: Bearer $RAG_DRG_TOKEN"
@@ -21,7 +21,9 @@ EnvironmentFile=-/etc/rag-drg/secrets.env
 # in rag_drg.yaml or conf.d/, readable and writable (last_used) by <service-user> only.
 # Host names clients use in the URL (comma-separated): the MCP Host-header check allows these.
 Environment=RAG_DRG_ALLOWED_HOSTS=<host>,<host>.<domain>
-ExecStart=/opt/rag_drg/.venv/bin/rag-drg serve --transport http --host 0.0.0.0 --port 8765 --auth token
+# bin/rag-drg finds the install: /opt/rag_drg/.venv (venv/uv), or set RAG_DRG_BIN for a conda env:
+#   Environment=RAG_DRG_BIN=/opt/miniforge3/envs/rag-drg/bin/rag-drg
+ExecStart=/opt/rag_drg/bin/rag-drg serve --transport http --host 0.0.0.0 --port 8765 --auth token
 # Behind a TLS proxy (Caddy/nginx) on the same machine, bind to loopback instead:
 #   ExecStart=... serve --transport http --host 127.0.0.1 --port 8765
 Restart=on-failure
