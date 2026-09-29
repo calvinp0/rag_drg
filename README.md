@@ -39,53 +39,75 @@ so a mistake only has to be fixed once.
 
 ## Quick start
 
-### Install
+### Which setup?
 
-rag-drg is a normal Python package (Python >= 3.10), so venv, uv or conda all work. Extras:
-`mcp` (MCP server), `pdf` (PDF manuals), `chem` (basis-set checks, SMILES via RDKit),
-`st` (local embeddings), `dev` (tests).
+| Who | Setup | Why |
+|---|---|---|
+| Group members (most people) | **Shared server**: register a URL + personal token, install nothing | Everyone sees new lessons at once; one index, one set of licensed manuals |
+| Maintainer, or offline use | **Local tool install** with `uv tool` (or `pipx`) | Isolated install with one fixed `rag-drg` command, whatever conda env is active |
+| Developing rag-drg itself | Repo `.venv` or a conda env, plus `bin/rag-drg` | Tests, lint, `.mcp.json` inside this repo |
 
-**venv**
+These are the usual patterns for MCP servers: remote servers for teams, and `uv tool` / `pipx` /
+`uvx` installs for local Python servers.
 
-```bash
-git clone <this repo> rag_drg && cd rag_drg
-python -m venv .venv && . .venv/bin/activate
-pip install -e '.[mcp,pdf,chem]'
-```
-
-**uv**, also on a machine that has conda. uv makes the same `.venv`, so nothing else changes.
+### Connect: shared server (group members)
 
 ```bash
-conda deactivate                     # repeat until no env is active (not even base): uv would
-                                     # otherwise install into the active conda env
-uv venv --python 3.12                # uv's own Python, independent of conda
-uv pip install --python .venv/bin/python -e '.[mcp,pdf,chem]'
+# on the server, once (see deploy/rag-drg.service and deploy/refresh.sh)
+rag-drg serve --transport http --host 0.0.0.0 --port 8765
+rag-drg tokens add <member>                 # once per person; see docs/auth.md
+# each member
+claude mcp add --scope user --transport http rag-drg http://<server>:8765/mcp \
+    --header "Authorization: Bearer $RAG_DRG_TOKEN"
+codex mcp add rag-drg --url http://<server>:8765/mcp --bearer-token-env-var RAG_DRG_TOKEN
 ```
+For the Codex `config.toml` form, see
+[`integrations/codex/config.toml.example`](integrations/codex/config.toml.example); check
+`codex mcp add --help` for the HTTP flags your version has. Input checks and searches from the
+terminal need only one standard-library file, [`integrations/rag-drg-remote`](integrations/rag-drg-remote)
+(see "Using the shared server without installing anything" below).
 
-**conda**
+### Install locally (maintainer / offline)
+
+rag-drg is a normal Python package (Python >= 3.10). Extras: `mcp` (MCP server), `pdf` (PDF
+manuals), `chem` (basis-set checks, SMILES via RDKit), `st` (local embeddings), `dev` (tests).
+
+**Recommended: `uv tool`.** This works on a machine with conda, and doesn't care which env is active.
 
 ```bash
-conda create -n rag-drg python=3.12 && conda activate rag-drg
-pip install -e '.[mcp,pdf,chem]'      # or: conda install -c conda-forge rdkit, then pip the rest
+git clone <this repo> ~/code/rag_drg
+uv tool install --python 3.12 --editable "$HOME/code/rag_drg[mcp,pdf,chem]"
+uv tool dir --bin                    # where the `rag-drg` command is, usually ~/.local/bin
 ```
-Name the env `rag-drg` (or `rag_drg`) and the launcher finds it even when another env is active,
-e.g. Claude Code started from `arc_env`. With another name, set `RAG_DRG_CONDA_ENV=<name>`, or pin
-the exact install with `RAG_DRG_BIN=$(which rag-drg)`.
+* `--python 3.12` makes uv use its own Python. Otherwise uv may base the tool on the active conda
+  env's Python, and the tool breaks if that env is removed.
+* `--editable` means `git pull` updates the code. rag-drg then finds the repo's `rag_drg.yaml`
+  (and so its `index/`, `sources/` and `knowledge/`) from any directory. With a non-editable
+  install, set `RAG_DRG_CONFIG=/path/to/rag_drg/rag_drg.yaml`.
+* When a pull changes dependencies (`pyproject.toml`), re-run the install command with `--reinstall`.
+* `pipx install --editable "$HOME/code/rag_drg[mcp,pdf,chem]"` is the pipx equivalent.
 
-**`bin/rag-drg`** is a small launcher that finds the install, trying in order:
+**For developing rag-drg (tests, lint):** use an environment inside the repo.
+
+```bash
+python -m venv .venv && .venv/bin/pip install -e '.[mcp,pdf,chem,dev]'   # or:
+uv venv --python 3.12 && uv pip install --python .venv/bin/python -e '.[mcp,pdf,chem,dev]'   # or:
+conda create -n rag-drg python=3.12 && conda activate rag-drg && pip install -e '.[mcp,pdf,chem,dev]'
+```
+Run `conda deactivate` before the `uv venv` line, or uv installs into the active conda env.
+Everything in the repo calls **`bin/rag-drg`**: `.mcp.json`, the hooks, `deploy/refresh.sh` and
+`deploy/rag-drg.service`. That launcher finds whichever install you have, trying in order:
 1. `$RAG_DRG_BIN`;
 2. `.venv/bin/rag-drg`;
 3. the active conda env;
-4. a conda env named `rag-drg`/`rag_drg` (or `$RAG_DRG_CONDA_ENV`), whichever env is active;
-5. `rag-drg` on PATH.
+4. a conda env named `rag-drg`/`rag_drg` (or `$RAG_DRG_CONDA_ENV`);
+5. `rag-drg` on PATH, which includes a `uv tool` install.
 
-It also points `RAG_DRG_CONFIG` at this repository's `rag_drg.yaml`. `.mcp.json`, the hooks,
-`deploy/refresh.sh` and `deploy/rag-drg.service` all call it, so they work with any of the three
-setups. In a service or cron job, set `RAG_DRG_BIN` there unless the env is named `rag-drg`.
+It also points `RAG_DRG_CONFIG` at the repo's `rag_drg.yaml`. In a service or cron job, set
+`RAG_DRG_BIN` unless one of those already matches.
 
 For the MCP server, don't use `conda run -n rag-drg rag-drg serve`: `conda run` captures the
-program's output by default, and MCP talks over that output. Use the launcher or the env's own
-`rag-drg` path.
+program's output by default, and MCP talks over that output.
 
 ### First steps
 
@@ -98,44 +120,28 @@ rag-drg search "CASSCF orbital optimisation" --software orca --doc-type theory
 rag-drg level "wb97xd/def2tzvp" --software orca   # is it supported, and how is it written?
 ```
 
-### Connect Claude Code
+### Connect a local install
 
-Each person, local index (simplest):
-
-```bash
-claude mcp add --scope user rag-drg -- /path/to/rag_drg/bin/rag-drg serve
-# if you run it from outside the repo:  -e RAG_DRG_CONFIG=/path/to/rag_drg/rag_drg.yaml
-```
-
-Or one shared server for the group (recommended once people start recording lessons, so
-everyone sees them at once):
+Register the absolute path of the command, because MCP clients start the server themselves and
+don't activate environments:
 
 ```bash
-# on the server (see deploy/rag-drg.service and deploy/refresh.sh)
-rag-drg serve --transport http --host 0.0.0.0 --port 8765
-# each member
-rag-drg tokens add <member>            # on the server, once per person; see docs/auth.md
-claude mcp add --scope user --transport http rag-drg http://<server>:8765/mcp \
-    --header "Authorization: Bearer $RAG_DRG_TOKEN"
+RAG="$(uv tool dir --bin)/rag-drg"           # or /path/to/rag_drg/bin/rag-drg for a dev install
+claude mcp add --scope user rag-drg -- "$RAG" serve
+codex mcp add rag-drg -- "$RAG" serve        # or ~/.codex/config.toml, see integrations/codex/
+claude mcp list; codex mcp list              # both should show rag-drg connected
 ```
+Inside this repo, `.mcp.json` already registers the server through `bin/rag-drg`.
 
 Then give agents the habit:
 
 * copy `integrations/claude-code/skills/group-knowledge/` to `~/.claude/skills/`, and/or
-* append `integrations/claude-code/CLAUDE.md.snippet` to `~/.claude/CLAUDE.md` or to your project's `CLAUDE.md`.
+* append `integrations/claude-code/CLAUDE.md.snippet` to `~/.claude/CLAUDE.md` or to your project's
+  `CLAUDE.md`. For Codex, append it to `~/.codex/AGENTS.md` or a project's `AGENTS.md`: Codex reads
+  `AGENTS.md`, not `CLAUDE.md`.
 
-### Connect Codex
-
-```bash
-codex mcp add rag-drg -- /ABS/PATH/TO/rag_drg/bin/rag-drg serve   # or edit ~/.codex/config.toml
-codex mcp list
-```
-[`integrations/codex/config.toml.example`](integrations/codex/config.toml.example) has the
-`config.toml` form, including a start-up timeout and the shared HTTP server. Codex reads
-`AGENTS.md` rather than `CLAUDE.md`: append `integrations/claude-code/CLAUDE.md.snippet` to
-`~/.codex/AGENTS.md` (all projects) or a project's `AGENTS.md`. The Claude Code `PostToolUse` hook
-config does not carry over to Codex, so input checks rely on that instruction (`check_input` via MCP, or
-`bin/rag-drg check-input <file>`).
+The Claude Code `PostToolUse` hook (below) does not carry over to Codex, so in Codex, input
+checks rely on that instruction (`check_input` via MCP, or `rag-drg check-input <file>`).
 
 Local models: see [`integrations/local-models.md`](integrations/local-models.md) (MCP, or the
 `rag-drg search --json` CLI as a tool).
@@ -195,7 +201,7 @@ vs. a per-user install for live cluster queries) is explained in
 
 Add the hook from [`integrations/claude-code/hooks.remote.json`](integrations/claude-code/hooks.remote.json)
 (thin client, no install) or [`integrations/claude-code/hooks.json`](integrations/claude-code/hooks.json)
-(local install) to `~/.claude/settings.json`, using the absolute path of the command. Every time an agent
+(local install; use the same absolute `rag-drg` path you registered above) to `~/.claude/settings.json`. Every time an agent
 writes an input file or submit script, it is checked; errors are fed back to the agent, which
 then fixes them before anything is submitted.
 
