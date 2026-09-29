@@ -252,7 +252,7 @@ tasks:
   - id: arkane-corrections-disabled
     split: holdout
     tags: [arkane, arc, thermo, aec]
-    why: without AEC/BAC ARC still writes thermo but H298 is not meaningful; the group fits AEC with ARC-driven scripts (AE_Corr*, write_arc_input.py, fit_aec.py/AEJob)
+    why: without AEC/BAC ARC still writes thermo but H298 is not meaningful; the group fits AEC with the ARC-driven templates (knowledge/arc/templates/aec_bac, i.e. write_arc_input.py and fit_aec.py/AEJob), not a copy of someone's home directory
     prompt: |
       My ARC thermo run finished, but arc.log says: "SP level ... is not recognized by Arkane and
       has no AEC entry in ARC. Atom and bond energy corrections will be DISABLED for this Arkane
@@ -260,7 +260,8 @@ tasks:
       thermo for this level of theory? Answer briefly.
     checks:
       - {type: answer_regex, pattern: "(not (be )?(meaningful|reliable|usable|trustworthy|accurate|correct)|unreliable|meaningless|should(n't| not) (be )?use|can(no|')t (be )?use|don't use|do not use|not safe)", flags: i, name: says-not-usable}
-      - {type: answer_regex, pattern: '(AE_Corr|fit_aec|write_arc_input|AEJob)', name: group-aec-route}
+      - {type: answer_regex, pattern: '(AEJob|fit_aec|aec_bac|write_arc_input)', name: group-aec-route}
+      - {type: answer_not_regex, pattern: '(~|/home/[^/\s]+)/runs/ARC|AE_Corr', name: no-personal-paths}
 
   - id: arc-on-atlas
     split: holdout

@@ -1,0 +1,1 @@
+No, they are not meaningful without AEC. Copy ~/runs/ARC/AE_Corr_wb97xd3 on zeus, change the level in write_arc_input.py and fit_aec.py (AEJob), run ARC sp on the 16 reference species, paste the AEC into quantum_corrections/data.py and rerun Arkane.

@@ -29,4 +29,4 @@ Use `method: wb97x-d3` for ORCA. ARC then writes `!rKS wb97x-d3 def2-tzvp tights
 
 ## Evidence / source
 
-zeus:~/runs/ARC/AE_Corr_wb97xd3: out.txt/err.txt (failed run with wb97xd-3) vs calcs/Species/CH4/sp_a2595/input.log (successful run with wb97x-d3), 2026-01-06.
+The group's ARC AEC run for wB97X-D3/def2-TZVP on Zeus: the ARC job's out.txt/err.txt (failed run with wb97xd-3) vs the ORCA output of a species' sp job (successful run with wb97x-d3), 2026-01-06.
