@@ -219,6 +219,11 @@
   expect: [{source: arc, path: arc/schemas/, title_contains: "freq_scale_factor"}]
   tags: [arc, output]
 
+- id: arkane-missing-aec
+  q: "My ARC thermo came out without corrections because Arkane doesn't know my level of theory - how do I get atom energies for it?"
+  expect: ["curated:arc/arkane-energy-corrections.md"]
+  tags: [arc, paraphrase]
+
 - id: arc-ts-xyz-example
   q: "Example ARC input for a transition state with a user-supplied xyz guess"
   filters: {software: arc}

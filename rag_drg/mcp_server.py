@@ -32,10 +32,11 @@ capabilities), HPC cluster usage (submit scripts, queues, quotas) and project li
 Use it BEFORE you:
 - write or edit any ESS input file or ESS keyword/option (check exact syntax and version),
 - write ARC input YAML, touch ARC settings/servers, or parse ARC output,
+- run Arkane / compute thermo (check the level has AEC/BAC energy corrections),
 - write a submit script or run scheduler/quota commands on a cluster,
 - make claims about what a program/method can or cannot do.
 
-Pass `software` (orca, gaussian, qchem, psi4, molpro, pyscf, arc) and `version` when you know them.
+Pass `software` (orca, gaussian, qchem, psi4, molpro, pyscf, arc, arkane) and `version` when you know them.
 Use `doc_type="reference"` for keywords/syntax and `doc_type="theory"` for method background.
 Use `lookup_level_of_theory` before translating a method/functional between codes.
 Results tagged `lesson` or `gotcha` are corrections the group has already made - follow them.
