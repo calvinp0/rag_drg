@@ -1,0 +1,4 @@
+1. On the Atlas head node (tech-ui02), in your project folder under /storage/ce_dana/<user>/, start a named screen: screen -S myrun.
+2. Inside it activate the env and run ARC (arce, then arc, i.e. python $arc_path/ARC.py input.yml). ARC itself runs on the head node, not as a batch job.
+3. Detach with Ctrl-a d. Check that ARC is still running with screen -ls / screen -r myrun.
+4. The ESS jobs ARC spawns are HTCondor jobs: check them with condor_q (st), and condor_q -better-analyze <id> for held/idle ones.

@@ -1,0 +1,1 @@
+Run nohup python ARC.py input.yml & on a compute node and check the process with ps.

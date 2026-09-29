@@ -1,0 +1,1 @@
+No, they are not reliable. You would need atom energy corrections for that level from somewhere, or switch to a level Arkane knows such as CBS-QB3.

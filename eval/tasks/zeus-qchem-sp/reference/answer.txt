@@ -1,0 +1,1 @@
+Wrote water.in (wB97M-V/def2-TZVPD single point) and submit.sh for zeus alon_q: Q-Chem 6.1 by absolute path after sourcing /usr/local/qchem/qcenv.sh, scratch under /gtmp.
