@@ -3,8 +3,12 @@
 Conditions:
     with     the agent gets rag-drg as an MCP server (bin/rag-drg serve)
     without  the agent gets no MCP servers
-Both run in a fresh, empty work directory outside the repository, so the repo's .mcp.json and
-CLAUDE.md cannot leak rag-drg into the `without` condition.
+Both run in a fresh work directory in the system temp dir, outside the repository, so the repo's
+.mcp.json and CLAUDE.md cannot leak rag-drg into the `without` condition. File tools are also
+denied on the repository (and the config root), so the only way to rag-drg's knowledge is the MCP
+server; the first real run showed a `without` agent reading knowledge/ straight from disk.
+Answers of `without` runs that cite repository paths are counted as leaks in the report.
+The finished work directory is copied to <rep>/work for inspection and re-grading.
 
 Layout: <runs>/<run id>/<task>/<condition>/rep<k>/{work/, agent.out, agent.err, result.json}
 """
@@ -13,8 +17,11 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
+import re
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,7 +38,7 @@ DEFAULT_AGENT = {
     "command": ["claude", "-p", "{prompt}", "--output-format", "json", "--bare",
                 "--setting-sources", "project", "--permission-mode", "acceptEdits",
                 "--strict-mcp-config", "--mcp-config", "{mcp_config}",
-                "--allowedTools", "{allowed_tools}"],
+                "--allowedTools", "{allowed_tools}", "--disallowedTools", "{denied_tools}"],
     "allowed_tools": {"with": "Read Write Edit Glob Grep mcp__rag-drg",
                       "without": "Read Write Edit Glob Grep"},
 }
@@ -46,10 +53,21 @@ def mcp_config(condition: str, cfg_path: Path | None) -> dict:
     return {"mcpServers": {"rag-drg": server}}
 
 
+FILE_TOOLS = ("Read", "Glob", "Grep", "Edit", "Write")
+# repository paths a `without` answer should never know about
+LEAK = re.compile(r"knowledge/|servers\.yaml|rag_drg\.yaml|sources_cache/|integrations/claude-code")
+
+
+def denied_tools(hidden: list[Path]) -> str:
+    """Claude Code permission rules that keep the file tools out of `hidden` ("//" = absolute path)."""
+    return " ".join(f"{t}(/{Path(h).resolve()}/**)" for h in hidden for t in FILE_TOOLS)
+
+
 def build_command(agent: dict, condition: str, prompt: str, mcp_path: Path, work: Path,
-                  model: str | None) -> list[str]:
+                  model: str | None, hidden: list[Path] | None = None) -> list[str]:
     tools = (agent.get("allowed_tools") or {}).get(condition, "")
     values = {"prompt": prompt, "mcp_config": str(mcp_path), "allowed_tools": tools,
+              "denied_tools": denied_tools(hidden if hidden is not None else [REPO]),
               "workdir": str(work), "model": model or ""}
     cmd = []
     for part in agent["command"]:
@@ -90,27 +108,49 @@ class RunSpec:
     timeout_s: int = 900
 
 
+def _auth_compatible(agent: dict) -> tuple[dict, str | None]:
+    """Claude Code's --bare authenticates only with ANTHROPIC_API_KEY (it never reads the OAuth
+    login of a Claude subscription). Without a key, drop --bare so the run can log in; user
+    settings, hooks and MCP servers are still kept out by --setting-sources/--strict-mcp-config."""
+    cmd = list(agent["command"])
+    if "--bare" in cmd and not os.environ.get("ANTHROPIC_API_KEY"):
+        cmd.remove("--bare")
+        return {**agent, "command": cmd}, (
+            "no ANTHROPIC_API_KEY, so running without --bare (OAuth login). Your ~/.claude/CLAUDE.md and "
+            "skills are visible to both conditions alike; set ANTHROPIC_API_KEY for strict isolation.")
+    return agent, None
+
+
 def run(spec: RunSpec, progress=print) -> Path:
     agent = {**DEFAULT_AGENT, **(spec.suite.agent or {})}
+    agent, isolation = _auth_compatible(agent)
+    if isolation:
+        progress(f"note: {isolation}")
+    # the agent runs with cwd=<rep>/work, so every path handed to it (the MCP config) must be absolute
+    spec.out = Path(spec.out).resolve()
     spec.out.mkdir(parents=True, exist_ok=True)
     (spec.out / "run.json").write_text(json.dumps({
         "tasks": [t.id for t in spec.tasks], "conditions": spec.conditions, "repeats": spec.repeats,
-        "model": spec.model, "agent_command": agent["command"], "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "model": spec.model, "agent_command": agent["command"], "isolation_note": isolation,
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }, indent=2))
     for cond in spec.conditions:
         mcp_path = spec.out / f"mcp-{cond}.json"
         mcp_path.write_text(json.dumps(mcp_config(cond, spec.cfg_path), indent=2))
+    hidden = [REPO] + ([Path(spec.cfg_path).resolve().parent] if spec.cfg_path else [])
+    hidden = list(dict.fromkeys(hidden))
     for task in spec.tasks:
         for cond in spec.conditions:
             for rep in range(1, spec.repeats + 1):
                 d = spec.out / task.id / cond / f"rep{rep}"
                 if (d / "result.json").exists() and not json.loads((d / "result.json").read_text()).get("agent_error"):
                     continue  # resume: keep graded runs, retry runs where the agent itself failed
-                work = d / "work"
-                work.mkdir(parents=True, exist_ok=True)
+                d.mkdir(parents=True, exist_ok=True)
+                work = _scratch_dir(task.id)
                 for name, text in task.files.items():
                     (work / name).write_text(text)
-                cmd = build_command(agent, cond, task.prompt, spec.out / f"mcp-{cond}.json", work, spec.model)
+                cmd = build_command(agent, cond, task.prompt, spec.out / f"mcp-{cond}.json", work, spec.model,
+                                    hidden)
                 t0 = time.time()
                 try:
                     p = subprocess.run(cmd, cwd=work, capture_output=True, text=True, timeout=spec.timeout_s)
@@ -125,9 +165,13 @@ def run(spec: RunSpec, progress=print) -> Path:
                 answer, meta = parse_answer(stdout)
                 (d / "answer.txt").write_text(answer)
                 result = grade_run(task, work, answer, spec.cfg)
+                leaks = sorted(set(LEAK.findall(answer))) if cond == "without" else []
                 result.update(task=task.id, split=task.split, condition=cond, rep=rep, returncode=rc,
                               seconds=round(time.time() - t0, 1), agent=meta,
-                              agent_error=agent_error(rc, meta, stderr))
+                              agent_error=agent_error(rc, meta, stderr, stdout), leaks=leaks)
+                shutil.rmtree(d / "work", ignore_errors=True)
+                shutil.copytree(work, d / "work")
+                shutil.rmtree(work, ignore_errors=True)
                 (d / "result.json").write_text(json.dumps(result, indent=2))
                 if result["agent_error"]:
                     progress(f"{task.id:32s} {cond:8s} rep{rep}: AGENT ERROR  ({result['agent_error']})")
@@ -137,11 +181,24 @@ def run(spec: RunSpec, progress=print) -> Path:
     return spec.out
 
 
-def agent_error(rc: int, meta: dict, stderr: str) -> str | None:
+def _scratch_dir(task_id: str) -> Path:
+    """A fresh work directory outside the repository (never under it, even if TMPDIR is)."""
+    for base in (None, "/tmp"):
+        work = Path(tempfile.mkdtemp(prefix=f"rag-drg-agent-eval-{task_id}-", dir=base)).resolve()
+        if not work.is_relative_to(REPO):
+            return work
+        shutil.rmtree(work, ignore_errors=True)
+    raise RuntimeError(f"no temp directory outside {REPO}; set TMPDIR")
+
+
+def agent_error(rc: int, meta: dict, stderr: str, stdout: str = "") -> str | None:
     """Why the agent itself failed to run (not a task failure): these runs are left out of the pass
-    rates, because an outage or a missing login says nothing about rag-drg."""
+    rates, because an outage, a missing login or a bad agent config says nothing about rag-drg."""
     if rc in (-1, -2):
         return stderr.strip()[:200] or "agent did not run"
+    if rc != 0 and not stdout.strip():
+        # exited with an error and produced nothing, e.g. "Invalid MCP configuration"
+        return f"agent exited {rc} without output: {stderr.strip()[:200]}".rstrip(": ")
     if meta.get("terminal_reason") in ("api_error",) or meta.get("subtype") in ("error_during_execution",):
         return f"agent error: {meta.get('terminal_reason') or meta.get('subtype')}"
     if meta.get("is_error") and not meta.get("num_turns"):
@@ -222,8 +279,9 @@ def summarize(all_results: list[dict]) -> dict:
             fails[key] = fails.get(key, 0) + 1
     cost = {c: sum((r.get("agent") or {}).get("total_cost_usd") or 0 for r in results if r["condition"] == c)
             for c in conds}
+    leaks = [{"task": r["task"], "rep": r["rep"], "paths": r["leaks"]} for r in results if r.get("leaks")]
     return {"tasks": per_task, "overall": overall, "top_failures": sorted(fails.items(), key=lambda x: -x[1])[:15],
-            "conditions": conds, "cost_usd": cost,
+            "conditions": conds, "cost_usd": cost, "leaks": leaks,
             "agent_errors": [{"task": r["task"], "condition": r["condition"], "rep": r["rep"], "error": r["agent_error"]}
                              for r in errors]}
 
@@ -235,6 +293,11 @@ def format_report(s: dict) -> str:
         lines += [f"**{len(s['agent_errors'])} run(s) where the agent itself failed** (login, network, timeout) are "
                   "left out of the rates below; fix the cause and run again with `--out <this run>`: graded runs are "
                   "kept and these are retried. First: " + s["agent_errors"][0]["error"], ""]
+    if s.get("leaks"):
+        first = s["leaks"][0]
+        lines += [f"**Warning: {len(s['leaks'])} `without` answer(s) cite repository paths** (first: "
+                  f"{first['task']} rep{first['rep']}: {', '.join(first['paths'])}). That agent saw rag-drg's "
+                  "knowledge some other way, so the comparison is not clean; check those runs.", ""]
     if not s["overall"]:
         return "\n".join(lines + ["No graded runs yet.", ""])
     lines += ["| Split | " + " | ".join(f"{c}: pass rate (95% CI) | {c}: tasks passing every rep" for c in conds) + " |",
