@@ -1,0 +1,15 @@
+%nprocshared=16
+%mem=56GB
+%chk=methanol.chk
+#P B3LYP/Def2TZVP Opt Freq EmpiricalDispersion=D3BJ
+
+opt+freq B3LYP/Def2TZVP CH4O charge 0 mult 1
+
+0 1
+C     -0.37057241    -0.01270727     0.01785793
+O      0.94953503    -0.07816662     0.52513948
+H     -1.07432712    -0.18870518     0.83478844
+H     -0.54974358     0.97780907    -0.40746176
+H     -0.50589870    -0.77996373    -0.74838363
+H      1.55100679     0.08173372    -0.22194046
+

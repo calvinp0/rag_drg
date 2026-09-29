@@ -1,0 +1,10 @@
+# sp DLPNO-CCSD(T)/cc-pVTZ H2O charge 0 mult 1
+# composed by rag-drg (compose_ess_job); check the notes before running
+! DLPNO-CCSD(T) cc-pVTZ cc-pVTZ/C
+%pal nprocs 8 end
+%maxcore 3072
+* xyz 0 1
+  O      0.00000000     0.00000000     0.11779000
+  H      0.00000000     0.75545000    -0.47116000
+  H      0.00000000    -0.75545000    -0.47116000
+*

@@ -1,0 +1,15 @@
+project: alcohols_thermo
+job_types:
+  conformers: true
+  opt: true
+  freq: true
+  sp: true
+  rotors: false
+opt_level: wb97xd/def2tzvp
+freq_level: wb97xd/def2tzvp
+sp_level: ccsd(t)-f12/cc-pvtz-f12
+species:
+  - label: ethanol
+    smiles: CCO
+  - label: propanol
+    smiles: CCCO

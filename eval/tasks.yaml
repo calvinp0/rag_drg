@@ -1,0 +1,197 @@
+# Agent tasks for `rag-drg agent-eval` (see docs/agent-eval.md).
+#
+# Each task is a real request a group member makes. The agent works in an empty directory, and
+# its files and final answer are graded by deterministic pass/fail checks (graders.py). A task
+# passes only if every check passes. Every task has eval/tasks/<id>/reference/, a correct
+# solution that must pass (`rag-drg agent-eval check-graders`); bad/<variant>/ are wrong
+# solutions that must fail.
+#
+# Rules for adding tasks:
+# * Take them from real failures: a recorded lesson, a job that crashed, a correction in a chat.
+# * Check what the group actually needs, not one particular wording: several spellings may be right.
+# * Keep about a third as `split: holdout`. Never tune cards, ranking or prompts to pass those;
+#   they tell you whether an improvement generalises.
+# * `why:` says which failure the task guards against.
+
+defaults:
+  repeats: 3
+  timeout_s: 900
+
+tasks:
+  # ------------------------------------------------------------------------------------ dev
+  - id: orca6-dlpno-sp-zeus
+    split: dev
+    tags: [orca, zeus, compose]
+    why: DLPNO needs a /C auxiliary basis; ORCA 6 on zeus runs with OpenMPI 4.1.1 by absolute path, %maxcore is per core
+    prompt: |
+      On the zeus cluster, prepare an ORCA 6 DLPNO-CCSD(T)/cc-pVTZ single-point energy for water
+      (neutral singlet), geometry in Angstrom:
+        O  0.000000  0.000000  0.117790
+        H  0.000000  0.755450 -0.471160
+        H  0.000000 -0.755450 -0.471160
+      Use 8 cores and 32 GB of memory. Write the ORCA input to water.inp and the PBS submit script
+      to submit.sh in the current directory.
+    checks:
+      - {type: check_input, path: water.inp, submit: submit.sh}
+      - {type: regex, path: water.inp, pattern: 'cc-pVTZ/C', flags: i, name: correlation-aux-basis}
+      - {type: regex, path: submit.sh, pattern: '/usr/local/orca(-6\.0\.0|6)/', name: orca6-absolute-path}
+      - {type: regex, path: submit.sh, pattern: 'openmpi-4\.1\.1', name: openmpi-4.1.1}
+      - {type: regex, path: submit.sh, pattern: '#PBS -q (alon_q|mafat_new_q|alon_comb_q|zeus_combined_q|zeus_long_q|zeus_short_q)\b', name: zeus-cpu-queue}
+      - {type: not_regex, path: submit.sh, pattern: 'module load', name: no-modules}
+
+  - id: gaussian-optfreq-zeus
+    split: dev
+    tags: [gaussian, zeus, compose]
+    why: G16 D3(BJ) keyword spelling, %nprocshared matching the request, the group's G16 path on zeus
+    prompt: |
+      Write a Gaussian 16 geometry optimisation + frequency job at B3LYP-D3(BJ)/def2-TZVP for
+      methanol (neutral singlet; start from any reasonable geometry) to run on zeus with 16 cores and
+      64 GB. Save the input as methanol.gjf and the PBS submit script as submit.sh here.
+    checks:
+      - {type: check_input, path: methanol.gjf, submit: submit.sh}
+      - {type: regex, path: methanol.gjf, pattern: 'EmpiricalDispersion\s*=\s*GD3BJ', flags: i, name: gd3bj}
+      - {type: regex, path: methanol.gjf, pattern: '\bopt\b', flags: i, name: opt}
+      - {type: regex, path: methanol.gjf, pattern: '\bfreq\b', flags: i, name: freq}
+      - {type: regex, path: methanol.gjf, pattern: '%nprocshared\s*=\s*16\b', flags: i, name: nproc-16}
+      - {type: regex, path: submit.sh, pattern: '/usr/local/g16(-gpu)?/', name: g16-absolute-path}
+      - {type: not_regex, path: submit.sh, pattern: 'module load', name: no-modules}
+
+  - id: zeus-gpu-gaussian
+    split: dev
+    tags: [gaussian, zeus, gpu, lesson]
+    why: "lesson: PBS on zeus assigns no specific GPU; a hard-coded %GPUCPU=0=0 dies when GPU 0 is busy"
+    files:
+      input.gjf: |
+        %mem=24GB
+        %chk=input.chk
+        #P B3LYP/6-311+G(d,p) Freq
+
+        caffeine benchmark
+
+        0 1
+        C 0.0 0.0 0.0
+
+    prompt: |
+      input.gjf in this directory is a Gaussian 16 job (don't change its route or molecule). Write a
+      PBS submit script, submit_gpu.sh, that runs it on one GPU on zeus.
+    checks:
+      - {type: regex, path: submit_gpu.sh, pattern: '#PBS -q (gpu_v100_q|mafat_gm_q)\b', name: gpu-queue}
+      - {type: regex, path: submit_gpu.sh, pattern: 'ngpus=1', name: ngpus}
+      - {type: regex, path: submit_gpu.sh, pattern: 'nvidia-smi', name: inspects-gpus}
+      - {type: regex, path: submit_gpu.sh, pattern: 'CUDA_VISIBLE_DEVICES', name: pins-chosen-gpu}
+      - {type: regex, path: submit_gpu.sh, pattern: 'GPUCPU', flags: i, name: sets-gpucpu}
+      # outside comments: an answer may well explain why %GPUCPU=0=0 is wrong
+      - {type: not_regex, path: '*', pattern: '^[^#\n]*%GPUCPU\s*=\s*0\s*=\s*0\b', flags: i, name: no-hardcoded-gpu0}
+      - {type: regex, path: submit_gpu.sh, pattern: '/usr/local/g16-gpu/', name: gpu-build}
+
+  - id: arc-run-zeus
+    split: dev
+    tags: [arc, zeus]
+    why: ARC runs as a PBS job on n170 in alon_q (never on the login node), with arc_env; valid input.yml keys
+    prompt: |
+      I want to run ARC on zeus to get thermo for ethanol (SMILES CCO) and 1-propanol (SMILES CCCO):
+      opt + freq at wb97xd/def2tzvp and a CCSD(T)-F12/cc-pVTZ-F12 single point. Write ARC's input.yml
+      and the submit.sh I submit on zeus to run ARC itself.
+    checks:
+      - {type: arc_check, path: input.yml}
+      - {type: regex, path: input.yml, pattern: '(?i)ccsd\(t\)-f12', name: sp-level}
+      - {type: regex, path: submit.sh, pattern: '#PBS -q alon_q\b', name: runner-queue}
+      - {type: regex, path: submit.sh, pattern: 'host=n170', name: pinned-n170}
+      - {type: regex, path: submit.sh, pattern: 'arc_env', name: conda-env}
+      - {type: regex, path: submit.sh, pattern: 'ARC\.py', name: runs-arc}
+
+  - id: zeus-arc-settings
+    split: dev
+    tags: [arc, zeus, settings]
+    why: the group's ARC settings on zeus - 16 cores / 160 GB caps, /opt/pbs/bin commands, ESS jobs only in alon_q
+    prompt: |
+      Write the zeus part of my ~/.arc/settings.py (the `servers` dict and the scheduler command
+      dicts) for running ARC on zeus the way our group does. Save it as arc_settings.py here.
+    checks:
+      - {type: regex, path: arc_settings.py, pattern: "['\"]local['\"]\\s*:", name: local-server}
+      - {type: regex, path: arc_settings.py, pattern: "['\"]cpus['\"]\\s*:\\s*16\\b", name: cpus-16}
+      - {type: regex, path: arc_settings.py, pattern: "['\"]memory['\"]\\s*:\\s*160\\b", name: memory-160}
+      - {type: regex, path: arc_settings.py, pattern: '/opt/pbs/bin/qsub', name: opt-pbs-qsub}
+      - {type: regex, path: arc_settings.py, pattern: 'alon_q', name: alon_q}
+      - {type: not_regex, path: arc_settings.py, pattern: "['\"]queues['\"]\\s*:\\s*\\{[^}]*(mafat_new_q|zeus_long_q|zeus_short_q|zeus_combined_q)", name: only-alon_q-queue}
+
+  - id: atlas-orca-sp
+    split: dev
+    tags: [orca, atlas, htcondor, compose]
+    why: Atlas is HTCondor (submit.sub + job.sh), ORCA 5.0.4 from /Local/ce_dana, modest memory (WastingMemory hold rule)
+    prompt: |
+      Prepare an ORCA single-point B3LYP/def2-SVP energy for water (neutral singlet, any reasonable
+      geometry) to run on the Atlas cluster with 4 cores. Put the input and every file needed to
+      submit it on Atlas in this directory.
+    checks:
+      - {type: check_input, path: '*.inp'}
+      - {type: file_exists, path: '*.sub', name: htcondor-submit-file}
+      - {type: regex, path: '*.sub', pattern: 'request_cpus\s*=\s*4\b', name: request-4-cpus}
+      - {type: number, path: '*.sub', pattern: 'request_memory\s*=\s*(\d+)\s*(?:MB)?\s*$', min: 1000, max: 8192, name: memory-at-most-8GB}
+      - {type: regex, path: '*', pattern: '/Local/ce_dana/orca_5_0_4', name: orca5-atlas-path}
+      - {type: not_regex, path: '*', pattern: '^#(PBS|SBATCH)', name: no-pbs-or-slurm}
+
+  - id: atlas-g16-negative
+    split: dev
+    tags: [gaussian, atlas, negative]
+    why: G16 is not installed on Atlas (only G09); the agent must say so instead of inventing a g16 path
+    prompt: |
+      Set up a Gaussian 16 geometry optimisation of water at B3LYP/6-31G(d) to run on the Atlas
+      cluster. Write whatever files are needed here.
+    checks:
+      - {type: answer_regex, pattern: "(not installed|isn't installed|is not available|isn't available|not available|no Gaussian 16|only Gaussian 09|only G09)", flags: i, name: says-no-g16}
+      - {type: not_regex, path: '*', pattern: '/g16/g16|\bg16\s*<', name: no-invented-g16}
+
+  # -------------------------------------------------------------------------------- holdout
+  - id: orca-maxcore-fix
+    split: holdout
+    tags: [orca, zeus, memory]
+    why: "%maxcore is MB per core, ~75% of memory/cores; 64000 with 16 cores asks for 1 TB"
+    files:
+      job.inp: |
+        ! B3LYP def2-TZVP Opt
+        %pal nprocs 16 end
+        %maxcore 64000
+        * xyz 0 1
+        O  0.000000  0.000000  0.117790
+        H  0.000000  0.755450 -0.471160
+        H  0.000000 -0.755450 -0.471160
+        *
+      submit.sh: |
+        #!/bin/bash
+        #PBS -N job
+        #PBS -q zeus_long_q
+        #PBS -l select=1:ncpus=16:mpiprocs=16:mem=64gb
+        #PBS -l walltime=24:00:00
+        cd "$PBS_O_WORKDIR"
+        export PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/bin:$PATH"
+        export LD_LIBRARY_PATH="/usr/local/orca-6.0.0:/usr/local/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        /usr/local/orca-6.0.0/orca job.inp > job.out
+    prompt: |
+      This ORCA job on zeus keeps getting killed for using too much memory. Fix job.inp so it fits
+      the 64 GB it requests in submit.sh, keeping 16 cores. Don't change submit.sh.
+    checks:
+      - {type: check_input, path: job.inp, submit: submit.sh}
+      - {type: number, path: job.inp, pattern: '%maxcore\s+(\d+)', min: 1500, max: 4000, name: maxcore-per-core}
+      - {type: regex, path: job.inp, pattern: 'nprocs\s+16', name: keeps-16-cores}
+
+  - id: level-translate-wb97xd-orca
+    split: holdout
+    tags: [orca, gaussian, levels]
+    why: ORCA has no exact wB97X-D; wB97X-D3 is a different parametrisation and must be flagged as such
+    prompt: |
+      In Gaussian I ran wB97XD/def2-TZVP. What do I write in ORCA 6 to get the same method?
+      Answer in a couple of sentences, with the ORCA keyword line.
+    checks:
+      - {type: answer_regex, pattern: 'wB97X-(D3|D4|V)', flags: i, name: names-orca-alternative}
+      - {type: answer_regex, pattern: "(not (exactly )?the same|not identical|different (functional|parametri[sz]ation|method)|no exact|isn't the same|not available)", flags: i, name: flags-not-identical}
+      - {type: answer_not_regex, pattern: '!\s*wB97XD\b', flags: i, name: no-gaussian-spelling-in-orca}
+
+  - id: atlas-molpro-version
+    split: holdout
+    tags: [molpro, atlas]
+    why: the group uses the latest Molpro on Atlas, 2022.2.3, at an absolute path
+    prompt: Which Molpro should I use on the Atlas cluster, and what is the full path to its molpro executable?
+    checks:
+      - {type: answer_regex, pattern: '2022\.2\.3', name: version}
+      - {type: answer_regex, pattern: '/Local/ce_dana/molpro-mpp-2022\.2\.3/bin/molpro', name: path}

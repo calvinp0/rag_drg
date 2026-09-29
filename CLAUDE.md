@@ -9,3 +9,6 @@
   new cards start as `status: draft`. Never mark a card `verified` yourself; that's for a human reviewer.
 - `index/`, `sources_cache/`, and PDFs under `sources/` and `papers/` are git-ignored; never commit them.
 - The MCP server supports both MCP Python SDK 1.x (`FastMCP`) and 2.x (`MCPServer`); keep both paths working.
+- Agent tasks (`eval/tasks.yaml`): every task needs `eval/tasks/<id>/reference/` passing and ideally
+  `bad/` variants failing (`bin/rag-drg agent-eval check-graders`). Never edit cards or ranking just to pass a
+  `holdout` task.

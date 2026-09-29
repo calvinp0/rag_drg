@@ -1,0 +1,4 @@
+ORCA 6 has no exact equivalent of Gaussian's wB97XD (Chai & Head-Gordon's wB97X-D): ORCA's
+wB97X-D3 is a different parametrisation, so it is not the same method. The closest line is
+  ! wB97X-D3 def2-TZVP
+(or wB97X-D4 / wB97X-V); don't compare energies across the two codes as if they were identical.
