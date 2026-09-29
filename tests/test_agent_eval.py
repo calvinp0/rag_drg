@@ -221,8 +221,10 @@ def test_agent_works_outside_the_repo_and_is_denied_repo_files(tmp_path):
 def test_without_answers_citing_repo_paths_are_reported_as_leaks():
     base = {"task": "t", "split": "dev", "passed": True, "failed": [], "agent": {}}
     results = [{**base, "condition": "without", "rep": 1, "leaks": ["knowledge/"]},
+               {**base, "condition": "without", "rep": 2, "leaks": ["servers.yaml"], "passed": False},
                {**base, "condition": "with", "rep": 1, "leaks": []}]
     s = runner.summarize(results)
+    # only the passing run counts: a failing one that merely asks for servers.yaml read nothing
     assert s["leaks"] == [{"task": "t", "rep": 1, "paths": ["knowledge/"]}]
     assert "cite repository paths" in runner.format_report(s)
     assert runner.LEAK.findall("see `knowledge/hpc/servers/zeus.md` and servers.yaml") == ["knowledge/", "servers.yaml"]

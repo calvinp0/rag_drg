@@ -112,3 +112,31 @@ correct answer, or passes a wrong one, is a bug in the eval, not in the agent.
   group's practice changes, and then update its reference in the same PR.
 * **Say what changed.** Compare runs with the same model and repeats, and write the `rag-drg`
   commit, the model and the date next to each result.
+
+## Results log
+
+**2026-09-29, first clean run** (Claude Code, 10 tasks × 2 conditions × 3 repeats)
+* Setup:
+  * OAuth login, so no `--bare`: user `CLAUDE.md` and skills were visible to both conditions.
+  * The index had the curated cards, ARC, Psi4 and PySCF, but not the licensed ORCA/Gaussian/Molpro manuals.
+* Overall: with 30/30 (100%, CI 89-100%), without 5/30 (17%, CI 7-34%). The intervals don't overlap.
+* dev: with 21/21, without 0/21. Everything cluster- or ARC-specific fails without rag-drg:
+  * absolute ESS paths, OpenMPI version, no `module load`;
+  * GPU queue, n170 pinning;
+  * `job_types: conformers` (not an ARC job type);
+  * HTCondor `submit.sub`;
+  * Atlas G16 (the agent invents a job instead of saying there is none).
+* holdout: with 9/9, without 5/9.
+  * `orca-maxcore-fix` 3/3 without (general ORCA knowledge).
+  * `level-translate-wb97xd-orca` 2/3 without.
+  * `atlas-molpro-version` 0/3 without (the agent correctly refuses to guess).
+* Cost: with $5.25, without $2.35 (MCP answers read more context).
+* Harness fixes made during this run:
+  * The first attempt leaked: agents working inside `eval/runs/` read `knowledge/` from disk,
+    and "without" scored 30/30. Now isolated; see above.
+  * `says-no-g16` rejected correct answers phrased "Atlas doesn't have Gaussian 16". Widened
+    and re-graded.
+* Next:
+  * Add holdout tasks where general knowledge is not enough, since two of the three current
+    ones are solvable without rag-drg.
+  * Re-run with `ANTHROPIC_API_KEY` for strict isolation.

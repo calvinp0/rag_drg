@@ -224,6 +224,7 @@ def regrade(run_dir: Path, suite: Suite, cfg) -> int:
         d = res_path.parent
         answer = (d / "answer.txt").read_text() if (d / "answer.txt").exists() else ""
         old.update(grade_run(task, d / "work", answer, cfg))
+        old["leaks"] = sorted(set(LEAK.findall(answer))) if old.get("condition") == "without" else []
         res_path.write_text(json.dumps(old, indent=2))
         n += 1
     return n
@@ -279,7 +280,10 @@ def summarize(all_results: list[dict]) -> dict:
             fails[key] = fails.get(key, 0) + 1
     cost = {c: sum((r.get("agent") or {}).get("total_cost_usd") or 0 for r in results if r["condition"] == c)
             for c in conds}
-    leaks = [{"task": r["task"], "rep": r["rep"], "paths": r["leaks"]} for r in results if r.get("leaks")]
+    # a `without` run that passes while citing repo paths probably read them; one that only asks
+    # the user for e.g. servers.yaml and fails is not a leak
+    leaks = [{"task": r["task"], "rep": r["rep"], "paths": r["leaks"]} for r in results
+             if r.get("leaks") and r.get("passed")]
     return {"tasks": per_task, "overall": overall, "top_failures": sorted(fails.items(), key=lambda x: -x[1])[:15],
             "conditions": conds, "cost_usd": cost, "leaks": leaks,
             "agent_errors": [{"task": r["task"], "condition": r["condition"], "rep": r["rep"], "error": r["agent_error"]}
@@ -295,7 +299,7 @@ def format_report(s: dict) -> str:
                   "kept and these are retried. First: " + s["agent_errors"][0]["error"], ""]
     if s.get("leaks"):
         first = s["leaks"][0]
-        lines += [f"**Warning: {len(s['leaks'])} `without` answer(s) cite repository paths** (first: "
+        lines += [f"**Warning: {len(s['leaks'])} passing `without` answer(s) cite repository paths** (first: "
                   f"{first['task']} rep{first['rep']}: {', '.join(first['paths'])}). That agent saw rag-drg's "
                   "knowledge some other way, so the comparison is not clean; check those runs.", ""]
     if not s["overall"]:
