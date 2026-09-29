@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import logging
 import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
@@ -499,11 +500,33 @@ def parse_html(html: str) -> tuple[str, str, str | None]:
 # PDF (ORCA manual, Molpro manual, papers)
 # --------------------------------------------------------------------------- #
 
+class _OnceFontToolsWarning(logging.Filter):
+    """pypdf warns "fontTools is required ..." once per font per page (thousands of lines for a
+    manual). Show it once, with the fix, and drop the repeats."""
+
+    seen = False
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if "fontTools is required" not in record.getMessage():
+            return True
+        if _OnceFontToolsWarning.seen:
+            return False
+        _OnceFontToolsWarning.seen = True
+        record.msg = ("pypdf needs fontTools to decode some embedded (CFF Type1) fonts; math symbols "
+                      "and code examples may extract wrongly. Fix: pip install fonttools "
+                      "(included in rag-drg[pdf]), then run `rag-drg ingest` again (changed text is re-indexed).")
+        record.args = ()
+        return True
+
+
 def _pdf_reader(path: Path):
     try:
         from pypdf import PdfReader
     except ImportError as e:  # pragma: no cover - depends on optional dep
         raise RuntimeError("PDF ingestion needs `pip install rag-drg[pdf]` (pypdf)") from e
+    cmap_log = logging.getLogger("pypdf._cmap")
+    if not any(isinstance(f, _OnceFontToolsWarning) for f in cmap_log.filters):
+        cmap_log.addFilter(_OnceFontToolsWarning())
     return PdfReader(str(path))
 
 
