@@ -33,7 +33,12 @@ assert mf.converged
 
 ## Gotchas
 
-* **`spin` is 2S**, and `gto.M` raises if `spin` is inconsistent with the electron count.
+* **`spin` is 2S** (N_alpha - N_beta = number of unpaired electrons), **not** the multiplicity 2S+1.
+  A radical or other open-shell molecule whose `spin` has the wrong parity for its electron count
+  (charge included) is refused with
+  `RuntimeError: Electron number N and spin S are not consistent. Note mol.spin = 2S = Nalpha - Nbeta, not 2S+1`
+  (`Mole.nelec`, `pyscf/gto/mole.py`). The usual cause is passing the multiplicity: a doublet radical
+  needs `spin=1`, not 2; a triplet needs `spin=2`, not 3.
 * **B3LYP**: since PySCF 2.3 `B3LYP` means the VWN-RPA (Gaussian-like) variant (a warning is printed);
   the VWN5 variant is selected through a config setting. Do not compare B3LYP energies across codes
   without checking the definition.

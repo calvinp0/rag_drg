@@ -55,6 +55,13 @@ ARC computes a frequency scale factor if none is found).
 
 ## Recipe: new corrections for a new ESS / level of theory
 
+**The group's way is scripted around ARC runs on zeus.** Copy the templates in `~/runs/ARC/AE_Corr*`
+(AEC) and `~/runs/ARC/BAC_wb97xd3` (BAC) and change the level of theory. See the lessons
+"Arkane AEC/BAC for a new level: use the group's ARC-driven scripts", "Arkane AEC fit via ARC" and
+"Arkane BAC fit via ARC" (`knowledge/lessons/arc/arkane/`). Those scripts do the steps below:
+ARC runs the reference species, then `AEJob` / `BACJob` fit. The steps explain what they do and
+what to check.
+
 **1. AEC (needed for any meaningful thermo).**
 * Compute **single-point electronic energies (Hartree, no ZPE)** at the target level for the fitting species.
 * Use the **experimental geometries from the reference database** (`RMG-database/input/reference_sets/`).
