@@ -1,9 +1,10 @@
 # Codex CLI: add to ~/.codex/config.toml (or run the equivalent
-#   codex mcp add rag-drg -- /ABS/PATH/TO/rag_drg/bin/rag-drg serve
-# ). Use the absolute path; `~` is not expanded. bin/rag-drg finds the install and the
-# repo's rag_drg.yaml itself, so no env is needed.
+#   codex mcp add rag-drg -- "$(uv tool dir --bin)/rag-drg" serve
+# ). Use an absolute path; `~` is not expanded. Either the `uv tool` command
+# (e.g. /home/<you>/.local/bin/rag-drg) or the repo launcher /ABS/PATH/TO/rag_drg/bin/rag-drg
+# works; both find the repo's rag_drg.yaml themselves.
 [mcp_servers.rag-drg]
-command = "/ABS/PATH/TO/rag_drg/bin/rag-drg"
+command = "/home/<you>/.local/bin/rag-drg"      # or /ABS/PATH/TO/rag_drg/bin/rag-drg
 args = ["serve"]
 # Only needed if the install is not .venv or a conda env named rag-drg / rag_drg:
 # env = { RAG_DRG_BIN = "/home/<you>/miniforge3/envs/<env>/bin/rag-drg" }
