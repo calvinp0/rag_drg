@@ -63,6 +63,29 @@ def test_active_conda_env_then_path(repo, tmp_path):
     assert r.returncode == 0 and r.stdout.startswith("onpath lint")
 
 
+def test_named_conda_env_found_from_another_active_env(repo, tmp_path):
+    """Claude Code started from e.g. arc_env still finds an env called rag-drg (no RAG_DRG_BIN)."""
+    base = tmp_path / "miniforge3"
+    _fake(base / "envs" / "rag-drg" / "bin" / "rag-drg", "named")
+    (base / "envs" / "arc_env" / "bin").mkdir(parents=True)  # active env without rag-drg
+    env = {"CONDA_EXE": str(base / "bin" / "conda"), "CONDA_PREFIX": str(base / "envs" / "arc_env")}
+    r = _run(repo, env, args=("serve",))
+    assert r.returncode == 0 and r.stdout.startswith("named serve")
+    # the active env still wins when it has rag-drg itself
+    _fake(base / "envs" / "arc_env" / "bin" / "rag-drg", "active")
+    assert _run(repo, env).stdout.startswith("active lint")
+
+
+def test_named_conda_env_in_default_install_dir_and_custom_name(repo, tmp_path):
+    home = tmp_path / "home"
+    _fake(home / "miniconda3" / "envs" / "rag_drg" / "bin" / "rag-drg", "underscore")
+    r = _run(repo, {"HOME": str(home)})  # no CONDA_EXE: e.g. a non-login shell
+    assert r.returncode == 0 and r.stdout.startswith("underscore lint")
+    _fake(home / ".conda" / "envs" / "kb" / "bin" / "rag-drg", "custom")
+    r = _run(repo, {"HOME": str(home), "RAG_DRG_CONDA_ENV": "kb"})
+    assert r.stdout.startswith("custom lint")
+
+
 def test_nothing_installed(repo):
     r = _run(repo, {"PATH": f"{repo / 'bin'}:/usr/bin:/bin"})
     assert r.returncode == 127 and "no installation found" in r.stderr
