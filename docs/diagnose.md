@@ -132,7 +132,7 @@ errors:
    The test checks that `diagnose_output` returns this status and first error. A second test runs **every**
    pattern over all `*_success*` fixtures, so a pattern that also matches a normal job fails the suite.
    If your message can appear in successful jobs, add a successful excerpt that contains it.
-4. Run `.venv/bin/rag-drg lint` and `.venv/bin/python -m pytest -q`, then re-ingest so search sees the entry.
+4. Run `bin/rag-drg lint` and `python -m pytest -q` (in your environment), then re-ingest so search sees the entry.
 
 ## Provenance and credit
 

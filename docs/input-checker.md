@@ -140,7 +140,7 @@ Use the **absolute path** of the `rag-drg` in the venv, because hooks do not act
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "/path/to/rag_drg/.venv/bin/rag-drg check-input --hook" }
+          { "type": "command", "command": "/path/to/rag_drg/bin/rag-drg check-input --hook" }
         ]
       }
     ]

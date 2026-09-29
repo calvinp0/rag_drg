@@ -70,11 +70,11 @@ def test_cli_lesson_rejects_bad_domain(project, capsys):
 def test_refresh_script_does_not_abort_on_lint_or_tidy():
     lines = [ln.strip() for ln in (ROOT / "deploy" / "refresh.sh").read_text().splitlines()]
     assert "set -euo pipefail" in lines
-    for cmd in (".venv/bin/rag-drg lint", ".venv/bin/rag-drg lessons tidy"):
+    for cmd in ('"$RAG" lint', '"$RAG" lessons tidy'):
         line = next(ln for ln in lines if ln.startswith(cmd))
         assert "||" in line, line
-    assert lines.index(next(ln for ln in lines if ln.startswith(".venv/bin/rag-drg lint"))) < \
-        lines.index(next(ln for ln in lines if ln.startswith(".venv/bin/rag-drg ingest")))
+    assert lines.index(next(ln for ln in lines if ln.startswith('"$RAG" lint'))) < \
+        lines.index(next(ln for ln in lines if ln.startswith('"$RAG" ingest')))
 
 
 # --------------------------------------------------------------------------- 2. conf.d merging
