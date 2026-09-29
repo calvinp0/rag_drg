@@ -231,3 +231,6 @@ papers/**/*.pdf
 # Per-machine overrides (e.g. enabling live cluster queries), never committed
 conf.d/*.local.yaml
 conf.d/zz-local.yaml
+
+# agent-eval run output (rag-drg agent-eval run)
+eval/runs/

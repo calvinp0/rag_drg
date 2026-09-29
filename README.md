@@ -160,6 +160,7 @@ schema up front, e.g. local models; see [integrations/local-models.md](integrati
 | `rag-drg level NAME [--software X]` | Level-of-theory support table | |
 | `rag-drg servers list\|show\|validate\|render-cards\|arc-settings\|submit\|check\|query` | Cluster registry | [docs/servers.md](docs/servers.md) |
 | `rag-drg eval`, `rag-drg queries report\|to-qa` | Retrieval test set, query log reports | [docs/evaluation.md](docs/evaluation.md) |
+| `rag-drg agent-eval validate\|check-graders\|run\|report` | Real group tasks run by an agent with and without rag-drg, graded pass/fail | [docs/agent-eval.md](docs/agent-eval.md) |
 | `rag-drg lessons report\|pr\|similar\|tidy` | Lesson review workflow | [docs/lessons.md](docs/lessons.md) |
 | `rag-drg zotero sync\|status` | Zotero library sync | [docs/zotero.md](docs/zotero.md) |
 | `rag-drg tokens add\|list\|revoke` | Per-person tokens for the HTTP server | [docs/auth.md](docs/auth.md) |

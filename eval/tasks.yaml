@@ -1,0 +1,65 @@
+# Agent tasks for `rag-drg agent-eval` (see docs/agent-eval.md).
+#
+# Each task is a real request a group member makes. The agent works in an empty directory, and
+# its files and final answer are graded by deterministic pass/fail checks (graders.py). A task
+# passes only if every check passes. Every task has eval/tasks/<id>/reference/, a correct
+# solution that must pass (`rag-drg agent-eval check-graders`); bad/<variant>/ are wrong
+# solutions that must fail.
+#
+# Rules for adding tasks:
+# * Take them from real failures: a recorded lesson, a job that crashed, a correction in a chat.
+# * Check what the group actually needs, not one particular wording: several spellings may be right.
+# * Keep about a third as `split: holdout`. Never tune cards, ranking or prompts to pass those;
+#   they tell you whether an improvement generalises.
+# * `why:` says which failure the task guards against.
+
+defaults:
+  repeats: 3
+  timeout_s: 900
+
+tasks:
+  # -------------------------------------------------------------------------------- holdout
+  - id: orca-maxcore-fix
+    split: holdout
+    tags: [orca, zeus, memory]
+    why: "%maxcore is MB per core, ~75% of memory/cores; 64000 with 16 cores asks for 1 TB"
+    files:
+      job.inp: |
+        ! B3LYP def2-TZVP Opt
+        %pal nprocs 16 end
+        %maxcore 64000
+        * xyz 0 1
+        O  0.000000  0.000000  0.117790
+        H  0.000000  0.755450 -0.471160
+        H  0.000000 -0.755450 -0.471160
+        *
+      submit.sh: |
+        #!/bin/bash
+        #PBS -N job
+        #PBS -q zeus_long_q
+        #PBS -l select=1:ncpus=16:mpiprocs=16:mem=64gb
+        #PBS -l walltime=24:00:00
+        cd "$PBS_O_WORKDIR"
+        export PATH="/opt/orca-6.0.0:/opt/openmpi-4.1.1/bin:$PATH"
+        export LD_LIBRARY_PATH="/opt/orca-6.0.0:/opt/openmpi-4.1.1/lib:$LD_LIBRARY_PATH"
+        /opt/orca-6.0.0/orca job.inp > job.out
+    prompt: |
+      This ORCA job on zeus keeps getting killed for using too much memory. Fix job.inp so it fits
+      the 64 GB it requests in submit.sh, keeping 16 cores. Don't change submit.sh.
+    checks:
+      - {type: check_input, path: job.inp, submit: submit.sh}
+      - {type: number, path: job.inp, pattern: '%maxcore\s+(\d+)', min: 1500, max: 4000, name: maxcore-per-core}
+      - {type: regex, path: job.inp, pattern: 'nprocs\s+16', name: keeps-16-cores}
+
+  - id: level-translate-wb97xd-orca
+    split: holdout
+    tags: [orca, gaussian, levels]
+    why: ORCA has no exact wB97X-D; wB97X-D3 is a different parametrisation and must be flagged as such
+    prompt: |
+      In Gaussian I ran wB97XD/def2-TZVP. What do I write in ORCA 6 to get the same method?
+      Answer in a couple of sentences, with the ORCA keyword line.
+    checks:
+      - {type: answer_regex, pattern: 'wB97X-(D3|D4|V)', flags: i, name: names-orca-alternative}
+      - {type: answer_regex, pattern: "(not (exactly )?the same|not identical|different (functional|parametri[sz]ation|method)|no exact|isn't the same|not available)", flags: i, name: flags-not-identical}
+      - {type: answer_not_regex, pattern: '!\s*wB97XD\b', flags: i, name: no-gaussian-spelling-in-orca}
+
