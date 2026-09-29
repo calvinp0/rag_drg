@@ -115,3 +115,23 @@ def test_query_helpers():
     ids = identifiers("use opt=(ts,calcfc) with def2-TZVP and ts_guess_level, not B3LYP")
     assert "def2-tzvp" in ids and "ts_guess_level" in ids and "b3lyp" in ids
     assert any(i.startswith("opt=") for i in ids)
+
+
+def test_named_software_in_query_is_preferred(project, monkeypatch):
+    """"Gaussian TS optimisation" prefers Gaussian chunks even without software=, which the
+    curated-type boosts alone (a verified ORCA gotcha) would otherwise override."""
+    from rag_drg import search as search_mod
+
+    assert search_mod.named_software("PySCF example for SMD solvation") == {"pyscf"}
+    assert search_mod.named_software("translate wB97X-D from G16 to ORCA") == {"gaussian", "orca"}
+    assert search_mod.named_software("Q-Chem memory") == {"qchem"}
+    assert search_mod.named_software("how do I restart a crashed optimisation") == set()
+
+    ingest(project, progress=quiet)
+    s = Searcher(project)
+    hits = s.search("Gaussian TS optimisation")
+    assert hits[0].chunk.software == "gaussian" and "named-software" in hits[0].via
+    # an explicit software filter is unchanged (no double boost, no effect on the filter)
+    assert all("named-software" not in h.via for h in s.search("Gaussian TS optimisation", software="gaussian"))
+    monkeypatch.setattr(search_mod, "NAMED_SOFTWARE_BOOST", 1.0)
+    assert Searcher(project).search("Gaussian TS optimisation")[0].chunk.software == "orca"  # the old behaviour

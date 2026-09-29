@@ -40,6 +40,21 @@ TYPE_BOOST = {
                       # they don't crowd out cards for questions that merely mention an error word  # fill-in-the-blanks _TEMPLATE cards
 }
 STATUS_BOOST = {"verified": 1.1, "unreviewed": 0.9, "outdated": 0.5}
+# A query that names a program ("PySCF example for SMD") prefers that program's chunks, as if
+# the caller had passed `software=` softly. Without it the curated-card boosts above let ORCA or
+# Q-Chem cards outrank the named program's own best keyword match.
+SOFTWARE_NAMES = {
+    "orca": "orca", "gaussian": "gaussian", "g16": "gaussian", "g09": "gaussian",
+    "qchem": "qchem", "q-chem": "qchem", "psi4": "psi4", "pyscf": "pyscf", "molpro": "molpro",
+    "arc": "arc", "arkane": "arkane",
+}
+NAMED_SOFTWARE_BOOST = 1.3
+
+
+def named_software(query: str) -> set[str]:
+    """Programs the query names explicitly (word match, case-insensitive)."""
+    words = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)?", query.lower())
+    return {SOFTWARE_NAMES[w] for w in words if w in SOFTWARE_NAMES}
 
 _STOP = set(
     """a an and are as at be but by can do does for from how i if in into is it its of on or
@@ -167,6 +182,7 @@ class Searcher:
         if not scores:
             return []
         chunks = self.store.get_many(list(scores))
+        named = named_software(query) if not software else set()
         verbatim = " ".join(query.lower().split())
         if len(verbatim) < 12 or len(verbatim.split()) < 3:
             verbatim = ""
@@ -176,6 +192,9 @@ class Searcher:
             if c is None:
                 continue
             s = base * TYPE_BOOST.get(c.doc_type or "reference", 1.0) * STATUS_BOOST.get(c.status or "", 1.0)
+            if named and c.software in named:
+                s *= NAMED_SOFTWARE_BOOST
+                via[cid].append("named-software")
             hay = f"{c.title}\n{c.text}".lower()
             if idents:
                 n = sum(1 for t in idents if t in hay)
