@@ -49,6 +49,18 @@ SOFTWARE_NAMES = {
     "arc": "arc", "arkane": "arkane",
 }
 NAMED_SOFTWARE_BOOST = 1.3
+# A chunk whose *title* names an identifier from the query ("wB97M-V", "GEOM_MAXITER") is about
+# that thing; one that merely mentions it in passing is not.
+TITLE_IDENT_BOOST = 1.3
+# Sources the group curates (cards, templates, lessons). Large manuals can fill every result slot
+# for a question they only touch on; then the best curated chunk takes the last slot, provided it
+# scores at least CURATED_FLOOR_RATIO of what it replaces.
+CURATED_SOURCES = ("curated", LESSONS_DOMAIN)
+CURATED_FLOOR_RATIO = 0.5
+
+
+def _norm_title(text: str) -> str:
+    return text.lower().replace("\u03c9", "w")  # ωB97X-D is written wB97X-D in queries
 
 
 def named_software(query: str) -> set[str]:
@@ -129,10 +141,13 @@ class Searcher:
         doc_type: str | list[str] | None = None,
         source: str | list[str] | None = None,
         max_per_file: int = 2,
+        min_curated: int = 1,
         rerank: Callable[[str, list[str]], Sequence[float]] | None = None,
     ) -> list[Hit]:
         """Hybrid search. `rerank(query, texts) -> scores` (optional, e.g. a cross-encoder from
-        :func:`make_reranker`) re-orders the best `rerank.top_n` (default 30) fused candidates."""
+        :func:`make_reranker`) re-orders the best `rerank.top_n` (default 30) fused candidates.
+        `min_curated`: keep at least this many curated/lesson chunks in the results when the
+        candidates have them (see CURATED_FLOOR_RATIO)."""
         # `domain="lessons"` is a pseudo-domain: lesson chunks carry their real domain (ess, hpc,
         # ...), so it means "only the recorded lessons", i.e. the lessons source.
         if isinstance(domain, str) and domain.strip().lower() == LESSONS_DOMAIN or (
@@ -154,6 +169,7 @@ class Searcher:
         # list, so a chunk containing the exact token sequence wins over one that merely
         # mentions "geom" and "maxiter" separately.
         idents = identifiers(query)
+        title_idents = [t for t in idents if t not in SOFTWARE_NAMES]
         phrases = [" ".join(_WORD.findall(t)) for t in idents]
         phrase_match = " OR ".join(f'"{p}"' for p in phrases if " " in p)
         if phrase_match:
@@ -201,6 +217,10 @@ class Searcher:
                 if n:
                     s *= 1.0 + min(0.6, 0.3 * n)
                     via[cid].append("exact")
+            title = _norm_title(c.title)
+            if any(t in title for t in title_idents):
+                s *= TITLE_IDENT_BOOST
+                via[cid].append("title")
             # The whole query appears word for word (typically a pasted error message or keyword line).
             if verbatim and verbatim in " ".join(hay.split()):
                 s *= 1.6
@@ -220,7 +240,7 @@ class Searcher:
             out.append(h)
             if len(out) >= k:
                 break
-        return out
+        return _keep_curated(out, hits, min_curated, max_per_file)
 
     def context(self, chunk_id: int, neighbors: int = 1) -> list[StoredChunk]:
         c = self.store.get(chunk_id)
@@ -228,6 +248,41 @@ class Searcher:
             return []
         siblings = self.store.file_chunks(c.source, c.path)
         return [s for s in siblings if abs(s.ordinal - c.ordinal) <= neighbors]
+
+
+def _is_curated(h: Hit) -> bool:
+    return h.chunk.source in CURATED_SOURCES
+
+
+def _keep_curated(out: list[Hit], hits: list[Hit], min_curated: int, max_per_file: int) -> list[Hit]:
+    """Swap the lowest non-curated results for the best remaining curated ones until `out` has
+    `min_curated` of them, when each scores at least CURATED_FLOOR_RATIO of the hit it replaces
+    (reranker logits can be negative; the ratio then does not apply)."""
+    need = min(min_curated, len(out)) - sum(1 for h in out if _is_curated(h))
+    if need <= 0:
+        return out
+    chosen = {id(h) for h in out}
+    per_file: dict[tuple[str, str], int] = {}
+    for h in out:
+        key = (h.chunk.source, h.chunk.path)
+        per_file[key] = per_file.get(key, 0) + 1
+    extra = []
+    for h in hits:
+        key = (h.chunk.source, h.chunk.path)
+        if len(extra) >= need:
+            break
+        if id(h) in chosen or not _is_curated(h) or per_file.get(key, 0) >= max_per_file:
+            continue
+        per_file[key] = per_file.get(key, 0) + 1
+        extra.append(h)
+    for h in extra:
+        victim = next((i for i in range(len(out) - 1, -1, -1) if not _is_curated(out[i])), None)
+        if victim is None or (out[victim].score > 0 and h.score < CURATED_FLOOR_RATIO * out[victim].score):
+            break
+        del out[victim]
+        h.via.append("curated-floor")
+        out.append(h)
+    return out
 
 
 def _apply_rerank(rerank, query: str, hits: list[Hit]) -> list[Hit]:
