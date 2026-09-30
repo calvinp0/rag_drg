@@ -133,6 +133,34 @@ claude mcp list; codex mcp list              # both should show rag-drg connecte
 ```
 Inside this repo, `.mcp.json` already registers the server through `bin/rag-drg`.
 
+**Many agents on one machine.** Every MCP client started as above runs its own rag-drg
+process: about 100 MB with keyword search, but about 900 MB with local embeddings
+(`provider: sentence-transformers` loads torch and the model into each one). With several agents
+open, run one local server and point them all at it:
+
+```bash
+cp deploy/rag-drg-local.service ~/.config/systemd/user/     # fix the paths inside
+systemctl --user daemon-reload && systemctl --user enable --now rag-drg-local
+curl http://127.0.0.1:8765/api/health
+
+claude mcp remove rag-drg                                   # the entry that starts its own process
+claude mcp add --scope user --transport http rag-drg http://127.0.0.1:8765/mcp
+codex mcp remove rag-drg
+codex mcp add rag-drg --url http://127.0.0.1:8765/mcp       # or url = "..." in ~/.codex/config.toml
+```
+(Without systemd: `bin/rag-drg serve --transport http --host 127.0.0.1 --port 8765 --auth none`
+in a `tmux` session.) It listens on loopback only, so it needs no tokens. One process also means
+one writer for `record_lesson`. The server must be running before you start agents; restart it
+after pulling code changes (`systemctl --user restart rag-drg-local`). For semantic search with
+many agents, an embedding server (`provider: openai` with Ollama or vLLM) keeps the model in one
+place as well.
+`GET /mcp 400` and `/.well-known/oauth-*` 404 lines in the server log are clients probing (for an
+event stream, for a login) and are harmless when `claude mcp list` / `codex mcp list` show rag-drg
+connected. If a client never connects, check it is registered as HTTP (Claude Code:
+`--transport http`, not `sse`) and that your Codex version supports URL servers (`codex mcp add
+--help` lists `--url`). Codex reads `$CODEX_HOME/config.toml` (default `~/.codex`): edit the one
+`codex mcp list` actually uses.
+
 Then give agents the habit:
 
 * copy `integrations/claude-code/skills/group-knowledge/` to `~/.claude/skills/`, and/or
