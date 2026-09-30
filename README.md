@@ -261,6 +261,9 @@ The tool is only as good as what's in it. In order of value:
   dense-vector similarity, fused with reciprocal-rank fusion.
 * **Curated knowledge first**: lessons/gotchas/cards get a ranking boost, `verified` > `draft` >
   `unreviewed`, and at most 2 chunks per file are returned so one manual can't flood the results.
+  When several manuals still fill every slot (ORCA 5 and 6 are separate files), the best curated
+  card or lesson takes the last one. A chunk whose title names an identifier from the query
+  (`wB97M-V`, `GEOM_MAXITER`) ranks above chunks that only mention it.
 * **Version-aware filters**: `version="6"` matches chunks tagged 6, 6.0, or `5|6`, plus every
   chunk without a version.
 * **Incremental**: re-ingest only touches changed chunks; embeddings are only computed for new ones.
