@@ -58,15 +58,20 @@ def transport_security(host: str, allowed_hosts: list[str] | None):
                                      allowed_origins=origins)
 
 
-def _mcp_asgi_app(mcp, transport: str, host: str, security):
+def _mcp_asgi_app(mcp, transport: str, host: str, security, stateless: bool = True):
+    """`stateless` (streamable HTTP only): no MCP session IDs. rag-drg keeps no per-session state,
+    and without sessions a restarted server doesn't strand connected agents on "unknown or expired
+    session ID" (404) until they reconnect."""
     if getattr(mcp, "_rag_drg_sdk_major", 2) >= 2:
         if transport == "sse":
             return mcp.sse_app(transport_security=security, host=host)
-        return mcp.streamable_http_app(transport_security=security, host=host)
+        return mcp.streamable_http_app(transport_security=security, host=host, stateless_http=stateless)
     # SDK 1.x: options live on mcp.settings
     settings = getattr(mcp, "settings", None)
     if settings is not None and security is not None and hasattr(settings, "transport_security"):
         settings.transport_security = security
+    if settings is not None and hasattr(settings, "stateless_http"):
+        settings.stateless_http = stateless
     return mcp.sse_app() if transport == "sse" else mcp.streamable_http_app()
 
 
@@ -134,23 +139,25 @@ def attach_user(mcp) -> None:
 
 
 def build_http_app(mcp, transport: str = "http", host: str = "127.0.0.1",
-                   allowed_hosts: list[str] | None = None, token_store: TokenStore | None = None):
+                   allowed_hosts: list[str] | None = None, token_store: TokenStore | None = None,
+                   stateless: bool = True):
     """ASGI app: MCP + REST, behind bearer-token auth when `token_store` is given."""
     from .tools.rest_api import build_rest_app
 
     ctx = mcp._rag_drg_ctx
     security = transport_security(host, allowed_hosts)
-    app = _Router(_mcp_asgi_app(mcp, transport, host, security), build_rest_app(ctx), security)
+    app = _Router(_mcp_asgi_app(mcp, transport, host, security, stateless), build_rest_app(ctx), security)
     if token_store is not None:
         app = BearerAuthMiddleware(app, token_store, public_paths=("/api/health",))
     return app
 
 
 def run_http(mcp, transport: str, host: str, port: int, allowed_hosts: list[str] | None,
-             token_store: TokenStore | None, ssl_certfile: str | None = None, ssl_keyfile: str | None = None):
+             token_store: TokenStore | None, ssl_certfile: str | None = None, ssl_keyfile: str | None = None,
+             stateless: bool = True):
     import uvicorn
 
-    app = build_http_app(mcp, transport, host, allowed_hosts, token_store)
+    app = build_http_app(mcp, transport, host, allowed_hosts, token_store, stateless=stateless)
     scheme = "https" if ssl_certfile else "http"
     shown = f"[{host}]" if ":" in host else host
     path = "/sse" if transport == "sse" else "/mcp"
