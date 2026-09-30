@@ -4,8 +4,10 @@
   or output parsers, or HPC submit scripts/commands, call the `rag-drg` MCP tool
   `search_knowledge` (pass `software` and `version`). Prefer `lesson`/`gotcha` results over
   your own memory. Use `lookup_level_of_theory` before translating a method between codes.
-- On our clusters, programs are called by absolute path (no `module load`); take the paths
-  from the cluster card (`list_documents(domain="hpc")`).
+- On our clusters, programs are called by absolute path (no `module load`); take the paths,
+  environment lines, queues and scratch from `server_info(<cluster>)` (`list_servers()` for the
+  names). Ask these tools rather than grepping a rag_drg checkout or local ARC settings: the
+  tools add the group's lessons and checks, and a local file may be out of date.
 - When I correct you on any of these, call `record_lesson` (or I type `/lesson`) so the next agent does not
   repeat it: draft it, show me, record after my OK. Describe the general rule, not personal paths.
 - After writing an ESS input or submit script, run `check_input` (MCP) or `rag-drg check-input`

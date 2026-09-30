@@ -165,8 +165,24 @@ Then give agents the habit:
 
 * copy `integrations/claude-code/skills/group-knowledge/` to `~/.claude/skills/`, and/or
 * append `integrations/claude-code/CLAUDE.md.snippet` to `~/.claude/CLAUDE.md` or to your project's
-  `CLAUDE.md`. For Codex, append it to `~/.codex/AGENTS.md` or a project's `AGENTS.md`: Codex reads
-  `AGENTS.md`, not `CLAUDE.md`.
+  `CLAUDE.md`.
+
+**Codex** reads `AGENTS.md`, not `CLAUDE.md`, and has no skills or hooks for this, so the snippet is
+the only thing that tells it to use rag-drg. Without it, Codex answers from memory or greps
+whatever files it can find (a local ARC settings file, the rag_drg checkout).
+```bash
+echo "${CODEX_HOME:-$HOME/.codex}"      # Codex's home; the global AGENTS.md goes here
+cat integrations/claude-code/CLAUDE.md.snippet >> "${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
+```
+Or append it to a project's `AGENTS.md` to scope it to that project. Then, in a new Codex session:
+1. `/mcp` should list rag-drg with its tools. If there are none, the server wasn't reachable when
+   Codex started (with the shared local server: start it first).
+2. Ask "What's the Q-Chem path on zeus?". The answer should come from a `server_info` or
+   `search_knowledge` call, not from `rg` over files: `/usr/local/qchem6.1/bin/qchem`, with
+   `. /usr/local/qchem/qcenv.sh`, and the licence limited to `grinberg-dana_prj`.
+
+If you already have a Codex skill or `AGENTS.md` rule about a cluster, add a line to it that points
+to `server_info(<cluster>)`, so the two don't send the agent in different directions.
 
 The Claude Code `PostToolUse` hook (below) does not carry over to Codex, so in Codex, input
 checks rely on that instruction (`check_input` via MCP, or `rag-drg check-input <file>`).
