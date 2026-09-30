@@ -19,10 +19,25 @@ For "does code X support method Y, and how is it written?" use the structured ta
 | DFT on GPU | Gaussian 16 GPU build, or PySCF + gpu4pyscf | G16 GPUs speed up HF/DFT energies, gradients and frequencies only. |
 | DLPNO-CCSD(T) single points | ORCA | `DLPNO-CCSD(T)`, `DLPNO-CCSD(T1)`; needs a `/C` auxiliary basis. |
 | Canonical CCSD(T), CCSD(T)-F12, MRCI, CASPT2 | Molpro | Molpro is the reference for multireference and F12 work. |
-| Strong static correlation (multireference character: bond breaking, diradicals, near-degenerate states) | Molpro | Single-reference CCSD(T)/DFT is unreliable here. Use CASSCF, then CASPT2 (`{rs2c}`), MRCI(+Q) or NEVPT2 in Molpro. ORCA offers CASSCF + NEVPT2; PySCF offers CASSCF + NEVPT2. See `levels_of_theory.yaml` (CASSCF, CASPT2, NEVPT2, MRCI). |
+| Strong static correlation (multireference character: bond breaking, diradicals, near-degenerate states) | Molpro | See "Strong static correlation" below. |
 | SAPT, quick scripted workflows, open-source reproducibility | Psi4 | Python API; SAPT0/2+/(DFT). |
 | Job types | all | TS: Gaussian `Opt=TS`, ORCA `OptTS`, Q-Chem `JOBTYPE ts`, Psi4 `opt_type ts`, Molpro `{optg,root=2}`. IRC: Gaussian `IRC`, ORCA `IRC`, Q-Chem `JOBTYPE rpath`, Psi4 `opt_type irc`. |
 | Custom methods, ML/data pipelines, in-Python loops | PySCF | Everything is a Python object; easy to batch and to get integrals/densities. |
+
+## Strong static correlation (multireference): which method and program
+
+For accurate energies of a molecule with strong static correlation (bond breaking, diradicals,
+twisted double bonds, near-degenerate states), single-reference methods (HF, DFT, CCSD(T)) are
+unreliable. The ORCA manual ("Static versus Dynamic Correlation") shows this for the C2H4 twist
+and F2 dissociation: RHF fails, and CCSD overbinds F2 compared with the MRACPF reference.
+
+* **Group default: Molpro.** CASSCF for the static part, then dynamic correlation on top: CASPT2
+  (`{rs2c}`), MRCI(+Q) or NEVPT2. Molpro is the group's reference code for multireference work.
+* **ORCA**: CASSCF + NEVPT2 (and MRCI/MRACPF, as in the manual's examples).
+* **PySCF**: CASSCF + NEVPT2, scriptable.
+* Warning sign in a coupled-cluster run: the T1 diagnostic. The ORCA manual's rule of thumb: above
+  0.02, do not trust the single-reference result.
+* Method keywords per code: `levels_of_theory.yaml` (CASSCF, CASPT2, NEVPT2, MRCI).
 
 ## Charge / spin conventions (the most common agent mistake)
 
