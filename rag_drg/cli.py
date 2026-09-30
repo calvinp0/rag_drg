@@ -64,6 +64,9 @@ def main(argv: list[str] | None = None) -> int:
                         "repeatable; '*' disables the check")
     p.add_argument("--ssl-certfile", help="serve HTTPS directly (else put nginx/caddy in front)")
     p.add_argument("--ssl-keyfile")
+    p.add_argument("--stateful", action="store_true",
+                   help="http: use MCP session IDs (default: stateless, so a restarted server does not "
+                        "leave connected agents with an expired session)")
     p.add_argument("--profile", choices=["full", "minimal"],
                    help="full: every tool (default; right for Claude Code, which defers tool schemas); "
                         "minimal: search_knowledge + find_tool + run_tool, for small-context/local models "
@@ -152,7 +155,8 @@ def main(argv: list[str] | None = None) -> int:
 
         serve(cfg, transport=args.transport, host=args.host, port=args.port, readonly=args.readonly,
               auth=args.auth, allowed_hosts=args.allowed_hosts, allow_unauthenticated=args.allow_unauthenticated,
-              ssl_certfile=args.ssl_certfile, ssl_keyfile=args.ssl_keyfile, profile=args.profile)
+              ssl_certfile=args.ssl_certfile, ssl_keyfile=args.ssl_keyfile, profile=args.profile,
+              stateful=args.stateful)
         return 0
 
     if args.cmd == "lesson":

@@ -151,7 +151,9 @@ codex mcp add rag-drg --url http://127.0.0.1:8765/mcp       # or url = "..." in 
 (Without systemd: `bin/rag-drg serve --transport http --host 127.0.0.1 --port 8765 --auth none`
 in a `tmux` session.) It listens on loopback only, so it needs no tokens. One process also means
 one writer for `record_lesson`. The server must be running before you start agents; restart it
-after pulling code changes (`systemctl --user restart rag-drg-local`). For semantic search with
+after pulling code changes (`systemctl --user restart rag-drg-local`). The HTTP transport is
+stateless (no MCP session IDs), so agents that are already open keep working across a restart
+(`--stateful` turns sessions back on). For semantic search with
 many agents, an embedding server (`provider: openai` with Ollama or vLLM) keeps the model in one
 place as well.
 `GET /mcp 400` and `/.well-known/oauth-*` 404 lines in the server log are clients probing (for an
