@@ -56,6 +56,11 @@ H   ...
   Recalc_Hess 5       # recompute every 5 steps (expensive, robust)
 end
 ```
+* A TS search needs the curvature of the PES at the start, which a model Hessian does not give
+  (ORCA manual, "Some Notes and Tricks" on geometry optimisation). Best: the exact Hessian
+  (`Calc_Hess true`; analytic for HF, DFT and MP2, numerical otherwise, e.g. CASSCF), or read one
+  from a frequency job (`inhess read`, see above). The Hybrid Hessian or a relaxed surface scan are
+  the cheaper alternatives the manual suggests.
 * IRC: `! IRC` with `%irc MaxIter 50 InHess read Hess_Filename "ts_freq.hess" end`
   (or let it compute the Hessian). Check your version's manual for the exact keyword spelling.
 * NEB-TS: `! NEB-TS` with `%neb NEB_End_XYZFile "product.xyz" Nimages 8 end`; the

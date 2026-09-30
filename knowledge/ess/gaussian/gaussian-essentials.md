@@ -61,6 +61,10 @@ H   ...
 ## Optimisations, TS, IRC
 
 * Minimum: `Opt Freq`. Tight: `Opt=Tight` (or `VeryTight`).
+* A TS search needs the curvature (Hessian) at the start: the default guess Hessian must be improved
+  (G09 `Opt` keyword page, "Options related to initial force constants"). `CalcFC` computes the
+  force constants at the first point; `ReadFC` reads them from a checkpoint, preferably from a
+  lower-level frequency job.
 * TS: `Opt=(TS,CalcFC,NoEigenTest)` (`CalcAll` for a Hessian every step, expensive but robust),
   or `Opt=(TS,ReadFC)` with `%oldchk=freq.chk`.
 * Restart an opt/geometry from a checkpoint: `%oldchk=old.chk` + `Geom=AllCheck Guess=Read`
