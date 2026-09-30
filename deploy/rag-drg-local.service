@@ -1,0 +1,27 @@
+# systemd *user* unit: one local rag-drg server that all agents on this machine share over HTTP,
+# instead of each Claude Code / Codex session starting its own copy (see README, "Many agents on
+# one machine"). Loopback only, no tokens.
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/rag-drg-local.service ~/.config/systemd/user/   # then fix the two paths below
+#   systemctl --user daemon-reload && systemctl --user enable --now rag-drg-local
+#   systemctl --user status rag-drg-local; curl http://127.0.0.1:8765/api/health
+# Restart after pulling code changes (systemctl --user restart rag-drg-local); after card or
+# lesson changes, re-running `rag-drg ingest` is enough.
+# To keep it running while you are logged out: loginctl enable-linger "$USER"
+[Unit]
+Description=rag-drg knowledge base, shared by local agents (MCP over HTTP, loopback)
+
+[Service]
+Type=simple
+# Your checkout of this repository (%h is your home directory).
+WorkingDirectory=%h/rag_drg
+Environment=RAG_DRG_CONFIG=%h/rag_drg/rag_drg.yaml
+# bin/rag-drg finds the install (.venv, uv, conda env, PATH). For a conda env, name it:
+#   Environment=RAG_DRG_BIN=%h/miniforge3/envs/rag-drg/bin/rag-drg
+# With local embeddings on, don't contact huggingface.co at every start:
+#   Environment=HF_HUB_OFFLINE=1
+ExecStart=%h/rag_drg/bin/rag-drg serve --transport http --host 127.0.0.1 --port 8765 --auth none
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
