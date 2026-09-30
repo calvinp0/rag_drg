@@ -52,10 +52,23 @@ claude -p "<task>" --output-format json --bare --setting-sources project \
 * The agent gets no shell (no Bash): it writes files; it does not run jobs.
 * `--model M` picks the model.
 
+**Codex.** `rag-drg agent-eval run --agent codex [--model M]` runs the same tasks with the Codex
+CLI (`codex exec`):
+* The work directory is the same temp dir; the final answer is taken from `--output-last-message`.
+* Each condition gets its own `CODEX_HOME` (in the run directory):
+  * its `config.toml` holds rag-drg as the only MCP server for `with`, and none for `without`;
+  * your `~/.codex` config, MCP servers and `AGENTS.md` reach neither condition;
+  * your login (`auth.json`) is linked in, never copied.
+* Unlike the Claude Code preset, Codex has a shell, and its sandbox does not stop reads outside the
+  work dir. So the run relies on the temp work dir and on the leak warning; read those runs if it
+  fires.
+* Compare agents on the same tasks: one run directory per agent, then `report` on each.
+
 **Other agents.** A local model with a tool-calling wrapper, aider, and so on: set `agent.command`
 in `eval/tasks.yaml`, using the placeholders `{prompt}`, `{mcp_config}`, `{allowed_tools}`,
-`{denied_tools}`, `{workdir}` and `{model}`. The command runs in the work directory. Its stdout is the final
-answer, or it can print Claude Code's JSON (`{"result": ...}`).
+`{denied_tools}`, `{workdir}`, `{model}` and `{answer_file}`. The command runs in the work directory. Its
+final answer is the `{answer_file}` it writes if the command uses that placeholder; otherwise its stdout
+(plain text, or Claude Code's JSON `{"result": ...}`).
 
 ## Graders
 

@@ -389,3 +389,24 @@ def test_lint_checks_pr_and_similar(project):
     assert len([p for p in full_lint(project) if "bad" in p]) == 2
     bad_cfg = configure(project, mode="gitlab")
     assert any("lessons.pr.mode" in p for p in wf.lint(bad_cfg))
+
+
+def test_lesson_cli_asks_for_missing_fields_in_a_terminal(project, monkeypatch, capsys):
+    """`rag-drg lesson` with no flags: a person is asked; required fields are asked again when left empty."""
+    ingest(project, progress=quiet)
+    answers = iter(["Use %maxcore per core", "", "Set total memory as %maxcore", "%maxcore is MB per core",
+                    "ess", "orca", ""])
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert cli_main(["-c", str(project.root / "rag_drg.yaml"), "lesson"]) == 0
+    out = capsys.readouterr().out
+    assert "Wrote" in out and "unreviewed" in out
+    path = next((project.root / "knowledge" / "lessons").rglob("*maxcore*.md"))
+    text = path.read_text()
+    assert "software: orca" in text and "Set total memory as %maxcore" in text
+
+
+def test_lesson_cli_without_a_terminal_names_the_missing_flags(project, monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    assert cli_main(["-c", str(project.root / "rag_drg.yaml"), "lesson", "--title", "x"]) == 2
+    assert "--mistake, --correction, --domain" in capsys.readouterr().err
