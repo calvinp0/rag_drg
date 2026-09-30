@@ -154,10 +154,12 @@ one writer for `record_lesson`. The server must be running before you start agen
 after pulling code changes (`systemctl --user restart rag-drg-local`). For semantic search with
 many agents, an embedding server (`provider: openai` with Ollama or vLLM) keeps the model in one
 place as well.
-If the server log shows `GET /mcp 400 Bad Request` before any `POST /mcp`, that client is using the
-older SSE transport: register Claude Code with `--transport http` (not `sse`), and check that your
-Codex version supports streamable-HTTP servers (`codex mcp add --help` lists `--url`). The
-`/.well-known/oauth-*` 404s that follow are the client probing for a login and are harmless.
+`GET /mcp 400` and `/.well-known/oauth-*` 404 lines in the server log are clients probing (for an
+event stream, for a login) and are harmless when `claude mcp list` / `codex mcp list` show rag-drg
+connected. If a client never connects, check it is registered as HTTP (Claude Code:
+`--transport http`, not `sse`) and that your Codex version supports URL servers (`codex mcp add
+--help` lists `--url`). Codex reads `$CODEX_HOME/config.toml` (default `~/.codex`): edit the one
+`codex mcp list` actually uses.
 
 Then give agents the habit:
 
