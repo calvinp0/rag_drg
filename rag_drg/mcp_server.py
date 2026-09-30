@@ -327,6 +327,7 @@ def serve(
     ssl_certfile: str | None = None,
     ssl_keyfile: str | None = None,
     profile: str | None = None,
+    stateful: bool = False,
 ):
     """Run the server. stdio: plain MCP. http/sse: MCP + REST API (/api) on one uvicorn server,
     behind bearer-token auth unless `auth="none"` (see docs/auth.md)."""
@@ -364,4 +365,4 @@ def serve(
     mcp = build_server(cfg, readonly=readonly, host=host, port=port, profile=profile)
     attach_user(mcp)  # events (and lessons) carry the token owner's name
     run_http(mcp, "sse" if transport == "sse" else "http", host, port, hosts, token_store,
-             ssl_certfile=ssl_certfile, ssl_keyfile=ssl_keyfile)
+             ssl_certfile=ssl_certfile, ssl_keyfile=ssl_keyfile, stateless=not stateful)
