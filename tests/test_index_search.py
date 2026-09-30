@@ -135,3 +135,46 @@ def test_named_software_in_query_is_preferred(project, monkeypatch):
     assert all("named-software" not in h.via for h in s.search("Gaussian TS optimisation", software="gaussian"))
     monkeypatch.setattr(search_mod, "NAMED_SOFTWARE_BOOST", 1.0)
     assert Searcher(project).search("Gaussian TS optimisation")[0].chunk.software == "orca"  # the old behaviour
+
+
+def test_curated_card_keeps_a_slot_when_manuals_fill_the_results(project):
+    """Licensed manuals can fill all k results for a question they only touch on (the ORCA 5 and
+    6 manuals are separate files, so the per-file cap doesn't help); the best curated chunk
+    then takes the last slot."""
+    manual = project.root / "manual"
+    for i in range(30):
+        (manual / f"corr{i}.rst").write_text(
+            f"Static correlation, part {i}\n=========================\n\nPart {i}: static correlation and "
+            f"accurate energies (case {i}); strong static correlation needs accurate multireference "
+            f"energies for the molecule in example {i}.\n")
+    (project.root / "knowledge" / "ess" / "capabilities.md").write_text(
+        "---\ntitle: ESS capability matrix\ndomain: ess\ndoc_type: card\nstatus: draft\n---\n"
+        "# Which code for which job\n\nMultireference (CASSCF, CASPT2, MRCI): Molpro first; ORCA for "
+        "NEVPT2. Use them for a molecule with bond breaking, diradicals and transition-metal "
+        "complexes; single-reference coupled cluster is not enough there.\n")
+    ingest(project, progress=quiet)
+    s = Searcher(project)
+    q = "Which program for accurate energies of a molecule with strong static correlation?"
+
+    plain = s.search(q, min_curated=0)
+    assert len(plain) == 6 and all(h.chunk.source == "manual" for h in plain)
+    hits = s.search(q)
+    assert len(hits) == 6
+    assert [h.chunk.path for h in hits if h.chunk.source == "curated"] == ["ess/capabilities.md"]
+    assert "curated-floor" in hits[-1].via and hits[:5] == plain[:5]
+    # a source filter that excludes curated content is respected
+    assert all(h.chunk.source == "manual" for h in s.search(q, source="manual"))
+
+
+def test_identifier_in_a_title_outranks_a_passing_mention(project):
+    kb = project.root / "knowledge" / "ess"
+    (kb / "levels.md").write_text(
+        "---\ntitle: Levels of theory\ndomain: ess\ndoc_type: card\n---\n# Levels of theory\n\n"
+        "## ωB97M-V\n\nORCA: `! wB97M-V`. Q-Chem: `METHOD wB97M-V`.\n")
+    (kb / "grids.md").write_text(
+        "---\ntitle: Grids\ndomain: ess\ndoc_type: gotcha\n---\n# Grids\n\n## NL_GRID\n\n"
+        "VV10 functionals such as wB97M-V use NL_GRID; set it as an integer, and wB97M-V "
+        "results depend on it.\n")
+    ingest(project, progress=quiet)
+    hits = Searcher(project).search("How do I request wB97M-V?")
+    assert hits[0].chunk.title.endswith("ωB97M-V") and "title" in hits[0].via
