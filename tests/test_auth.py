@@ -191,3 +191,25 @@ def test_mcp_handshake_with_token_and_user_attribution(live_server):
     assert "maxcore" in text.lower() and len(text) <= 80 * 4 + 1
     ev = [e for e in events if e.get("tool") == "search_knowledge" and "transport" not in e]
     assert ev and ev[-1]["user"] == "alice" and ev[-1]["args"]["max_tokens"] == 80
+
+
+def test_http_mcp_is_stateless_so_a_restart_strands_no_client(live_server):
+    """No MCP session ID is issued, so a request carries nothing a restarted server could reject
+    as "unknown or expired session" (clients that don't re-initialize on 404 stayed broken)."""
+    base, token, _ = live_server
+    hdrs = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {token}"}
+
+    def post(payload):
+        req = urllib.request.Request(f"{base}/mcp", method="POST", headers=hdrs,
+                                     data=json.dumps(payload).encode())
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.headers, r.read().decode()
+
+    code, headers, _ = post({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}})
+    assert code == 200 and headers.get("mcp-session-id") is None
+    # A call with no session header at all works (as it would against a freshly restarted server).
+    code, _, body = post({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+        "name": "search_knowledge", "arguments": {"query": "maxcore", "k": 1}}})
+    assert code == 200 and "maxcore" in body.lower()
