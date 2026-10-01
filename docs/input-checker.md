@@ -129,9 +129,18 @@ Every other file is ignored silently, including `.inp` files of programs the che
 `$CONTRL`, CP2K `&GLOBAL`, ...): a `!` line alone does not make a file ORCA. If the hook itself fails
 (unexpected stdin, checker bug) it exits 0.
 
-Add this to `~/.claude/settings.json` (all projects) or `.claude/settings.json` (one project).
-It is also in [`integrations/claude-code/hooks.json`](../integrations/claude-code/hooks.json).
-Use the **absolute path** of the `rag-drg` in the venv, because hooks do not activate the venv:
+Install it with
+
+```bash
+bin/rag-drg install-hook             # ~/.claude/settings.json (all projects)
+bin/rag-drg install-hook --project   # ./.claude/settings.json (this project only)
+```
+
+It writes the absolute path of this checkout's `bin/rag-drg` (hooks do not activate a venv or
+conda env; the launcher finds the install and points `RAG_DRG_CONFIG` at this repo's
+`rag_drg.yaml`), runs the command once before saving, replaces any earlier rag-drg hook,
+including a broken one, and keeps your other hooks. `--dry-run` shows the result. The entry it
+writes, also in [`integrations/claude-code/hooks.json`](../integrations/claude-code/hooks.json):
 
 ```json
 {
@@ -148,9 +157,12 @@ Use the **absolute path** of the `rag-drg` in the venv, because hooks do not act
 }
 ```
 
-When the hook runs outside the repository, add `RAG_DRG_CONFIG=/path/to/rag_drg/rag_drg.yaml` in front of the command
-so that the levels-of-theory table is found.
-Without it, the checks still run and only the functional-support check is skipped.
+If you edit it by hand: the command is one shell line. Start it with the absolute path, and put
+nothing in front of it. In particular, don't write `/RAG_DRG_BIN=...`: the leading `/` makes the
+shell look for a program of that name, and Claude Code only reports a non-blocking error, so the
+checks silently stop. Usually no variable is needed; if one is, write `NAME=value /path/...`
+(or `rag-drg install-hook --rag-drg-bin PATH`). Test the line with
+`echo '{}' | <command>; echo $?`, which should print 0.
 
 ## Extension point
 
