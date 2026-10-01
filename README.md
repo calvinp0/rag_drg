@@ -235,6 +235,7 @@ schema up front, e.g. local models; see [integrations/local-models.md](integrati
 | `rag-drg compose SPEC.yaml` (or `--program orca --job sp --method ...`) | Compose a checked ESS input + submit script from an explicit spec or your project's protocol file | [docs/compose.md](docs/compose.md) |
 | `rag-drg arc check input.yml`, `arc compose input.yml --server zeus`, `arc schema` | ARC: validate input.yml against a schema generated from ARC `main`; compose the runner job (e.g. alon_q on n170) and ARC's `settings.py` / `submit.py` snippets | [docs/arc-input.md](docs/arc-input.md), [docs/arc-run.md](docs/arc-run.md) |
 | `rag-drg check-input FILE [--submit SCRIPT]`, `--hook` | Input checker; `--hook` is the Claude Code hook mode (also routes ARC input.yml) | [docs/input-checker.md](docs/input-checker.md) |
+| `rag-drg install-hook [--project] [--dry-run]` | Add that hook to Claude Code's `settings.json` (absolute path, tested, replaces an old one) | [docs/input-checker.md](docs/input-checker.md) |
 | `rag-drg basis NAME --elements C,H,I` | Basis coverage check | [docs/input-checker.md](docs/input-checker.md) |
 | `rag-drg diagnose OUTPUT` | Diagnose a failed job | [docs/diagnose.md](docs/diagnose.md) |
 | `rag-drg level NAME [--software X]` | Level-of-theory support table | |
@@ -257,9 +258,11 @@ vs. a per-user install for live cluster queries) is explained in
 
 ### Automatic input checks in Claude Code
 
-Add the hook from [`integrations/claude-code/hooks.remote.json`](integrations/claude-code/hooks.remote.json)
-(thin client, no install) or [`integrations/claude-code/hooks.json`](integrations/claude-code/hooks.json)
-(local install; use the same absolute `rag-drg` path you registered above) to `~/.claude/settings.json`. Every time an agent
+Local install: `bin/rag-drg install-hook` adds the hook to `~/.claude/settings.json` (`--project`
+for one project). It writes the absolute launcher path, tests the command before saving, and
+replaces an earlier (or broken) rag-drg hook. Writing it by hand is error-prone, see
+[docs/input-checker.md](docs/input-checker.md). Thin client, no install: add the hook from
+[`integrations/claude-code/hooks.remote.json`](integrations/claude-code/hooks.remote.json). Every time an agent
 writes an input file or submit script, it is checked; errors are fed back to the agent, which
 then fixes them before anything is submitted.
 
