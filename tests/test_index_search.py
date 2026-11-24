@@ -197,6 +197,34 @@ def test_server_instructions_list_only_the_manuals_in_the_index(tmp_path):
     assert "{coverage}" in INSTRUCTIONS and "Gaussian 09/16" not in INSTRUCTIONS
 
 
+def test_template_requests_prefer_templates_over_manual_prose(tmp_path, project):
+    """"Slurm submit script template for Molpro" must find hpc/templates/slurm_molpro.sh even when
+    Molpro manuals fill the index: the template has no `software` field (its path names the
+    program), and the query asks for a template."""
+    from rag_drg.chunking import Chunk
+    from rag_drg.search import wants_template
+
+    assert wants_template("Example ARC input for a TS") and wants_template("Slurm submit script template")
+    assert not wants_template("What does %maxcore mean?")
+
+    store = Store(tmp_path / "i.sqlite")
+    manual = [Chunk(source="molpro-manual", path=f"manual.pdf#{i}", ordinal=i, title="Running Molpro",
+                    text="Molpro Slurm submit script template: running Molpro under Slurm, submit script "
+                         f"options and the Molpro script template, part {i}.",
+                    domain="ess", software="molpro", doc_type="reference") for i in range(8)]
+    template = Chunk(source="curated", path="hpc/templates/slurm_molpro.sh", ordinal=0, title="slurm_molpro.sh",
+                     text="#!/bin/bash\n#SBATCH --ntasks=8\nmolpro -n 8 input.in", domain="hpc", doc_type="template")
+    store.sync_source("molpro-manual", manual)
+    store.sync_source("curated", [template])
+    s = Searcher(project, store=store, embedder=False)
+    top = s.search("Slurm submit script template for Molpro", k=3, min_curated=0)[0]
+    assert top.chunk.path == "hpc/templates/slurm_molpro.sh"
+    assert "named-software" in top.via and "template-intent" in top.via
+    # no template wording, no program named: the plain keyword order stands
+    plain = s.search("running under Slurm", k=3, min_curated=0)[0]
+    assert "template-intent" not in plain.via and "named-software" not in plain.via
+
+
 def test_query_helpers():
     assert fts_query("How do I set the %maxcore?") == '"set" OR "maxcore"'
     ids = identifiers("use opt=(ts,calcfc) with def2-TZVP and ts_guess_level, not B3LYP")

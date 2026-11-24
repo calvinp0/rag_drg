@@ -53,6 +53,11 @@ SOFTWARE_NAMES = {
     "arc": "arc", "arkane": "arkane",
 }
 NAMED_SOFTWARE_BOOST = 1.3
+# A query that asks for an example or a template ("Example ARC input for ...", "Slurm submit script
+# template for Molpro") wants a file to copy, not prose that mentions one: prefer template chunks
+# (submit-script templates, ARC/PySCF example inputs).
+TEMPLATE_WORDS = {"example", "examples", "template", "templates", "sample", "samples"}
+TEMPLATE_INTENT_BOOST = 1.25
 # A chunk whose *title* names an identifier from the query ("wB97M-V", "GEOM_MAXITER") is about
 # that thing; one that merely mentions it in passing is not.
 TITLE_IDENT_BOOST = 1.3
@@ -65,6 +70,19 @@ CURATED_FLOOR_RATIO = 0.5
 
 def _norm_title(text: str) -> str:
     return text.lower().replace("\u03c9", "w")  # ωB97X-D is written wB97X-D in queries
+
+
+def wants_template(query: str) -> bool:
+    return bool(TEMPLATE_WORDS & set(_WORD.findall(query.lower())))
+
+
+def _names_program(c: StoredChunk, named: set[str]) -> bool:
+    """Is the chunk about one of the programs the query names? Its `software` field says so, or,
+    for files that belong to no single program's manual (hpc/templates/slurm_molpro.sh has no
+    `software`), the program's name is a word of its path or title."""
+    if c.software in named:
+        return True
+    return bool(named & set(_WORD.findall(f"{c.path} {c.title}".lower())))
 
 
 def named_software(query: str) -> set[str]:
@@ -232,6 +250,7 @@ class Searcher:
             return []
         chunks = self.store.get_many(list(scores))
         named = named_software(query) if not software else set()
+        template_intent = wants_template(query)
         verbatim = " ".join(query.lower().split())
         if len(verbatim) < 12 or len(verbatim.split()) < 3:
             verbatim = ""
@@ -241,9 +260,12 @@ class Searcher:
             if c is None:
                 continue
             s = base * TYPE_BOOST.get(c.doc_type or "reference", 1.0) * STATUS_BOOST.get(c.status or "", 1.0)
-            if named and c.software in named:
+            if named and _names_program(c, named):
                 s *= NAMED_SOFTWARE_BOOST
                 via[cid].append("named-software")
+            if template_intent and c.doc_type == "template":
+                s *= TEMPLATE_INTENT_BOOST
+                via[cid].append("template-intent")
             hay = f"{c.title}\n{c.text}".lower()
             if idents:
                 n = sum(1 for t in idents if t in hay)
