@@ -14,16 +14,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# MCP server for Claude Code / any MCP-capable client
-mcp = ["mcp>=1.2"]
+# MCP server for Claude Code / any MCP-capable client. Both SDK generations are supported
+# (FastMCP in 1.x, MCPServer in 2.x) and CI runs both; 3.x is untested, so it is excluded.
+mcp = ["mcp>=1.2,<3"]
 # PDF ingestion (ORCA manual, papers); fontTools lets pypdf decode embedded CFF fonts (math, code)
 pdf = ["pypdf>=4.0", "fonttools>=4.40"]
 # Local dense embeddings (no server needed)
 st = ["sentence-transformers>=2.6"]
 # Basis-set checks (Basis Set Exchange, offline) and SMILES -> elements for `rag-drg basis` / check-input
 chem = ["basis_set_exchange>=0.10", "rdkit>=2023.9"]
-all = ["mcp>=1.2", "pypdf>=4.0", "fonttools>=4.40", "sentence-transformers>=2.6", "basis_set_exchange>=0.10", "rdkit>=2023.9"]
-dev = ["pytest>=7"]
+all = ["mcp>=1.2,<3", "pypdf>=4.0", "fonttools>=4.40", "sentence-transformers>=2.6", "basis_set_exchange>=0.10", "rdkit>=2023.9"]
+dev = ["pytest>=7", "pytest-timeout>=2.1"]
 
 [project.scripts]
 rag-drg = "rag_drg.cli:main"
@@ -33,3 +34,6 @@ include = ["rag_drg*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A test that waits on the network (a dropped connection, a redirect to an unreachable host)
+# fails after this many seconds instead of stalling the whole run. Needs pytest-timeout (dev extra).
+timeout = 120

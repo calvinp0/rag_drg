@@ -2,6 +2,7 @@
 
 import io
 import json
+import socket
 import sqlite3
 import textwrap
 import threading
@@ -153,6 +154,14 @@ class FakeZotero:
 
         srv = HTTPServer(("127.0.0.1", 0), H)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
+        # The storage redirect above goes to "localhost", which resolves to ::1 first on many
+        # machines; listen there too, or the download waits for a TCP timeout where the firewall
+        # drops (rather than refuses) the connection.
+        try:
+            srv6 = type("HTTPServer6", (HTTPServer,), {"address_family": socket.AF_INET6})(("::1", srv.server_port), H)
+            threading.Thread(target=srv6.serve_forever, daemon=True).start()
+        except OSError:
+            pass  # no IPv6 loopback here: localhost is 127.0.0.1
         return srv
 
 
