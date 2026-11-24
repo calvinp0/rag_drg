@@ -181,8 +181,8 @@ Or append it to a project's `AGENTS.md` to scope it to that project. Then, in a 
 1. `/mcp` should list rag-drg with its tools. If there are none, the server wasn't reachable when
    Codex started (with the shared local server: start it first).
 2. Ask "What's the Q-Chem path on zeus?". The answer should come from a `server_info` or
-   `search_knowledge` call, not from `rg` over files: `/opt/qchem/bin/qchem`, with
-   `. /opt/qchem/qcenv.sh`, and the Unix group the licence is limited to.
+   `search_knowledge` call, not from `rg` over files: the install path, the environment script
+   to source and the Unix group the licence is limited to, as in your `servers.yaml`.
 
 If you already have a Codex skill or `AGENTS.md` rule about a cluster, add a line to it that points
 to `server_info(<cluster>)`, so the two don't send the agent in different directions.

@@ -35,4 +35,4 @@ On ORCA 5.0.4 (and 5.0.3), `! Freq ZORA` and `! Freq DKH2` print "WARNING: In sc
 
 ## Evidence / source
 
-Zeus test runs 2026-10-31 (PBS JOBID, JOBID; ~/runs/hessian_check_20261031): water PBE0/def2-SVP `! Freq ZORA` and `! Freq DKH2` with /opt/orca-5.0.4/orca; plus ORCA 5.0.3 log github.com/Xyunyao/CdSe_nmr_DFT DFT_processing/output/me2cd_se_tzvp.out. Supersedes the "ORCA 5 unconfirmed" caveat in the 2026-10-31 ZORA/DKH lesson.
+Zeus test runs 2026-10-31 (PBS JOBID, JOBID; ~/runs/hessian_check_20261031): water PBE0/def2-SVP `! Freq ZORA` and `! Freq DKH2` with the cluster's ORCA 5.0.4 install; plus ORCA 5.0.3 log github.com/Xyunyao/CdSe_nmr_DFT DFT_processing/output/me2cd_se_tzvp.out. Supersedes the "ORCA 5 unconfirmed" caveat in the 2026-10-31 ZORA/DKH lesson.
