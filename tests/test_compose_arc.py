@@ -162,13 +162,15 @@ def test_unresolved_paths_fail_loudly_in_the_script(pbs, tmp_path):
     if shutil.which("bash"):  # the job stops before ARC with the message when ARC_PATH is unset
         home = tmp_path / "home"
         home.mkdir()
+        # as inside a job: the scheduler sets the submit directory (bash >= 5.3 rejects `cd ""`)
+        job_env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "PBS_O_WORKDIR": str(tmp_path)}
         run = subprocess.run(["bash", "-c", script.split("CONDA_SH=")[0]], text=True, capture_output=True,
-                             env={"PATH": "/usr/bin:/bin", "HOME": str(home)})
+                             env=job_env)
         assert run.returncode != 0 and "set ARC_PATH (or arc_path) to your ARC clone" in run.stderr
         # ... and picks up arc_path from ~/.bashrc, as the group's .bashrc exports it
         (home / ".bashrc").write_text('export arc_path="/home/me/Code/ARC/"\n')
         run = subprocess.run(["bash", "-c", script.split("CONDA_SH=")[0] + 'echo "ARC=$ARC_PATH"'], text=True,
-                             capture_output=True, env={"PATH": "/usr/bin:/bin", "HOME": str(home)})
+                             capture_output=True, env=job_env)
         assert run.returncode == 0 and "ARC=/home/me/Code/ARC/" in run.stdout
 
 

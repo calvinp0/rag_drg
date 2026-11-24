@@ -7,13 +7,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The server supports MCP Python SDK 1.x (FastMCP) and 2.x (MCPServer); test both paths.
+        mcp: ["mcp>=1.2,<2", "mcp>=2,<3"]
+    name: test (${{ matrix.mcp }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       # pdf + chem extras so the PDF, basis-set and input-checker tests run (they skip without them)
-      - run: pip install -e '.[mcp,pdf,dev,chem]'
+      - run: pip install -e '.[mcp,pdf,dev,chem]' '${{ matrix.mcp }}'
+      - run: pip show mcp | head -2
       - name: Lint knowledge cards and lessons
         run: rag-drg lint
       - name: Unit tests

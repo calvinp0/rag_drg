@@ -13,6 +13,7 @@ or once for the whole group over HTTP (recommended: one writer, shared lessons):
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 
@@ -24,11 +25,13 @@ from .lessons import index_lesson, write_lesson
 from .search import Searcher, format_hits
 from .store import Store, dumps
 
-INSTRUCTIONS = """\
-Research-group knowledge base: electronic structure software (ORCA 5/6, Gaussian 09/16,
-Q-Chem 6.1, Psi4, Molpro 2024/2026, PySCF), the ARC codebase (input/output schema, settings,
-capabilities), HPC cluster usage (submit scripts, queues, quotas) and project literature.
+log = logging.getLogger(__name__)
 
+INSTRUCTIONS = """\
+Research-group knowledge base: electronic structure software (ORCA, Gaussian, Q-Chem, Psi4,
+Molpro, PySCF), the ARC codebase (input/output schema, settings, capabilities), HPC cluster
+usage (submit scripts, queues, quotas) and project literature.
+{coverage}
 Use it BEFORE you:
 - write or edit any ESS input file or ESS keyword/option (check exact syntax and version),
 - write ARC input YAML, touch ARC settings/servers, or parse ARC output,
@@ -55,6 +58,51 @@ Workflow for a calculation:
 When a human corrects you on something this knowledge base should have told you, call
 `record_lesson` so the next agent does not repeat the mistake.
 """
+
+
+def coverage_line(store: Store) -> str:
+    """Which program versions have their manual in *this* index, for the server instructions.
+    Read from the index, so a server without (say) the Gaussian 16 pages does not claim them."""
+    try:
+        versions = store.manual_versions()
+    except Exception:  # noqa: BLE001 - an empty or older index must not stop the server
+        versions = {}
+    if not versions:
+        return ""
+    listed = "; ".join(f"{sw} {', '.join(vs)}" for sw, vs in versions.items())
+    return (f"Manuals in this index (use these as `software` / `version`): {listed}. For any other "
+            "version only curated cards and lessons apply; say so instead of assuming the syntax is the same.\n")
+
+
+def backfill_embeddings(cfg: Config, searcher: Searcher, readonly: bool = False) -> int:
+    """Embed chunks that have no vector yet, once the server's embedding model is loaded.
+
+    Chunks indexed while embeddings were switched off (or by `ingest --no-embed`) are otherwise
+    found by keyword only, and nobody is told to re-run `rag-drg ingest`. Uses its own
+    connection, so searches carry on meanwhile. A read-only server cannot write: it logs how
+    many chunks are affected instead. Returns the number of chunks embedded."""
+    if not searcher.wait_for_embedder():
+        return 0  # keyword-only index or model unavailable: nothing to do
+    store = Store(cfg.index_path, readonly=True)
+    try:
+        missing = len(store.chunks_missing_embeddings())
+    finally:
+        store.close()
+    if not missing:
+        return 0
+    if readonly:
+        log.warning("%d chunk(s) have no embedding and are found by keyword only; "
+                    "run `rag-drg ingest` on a machine that can write the index", missing)
+        return 0
+    log.info("embedding %d chunk(s) that have no vector yet (in the background)", missing)
+    store = Store(cfg.index_path)
+    try:
+        return embed_missing(cfg, store, progress=log.info, embedder=searcher.embedder)
+    except Exception as e:  # noqa: BLE001 - search keeps working without the new vectors
+        log.warning("could not embed %d chunk(s): %s; run `rag-drg ingest`", missing, e)
+        return 0
+    finally:
+        store.close()
 
 
 def _server_class():
@@ -86,11 +134,15 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
     from .toolbox import MINIMAL_INSTRUCTIONS, MINIMAL_SEARCH_DESCRIPTION, ToolRegistrar, register_discovery_tools, tool_hints
 
     profile = resolve_profile(cfg, profile)
-    instructions = MINIMAL_INSTRUCTIONS if profile == "minimal" else INSTRUCTIONS
     server_cls, sdk_major = _server_class()
     store = Store(cfg.index_path, readonly=readonly)
-    searcher = Searcher(cfg, store=store)
+    instructions = (MINIMAL_INSTRUCTIONS if profile == "minimal"
+                    else INSTRUCTIONS.replace("{coverage}", coverage_line(store)))
+    searcher = Searcher(cfg, store=store, lazy=True)  # don't hold up the MCP handshake
     lock = threading.Lock()
+    if searcher._embedder_thread is not None:  # semantic search configured: fill in missing vectors
+        threading.Thread(target=backfill_embeddings, args=(cfg, searcher, readonly),
+                         name="rag-drg-embed-backfill", daemon=True).start()
     if sdk_major >= 2:
         server = server_cls("rag-drg", instructions=instructions)
     else:
@@ -280,7 +332,7 @@ def build_server(cfg: Config, readonly: bool = False, host: str = "127.0.0.1", p
                 )
                 index_lesson(cfg, store, path)
                 try:
-                    embed_missing(cfg, store, progress=lambda *_: None)
+                    embed_missing(cfg, store, progress=lambda *_: None, embedder=searcher.embedder)
                 except Exception:  # noqa: BLE001 - keyword search still finds it
                     pass
             rel = path.relative_to(cfg.root) if path.is_relative_to(cfg.root) else path

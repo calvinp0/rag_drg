@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from rag_drg.ingest import ingest
 from rag_drg.lessons import index_lesson, write_lesson
@@ -108,6 +109,120 @@ def test_dense_path_fuses_with_keyword(project):
     assert hits and any("semantic" in h.via for h in hits)
     filtered = s.search("transition state optimisation", software="gaussian")
     assert all(h.chunk.software == "gaussian" for h in filtered)
+
+
+def test_lazy_searcher_answers_before_the_model_is_loaded(project, monkeypatch):
+    """The MCP server builds its Searcher with lazy=True: a slow model load must not hold up
+    start-up, searches are keyword-only until it finishes, and semantic after."""
+    import threading
+
+    from rag_drg import search as search_mod
+    from rag_drg.config import EmbeddingConfig
+
+    ingest(project, embed=False, progress=quiet)
+    store = Store(project.index_path)
+    todo = store.chunks_missing_embeddings()
+    store.put_embeddings([i for i, _ in todo], FakeEmbedder().embed([t for _, t in todo]))
+    store.set_meta("embedding_model", "fake")
+    project.embeddings = EmbeddingConfig(provider="sentence-transformers", model="fake")
+    release = threading.Event()
+
+    def slow_make_embedder(_cfg):
+        assert release.wait(10)
+        return FakeEmbedder()
+
+    monkeypatch.setattr(search_mod, "make_embedder", slow_make_embedder)
+    s = Searcher(project, store=store, lazy=True)   # returns while the "model" is still loading
+    assert s.embedder is None
+    hits = s.search("transition state optimisation", k=3)
+    assert hits and not any("semantic" in h.via for h in hits)
+    release.set()
+    assert s.wait_for_embedder(10)
+    assert any("semantic" in h.via for h in s.search("transition state optimisation", k=3))
+
+    # a model that cannot be loaded leaves keyword search working
+    monkeypatch.setattr(search_mod, "make_embedder", lambda _cfg: (_ for _ in ()).throw(RuntimeError("no torch")))
+    s = Searcher(project, store=store, lazy=True)
+    assert s.wait_for_embedder(10) is False and s.search("transition state optimisation")
+
+
+def test_server_embeds_chunks_indexed_without_vectors(project, monkeypatch, caplog):
+    """Chunks added while embeddings were off get their vectors from the server itself, so
+    nobody has to know to re-run `rag-drg ingest`; a read-only server says how many are missing."""
+    from rag_drg import ingest as ingest_mod
+    from rag_drg.config import EmbeddingConfig
+    from rag_drg.mcp_server import backfill_embeddings
+
+    ingest(project, embed=False, progress=quiet)
+    store = Store(project.index_path)
+    todo = store.chunks_missing_embeddings()
+    half = todo[: len(todo) // 2]
+    store.put_embeddings([i for i, _ in half], FakeEmbedder().embed([t for _, t in half]))
+    store.set_meta("embedding_model", "fake")
+    store.close()
+    project.embeddings = EmbeddingConfig(provider="sentence-transformers", model="fake")
+    monkeypatch.setattr(ingest_mod, "make_embedder", lambda _cfg: pytest.fail("must reuse the loaded model"))
+    searcher = Searcher(project, embedder=FakeEmbedder())
+    n_missing = len(todo) - len(half)
+
+    with caplog.at_level("WARNING"):
+        assert backfill_embeddings(project, searcher, readonly=True) == 0
+    assert f"{n_missing} chunk(s) have no embedding" in caplog.text
+    assert backfill_embeddings(project, searcher) == n_missing
+    assert Store(project.index_path, readonly=True).chunks_missing_embeddings() == []
+    assert backfill_embeddings(project, searcher) == 0              # nothing left
+    assert backfill_embeddings(project, Searcher(project, embedder=False)) == 0   # keyword-only
+
+
+def test_server_instructions_list_only_the_manuals_in_the_index(tmp_path):
+    """The instructions used to name Gaussian 16 and Molpro 2024 whether or not they were indexed."""
+    from rag_drg.chunking import Chunk
+    from rag_drg.mcp_server import INSTRUCTIONS, coverage_line
+
+    store = Store(tmp_path / "i.sqlite")
+    assert coverage_line(store) == ""   # nothing indexed: no claim
+
+    def chunk(n, software, version, doc_type, tags=()):
+        return Chunk(source="s", path=f"{n}.md", ordinal=0, title=str(n), text=f"text {n}", domain="ess",
+                     software=software, version=version, doc_type=doc_type, tags=list(tags))
+
+    store.sync_source("s", [
+        chunk(1, "orca", "6", "reference"), chunk(2, "orca", "5", "theory"),
+        chunk(3, "gaussian", "09", "reference"),
+        chunk(4, "gaussian", "09|16", "reference", tags=["book"]),   # a book is not the G16 manual
+        chunk(5, "molpro", "2024", "card"),                          # a card is not a manual
+    ])
+    line = coverage_line(store)
+    assert "gaussian 09; orca 5, 6." in line and "16" not in line and "molpro" not in line
+    assert "{coverage}" in INSTRUCTIONS and "Gaussian 09/16" not in INSTRUCTIONS
+
+
+def test_template_requests_prefer_templates_over_manual_prose(tmp_path, project):
+    """"Slurm submit script template for Molpro" must find hpc/templates/slurm_molpro.sh even when
+    Molpro manuals fill the index: the template has no `software` field (its path names the
+    program), and the query asks for a template."""
+    from rag_drg.chunking import Chunk
+    from rag_drg.search import wants_template
+
+    assert wants_template("Example ARC input for a TS") and wants_template("Slurm submit script template")
+    assert not wants_template("What does %maxcore mean?")
+
+    store = Store(tmp_path / "i.sqlite")
+    manual = [Chunk(source="molpro-manual", path=f"manual.pdf#{i}", ordinal=i, title="Running Molpro",
+                    text="Molpro Slurm submit script template: running Molpro under Slurm, submit script "
+                         f"options and the Molpro script template, part {i}.",
+                    domain="ess", software="molpro", doc_type="reference") for i in range(8)]
+    template = Chunk(source="curated", path="hpc/templates/slurm_molpro.sh", ordinal=0, title="slurm_molpro.sh",
+                     text="#!/bin/bash\n#SBATCH --ntasks=8\nmolpro -n 8 input.in", domain="hpc", doc_type="template")
+    store.sync_source("molpro-manual", manual)
+    store.sync_source("curated", [template])
+    s = Searcher(project, store=store, embedder=False)
+    top = s.search("Slurm submit script template for Molpro", k=3, min_curated=0)[0]
+    assert top.chunk.path == "hpc/templates/slurm_molpro.sh"
+    assert "named-software" in top.via and "template-intent" in top.via
+    # no template wording, no program named: the plain keyword order stands
+    plain = s.search("running under Slurm", k=3, min_curated=0)[0]
+    assert "template-intent" not in plain.via and "named-software" not in plain.via
 
 
 def test_query_helpers():

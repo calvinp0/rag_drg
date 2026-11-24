@@ -5,10 +5,12 @@
 # Lookup order (first hit wins):
 #   1. $RAG_DRG_BIN                 explicit path, e.g. ~/miniforge3/envs/rag-drg/bin/rag-drg
 #   2. <repo>/.venv/bin/rag-drg     python -m venv .venv  or  uv venv
-#   3. $CONDA_PREFIX/bin/rag-drg    the active conda env
+#   3. $CONDA_PREFIX/bin/rag-drg    the active conda env, unless it is conda's base env
 #   4. a conda env named rag-drg / rag_drg (or $RAG_DRG_CONDA_ENV), whichever env is active,
 #      looked up next to $CONDA_EXE / $MAMBA_ROOT_PREFIX, in ~/.conda/envs and in the usual
 #      install folders (~/miniforge3, ~/mambaforge, ~/miniconda3, ~/anaconda3)
+#   4b. conda's base env, when it is the active one: base is active in every shell by default,
+#      so an old copy installed there must not shadow the env made for rag-drg (4)
 #   5. rag-drg on PATH              (never this launcher itself)
 # It also points RAG_DRG_CONFIG at this repo's rag_drg.yaml when that is unset, so a
 # non-editable install (e.g. into a conda env) still finds the config.
@@ -29,17 +31,24 @@ if [ -n "${RAG_DRG_BIN:-}" ]; then
     exit 127
 fi
 candidates=("$repo/.venv/bin/rag-drg")
-[ -n "${CONDA_PREFIX:-}" ] && candidates+=("$CONDA_PREFIX/bin/rag-drg")
 # a named conda env, so an MCP client started from another env (e.g. arc_env) still finds it
 conda_roots=()
 [ -n "${CONDA_EXE:-}" ] && conda_roots+=("$(dirname "$(dirname "$CONDA_EXE")")")
 [ -n "${MAMBA_ROOT_PREFIX:-}" ] && conda_roots+=("$MAMBA_ROOT_PREFIX")
+# the active env is conda's base when it is an install root itself (it has no /envs/ parent)
+active_is_base=""
+if [ -n "${CONDA_PREFIX:-}" ]; then
+    for root in "${conda_roots[@]}"; do [ "$CONDA_PREFIX" = "$root" ] && active_is_base=1; done
+    [ "${CONDA_DEFAULT_ENV:-}" = base ] && active_is_base=1
+    [ -z "$active_is_base" ] && candidates+=("$CONDA_PREFIX/bin/rag-drg")
+fi
 for d in miniforge3 mambaforge miniconda3 anaconda3; do conda_roots+=("${HOME:-/nonexistent}/$d"); done
 env_names=("${RAG_DRG_CONDA_ENV:-rag-drg}" rag_drg)
 for name in "${env_names[@]}"; do
     candidates+=("${HOME:-/nonexistent}/.conda/envs/$name/bin/rag-drg")
     for root in "${conda_roots[@]}"; do candidates+=("$root/envs/$name/bin/rag-drg"); done
 done
+[ -n "$active_is_base" ] && candidates+=("$CONDA_PREFIX/bin/rag-drg")
 for c in "${candidates[@]}"; do
     if [ -f "$c" ] && [ -x "$c" ]; then exec "$c" "$@"; fi
 done

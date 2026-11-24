@@ -99,8 +99,9 @@ Everything in the repo calls **`bin/rag-drg`**: `.mcp.json`, the hooks, `deploy/
 `deploy/rag-drg.service`. That launcher finds whichever install you have, trying in order:
 1. `$RAG_DRG_BIN`;
 2. `.venv/bin/rag-drg`;
-3. the active conda env;
-4. a conda env named `rag-drg`/`rag_drg` (or `$RAG_DRG_CONDA_ENV`);
+3. the active conda env, unless it is conda's `base`;
+4. a conda env named `rag-drg`/`rag_drg` (or `$RAG_DRG_CONDA_ENV`), then an active `base`
+   (base is active in every shell, so a copy installed there must not shadow the named env);
 5. `rag-drg` on PATH, which includes a `uv tool` install.
 
 It also points `RAG_DRG_CONFIG` at the repo's `rag_drg.yaml`. In a service or cron job, set
