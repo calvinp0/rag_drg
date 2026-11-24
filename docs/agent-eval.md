@@ -4,6 +4,9 @@
 matters: **does an agent do the group's real tasks correctly, and is it better with rag-drg than
 without?**
 
+Tasks that need the group's clusters live in the private site repository and are run with
+`--tasks site/eval/tasks.yaml` ([site.md](site.md)); the results below include them.
+
 For each task in `eval/tasks.yaml` the harness:
 1. creates an empty work directory outside the repository and puts the task's `files:` in it;
 2. runs the agent twice:

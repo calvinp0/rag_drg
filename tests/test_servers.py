@@ -101,6 +101,70 @@ def test_rendered_cards_pass_lint(project, example):
     assert "/opt/orca/orca_6_0_1/orca" in text and "quota -s" in text
 
 
+# ----------------------------------------------------------------- site/ (private companion repo)
+
+@pytest.fixture
+def site_project(project):
+    """The project with its cluster data in site/ (docs/site.md) and no servers.yaml at the root."""
+    from rag_drg.config import load_config
+
+    site = project.root / "site"
+    (site / "knowledge" / "hpc" / "servers").mkdir(parents=True)
+    (site / "knowledge" / "hpc" / "templates").mkdir(parents=True)
+    (site / "conf.d").mkdir()
+    shutil.copy(EXAMPLE, site / "servers.yaml")
+    (site / "knowledge" / "hpc" / "servers" / "example.md").write_text(
+        "---\ntitle: Example cluster house rules\ndomain: hpc\ndoc_type: card\nstatus: draft\n---\n"
+        "# Example cluster\n\nLogin through the bastion host only.\n")
+    (site / "knowledge" / "hpc" / "templates" / "site_job.sh").write_text("#!/bin/bash\n#SBATCH -p sitequeue\n")
+    (site / "conf.d" / "site.yaml").write_text("cluster_commands: {enabled: true}\nsite_marker: 1\n")
+    return load_config(project.root / "rag_drg.yaml")
+
+
+def test_site_registry_is_used_and_cards_are_written_next_to_it(site_project, capsys):
+    from rag_drg.cli import main
+
+    cfg = site_project
+    assert srv.servers_path(cfg) == cfg.root / "site" / "servers.yaml"
+    assert "example" in srv.load_servers(cfg)
+    assert main(["-c", str(cfg.root / "rag_drg.yaml"), "servers", "render-cards"]) == 0
+    assert (cfg.root / "site/knowledge/hpc/servers/generated/example.md").is_file()
+    assert not (cfg.root / "knowledge/hpc/servers/generated").exists()
+    assert _own_lint(cfg) == []
+    card = cfg.root / "site/knowledge/hpc/servers/generated/example.md"
+    card.write_text(card.read_text() + "\nhand edit\n")
+    assert any("out of date" in p for p in lint(cfg))
+
+
+def test_site_knowledge_is_a_curated_source_and_site_conf_is_merged(site_project):
+    from rag_drg.ingest import ingest
+    from rag_drg.search import CURATED_SOURCES, Searcher
+
+    cfg = site_project
+    src = cfg.source("site")
+    assert src.path == cfg.root / "site" / "knowledge" and src.doc_type == cfg.source("curated").doc_type
+    assert src.doc_type_rules == cfg.source("curated").doc_type_rules and "site" in CURATED_SOURCES
+    assert cfg.extra["site_marker"] == 1 and cfg.extra["cluster_commands"]["enabled"] is True
+    (cfg.root / "conf.d").mkdir(exist_ok=True)
+    (cfg.root / "conf.d" / "zz-local.yaml").write_text("site_marker: 2\n")   # a machine override still wins
+    from rag_drg.config import load_config
+    assert load_config(cfg.root / "rag_drg.yaml").extra["site_marker"] == 2
+    ingest(cfg, progress=lambda *_: None)
+    hits = Searcher(cfg, embedder=None).search("bastion host login", k=3)
+    assert hits and hits[0].chunk.source == "site"
+
+
+def test_site_cards_are_linted(site_project):
+    bad = site_project.root / "site/knowledge/hpc/servers/broken.md"
+    bad.write_text("# no front matter\n")
+    assert any("broken.md" in p for p in lint(site_project))
+
+
+def test_without_site_nothing_changes(project):
+    assert srv.servers_path(project) == project.root / "servers.yaml"
+    assert all(s.name != "site" for s in project.sources)
+
+
 def test_lint_flags_stale_and_orphan_cards(project, example):
     gen = project.root / "knowledge/hpc/servers/generated"
     srv.render_cards({"example": example}, gen)

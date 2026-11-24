@@ -182,7 +182,7 @@ Or append it to a project's `AGENTS.md` to scope it to that project. Then, in a 
    Codex started (with the shared local server: start it first).
 2. Ask "What's the Q-Chem path on zeus?". The answer should come from a `server_info` or
    `search_knowledge` call, not from `rg` over files: `/opt/qchem/bin/qchem`, with
-   `. /opt/qchem/qcenv.sh`, and the licence limited to `group_prj`.
+   `. /opt/qchem/qcenv.sh`, and the Unix group the licence is limited to.
 
 If you already have a Codex skill or `AGENTS.md` rule about a cluster, add a line to it that points
 to `server_info(<cluster>)`, so the two don't send the agent in different directions.
@@ -271,7 +271,8 @@ then fixes them before anything is submitted.
 
 The tool is only as good as what's in it. In order of value:
 
-1. **Describe your clusters in `servers.yaml`** (copy `servers.example.yaml`; see
+1. **Describe your clusters in `servers.yaml`** (copy `servers.example.yaml`; keep the real file in
+   the private `site/` repository, [docs/site.md](docs/site.md); see
    [docs/servers.md](docs/servers.md)): partitions and limits, **absolute install paths of each
    ESS**, scratch, storage and quota commands. `rag-drg servers render-cards` then generates the
    cluster cards, `rag-drg servers arc-settings` the ARC `servers` block, and submit scripts and

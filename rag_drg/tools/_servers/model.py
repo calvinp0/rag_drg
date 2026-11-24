@@ -636,7 +636,11 @@ def _parse_server(name: str, s: dict) -> Server:
 
 
 def servers_path(cfg) -> Path:
-    return Path(cfg.root) / SERVERS_FILE
+    """site/servers.yaml (the private companion repo) when it exists, else <repo>/servers.yaml."""
+    from ...config import site_dir
+
+    site = site_dir(cfg.root) / SERVERS_FILE
+    return site if site.is_file() else Path(cfg.root) / SERVERS_FILE
 
 
 class _ServersLoader(yaml.SafeLoader):

@@ -43,7 +43,7 @@ MAX_RESULTS = 5
 RESULT_KEYS = ("source", "path", "title", "doc_type", "score")
 # Sources that hold group-reviewed knowledge; a top hit from anywhere else means the answer
 # came from a raw manual/repo and may be worth a card.
-DEFAULT_CURATED_SOURCES = ("curated", "lessons")
+DEFAULT_CURATED_SOURCES = ("curated", "lessons", "site")
 # Search scores are reciprocal-rank-fusion sums, not relevance: 1/(60 + rank + 1) per ranked list
 # (keyword, identifier phrase, embeddings), times the doc-type/status boosts in search.py. A top
 # hit that is first in the keyword list alone scores 1/61 = 0.0164 (x0.95 for manual code/theory

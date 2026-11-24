@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .chunking import split_front_matter
-from .config import Config
+from .config import SITE_SOURCE, Config
 
 DOMAINS = {"ess", "arc", "hpc", "project", "literature"}
 DOC_TYPES = {"card", "gotcha", "template", "schema", "lesson", "reference", "theory", "paper", "scaffold", "error"}
@@ -14,7 +14,7 @@ LESSON_SECTIONS = ("## Mistake", "## Correct approach")
 
 
 def lint(cfg: Config) -> list[str]:
-    roots: list[Path] = [s.path for s in cfg.sources if s.type == "local" and s.name == "curated" and s.path]
+    roots: list[Path] = [s.path for s in cfg.sources if s.type == "local" and s.name in ("curated", SITE_SOURCE) and s.path]
     roots.append(cfg.lessons_dir)
     problems: list[str] = []
     seen: set[Path] = set()

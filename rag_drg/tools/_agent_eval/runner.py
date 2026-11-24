@@ -89,7 +89,7 @@ def mcp_config(condition: str, cfg_path: Path | None) -> dict:
 
 FILE_TOOLS = ("Read", "Glob", "Grep", "Edit", "Write")
 # repository paths a `without` answer should never know about
-LEAK = re.compile(r"knowledge/|servers\.yaml|rag_drg\.yaml|sources_cache/|integrations/claude-code")
+LEAK = re.compile(r"knowledge/|(?<![\w-])site/|servers\.yaml|rag_drg\.yaml|sources_cache/|integrations/claude-code")
 
 
 def denied_tools(hidden: list[Path]) -> str:

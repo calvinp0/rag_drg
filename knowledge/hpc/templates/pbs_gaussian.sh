@@ -1,6 +1,6 @@
 #!/bin/bash
 # TEMPLATE: PBS submit script for a Gaussian 16/09 job (PBS Pro / OpenPBS, submit with qsub).
-# Replace <...>. On zeus use `rag-drg servers submit` / render_submit_script instead (real paths).
+# Replace <...>. On a cluster in servers.yaml use `rag-drg servers submit` / render_submit_script instead (real paths).
 # %nprocshared=16 and %mem ~85-90% of the requested mem (TOTAL, not per core).
 #PBS -N <name>
 #PBS -q <queue>

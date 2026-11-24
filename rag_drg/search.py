@@ -18,7 +18,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from .config import Config
+from .config import SITE_SOURCE, Config
 from .embeddings import Embedder, make_embedder
 from .store import Store, StoredChunk
 
@@ -64,7 +64,7 @@ TITLE_IDENT_BOOST = 1.3
 # Sources the group curates (cards, templates, lessons). Large manuals can fill every result slot
 # for a question they only touch on; then the best curated chunk takes the last slot, provided it
 # scores at least CURATED_FLOOR_RATIO of what it replaces.
-CURATED_SOURCES = ("curated", LESSONS_DOMAIN)
+CURATED_SOURCES = ("curated", LESSONS_DOMAIN, SITE_SOURCE)
 CURATED_FLOOR_RATIO = 0.5
 
 

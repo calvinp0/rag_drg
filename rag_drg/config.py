@@ -123,6 +123,16 @@ def _version_str(value: Any) -> str | None:
     return str(value)
 
 
+# The group's private companion repository, cloned into <repo>/site (git-ignored). It holds what
+# must not be public: servers.yaml, the cluster cards, site-only eval tasks. See docs/site.md.
+SITE_DIR = "site"
+SITE_SOURCE = "site"
+
+
+def site_dir(root: str | os.PathLike) -> Path:
+    return Path(root) / SITE_DIR
+
+
 def _is_override(p: Path) -> bool:
     return p.name.endswith(".local.yaml") or p.name.startswith("zz-")
 
@@ -152,7 +162,10 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
     raw = yaml.safe_load(cfg_path.read_text()) or {}
     # conf.d/*.yaml next to the main file: `sources` lists are appended, other keys merged
     # recursively. Lets each feature keep its own config file.
-    for extra_file in conf_d_files(root / "conf.d"):
+    # site/conf.d/*.yaml (the private companion repo) is merged the same way; per-machine overrides
+    # of either directory still come last.
+    extra_files = conf_d_files(root / "conf.d") + conf_d_files(site_dir(root) / "conf.d")
+    for extra_file in sorted(extra_files, key=_is_override):
         part = yaml.safe_load(extra_file.read_text()) or {}
         for key, value in part.items():
             if key == "sources":
@@ -175,8 +188,17 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
         batch_size=int(emb_raw.get("batch_size", 32)),
     )
 
+    declared = list(raw.get("sources") or [])
+    site_knowledge = site_dir(root) / "knowledge"
+    if site_knowledge.is_dir() and not any(s.get("name") == SITE_SOURCE for s in declared):
+        # The site's cards are curated cards that live in the private repo: same rules, own source.
+        curated = next((s for s in declared if s.get("name") == "curated"), {})
+        declared.append({"name": SITE_SOURCE, "type": "local", "path": str(site_knowledge),
+                         "doc_type": curated.get("doc_type", "card"),
+                         "doc_type_rules": curated.get("doc_type_rules")})
+
     sources: list[SourceConfig] = []
-    for s in raw.get("sources") or []:
+    for s in declared:
         stype = s.get("type", "local")
         if stype == "local":
             spath = resolve(s.get("path"), s["name"])

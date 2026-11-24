@@ -234,3 +234,7 @@ conf.d/zz-local.yaml
 
 # agent-eval run output (rag-drg agent-eval run)
 eval/runs/
+
+# The private companion repository (cluster registry, cluster cards, site-only eval tasks);
+# a separate git repo cloned here. See docs/site.md.
+/site/

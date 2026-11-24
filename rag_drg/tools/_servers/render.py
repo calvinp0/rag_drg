@@ -34,6 +34,12 @@ _SUBMIT = {"slurm": "sbatch", "local": "bash"}
 
 
 def generated_dir(cfg) -> Path:
+    """Where the generated cluster cards go: next to the registry they are rendered from."""
+    from ...config import site_dir
+    from . import model
+
+    if model.servers_path(cfg).parent == site_dir(cfg.root):
+        return site_dir(cfg.root) / "knowledge" / GENERATED_SUBDIR
     curated = next((s.path for s in cfg.sources if s.name == "curated" and s.type == "local" and s.path), None)
     return Path(curated or Path(cfg.root) / "knowledge") / GENERATED_SUBDIR
 
