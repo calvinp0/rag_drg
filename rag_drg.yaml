@@ -150,7 +150,10 @@ sources:
     max_depth: 1
     max_pages: 400
     allow_prefix: [https://gaussian.com/]
-    deny: ["/wp-", "/feed", "?", "/news", "/events", "/store", "/contact", "/citation", "/license", "/tag/", "/category/"]
+    # /glossary/ is the literature-citation list (one page per reference): 232 of the first 400
+    # pages fetched, crowding out keyword pages, and no use for input syntax.
+    deny: ["/wp-", "/feed", "?", "/news", "/events", "/store", "/contact", "/citation", "/license", "/tag/", "/category/", "/glossary/"]
+    exclude: ["gaussian_com_glossary_*"]   # glossary pages already in an older sources_cache
     urls:
       - https://gaussian.com/keywords/
       - https://gaussian.com/running/
@@ -234,13 +237,21 @@ sources:
     software: molpro
     enabled: false
 
-  # Version-specific Molpro PDF manuals: sources/molpro/2024/*.pdf, sources/molpro/2026/*.pdf
+  # Version-specific Molpro PDF manuals: sources/molpro/<version>/*.pdf. Molpro publishes only the
+  # unversioned online manual, so the 2024 and 2025 files are built from archive.org snapshots of
+  # it taken while 2024.3 / 2025.4 was current (each page states its snapshot date).
   - name: molpro2024-manual
     type: local
     path: sources/molpro/2024
     domain: ess
     software: molpro
     version: "2024"
+  - name: molpro2025-manual
+    type: local
+    path: sources/molpro/2025
+    domain: ess
+    software: molpro
+    version: "2025"
   - name: molpro2026-manual
     type: local
     path: sources/molpro/2026
