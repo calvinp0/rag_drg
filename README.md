@@ -286,10 +286,9 @@ The tool is only as good as what's in it. In order of value:
    wget-mirrored or crawled; books go in e.g. `sources/gaussian/book/` with a `_meta.yaml`;
    run `rag-drg check-pdf` to see whether a PDF needs OCR first. Exported cluster
    docs in `sources/hpc/<cluster>/`. These are git-ignored, so they go on the shared server or
-   each person's copy. Web crawls for the ORCA 6 / Gaussian / Molpro online docs are
-   pre-configured but `enabled: false`: enable them in `rag_drg.yaml` if the site terms allow it.
-   To get the Molpro online manual as one PDF instead, run `python scripts/molpro_manual_pdf.py
-   --out sources/molpro/<version>/molpro_manual_web.pdf` (needs Chrome/Chromium; standard library only).
+   each person's copy. `rag-drg fetch --manuals` fetches every
+   manual the vendors publish openly (ORCA 5 and 6, Q-Chem 6.1, Gaussian 09 and 16, the current
+   Molpro manual as one PDF, which needs Chrome/Chromium); see `sources/README.md`.
    Also fill the `unknown` cells in `knowledge/ess/levels_of_theory.yaml` as you check them.
 4. **Only group-wide knowledge belongs here.** Project-specific protocols and notes stay in each
    project's own repository (the compose tools accept a protocol file by path);

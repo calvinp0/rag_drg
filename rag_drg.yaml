@@ -187,7 +187,7 @@ sources:
     domain: ess
     software: gaussian
     version: "16"
-    enabled: false
+    manual: true     # crawled only by `rag-drg fetch --manuals` (or --source), never by the nightly job
 
   # Local Gaussian PDFs and/or saved HTML pages, one folder per version so the version filter works.
   - name: gaussian09-manual
@@ -269,6 +269,11 @@ sources:
     domain: ess
     software: molpro
     version: "2026"
+    # Built by `rag-drg fetch --manuals`: the online manual is crawled from its table of contents
+    # and printed to one PDF (needs Chrome or Chromium). It documents the current release only, so
+    # the build stops if that is no longer 2026: add a source for the new release then.
+    download:
+      - {build: dokuwiki-pdf, start: "https://www.molpro.net/manual/doku.php?id=table_of_contents", creates: molpro_manual_web.pdf}
 
   # ---------------------------------------------------------------------- HPC
   # Cluster user guides you export as HTML/PDF/MD (sources/hpc/<cluster>/...).

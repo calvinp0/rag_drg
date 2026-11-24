@@ -16,34 +16,46 @@ changed files are re-processed.
 
 Any folder can mix PDFs, `.html` pages and Markdown. Sub-folders are fine.
 
-## Manuals the vendor offers as a download
+## Get every public manual with one command
 
 ```bash
 rag-drg fetch --manuals      # then: rag-drg ingest
 ```
 
-downloads every file listed under `download:` in `rag_drg.yaml` into its source folder here:
+fetches everything the vendors publish openly into the folders here (or `sources_cache/`):
 
-| Source | What | From |
+| Source | What | How |
 |---|---|---|
-| `orca5-manual` | ORCA 5.0.4 manual PDF (about 33 MB) | kofo.mpg.de |
-| `orca6-manual` | ORCA 6.1 manual PDF (about 78 MB) | faccts.de (the PDF link on the manual's front page) |
-| `qchem61-manual` | Q-Chem 6.1 manual PDF (about 5 MB) | manual.q-chem.com |
-| `gaussian09-manual` | Gaussian 09 User's Reference pages (`g09ur/`) | gaussian.com |
+| `orca5-manual` | ORCA 5.0.4 manual PDF (about 33 MB) | download from kofo.mpg.de |
+| `orca6-manual` | ORCA 6.1 manual PDF (about 78 MB) | download from faccts.de (the PDF link on the manual's front page) |
+| `qchem61-manual` | Q-Chem 6.1 manual PDF (about 5 MB) | download from manual.q-chem.com |
+| `gaussian09-manual` | Gaussian 09 User's Reference pages (`g09ur/`) | download from gaussian.com |
+| `gaussian-keywords` | Gaussian 16 keyword pages | crawl of gaussian.com (several minutes; the site is slow) |
+| `molpro2026-manual` | Molpro online manual as one PDF (about 18 MB) | crawled and printed with Chrome/Chromium (about 2 minutes) |
 
-Each person downloads their own copy from the vendor; the files stay git-ignored and are never
-committed. A file that is already in the folder is kept, so delete it to get a fresh copy.
-Downloads only happen with `--manuals` (or `rag-drg fetch --source <name>`), never during the
-nightly `ingest --fetch`. Not covered: the manuals that are many HTML pages, below.
+Each person fetches their own copy from the vendor; the files stay git-ignored and are never
+committed. Whatever is already there is kept: delete a file, or run
+`rag-drg fetch --source <name>`, to refresh it. Nothing here runs during a plain `rag-drg fetch`
+or the nightly `ingest --fetch`.
+
+In `rag_drg.yaml` these are `download:` entries on a local source (a URL, a `{page, link}` pair,
+or `{build: dokuwiki-pdf, ...}`) and `manual: true` on a crawled source.
+
+Not covered:
+* **Molpro 2024 / 2025.** Molpro publishes only the manual for its current release, and the build
+  stops if that release is not the one the source is labelled for. Older releases need a copy
+  made at the time (or from archive.org snapshots).
+* **Books** and anything behind a login.
 
 ## Manuals that are many HTML pages (ORCA 6, Gaussian keywords, Molpro)
 
 Pick whichever is easiest; all three give one search entry per page section, titled with the
 page title and headings, and linked back to the original URL.
 
-**1. Let rag-drg download them.** Sources are already set up in `rag_drg.yaml`
-(`orca6-manual-web`, `gaussian-keywords`, `qchem61-manual-web`, `molpro-manual-web`). They are
-disabled by default. On a machine that can reach the site:
+**1. Let rag-drg crawl them.** `gaussian-keywords` is part of `rag-drg fetch --manuals` (above).
+Page-by-page crawls of the other manuals are also set up in `rag_drg.yaml` (`orca6-manual-web`,
+`qchem61-manual-web`, `molpro-manual-web`) as alternatives to the PDFs; they are disabled by
+default, and enabling one next to the PDF of the same manual indexes it twice. To use one:
 
 ```bash
 rag-drg fetch --source orca6-manual-web     # crawls only pages under the manual's URL
@@ -67,8 +79,9 @@ wget --recursive --level=inf --no-parent --adjust-extension --wait=1 \
 `sources/gaussian/09/` (sub-folders fine). Each page becomes its own entry; old
 Windows-1252 pages are decoded correctly.
 
-**Molpro as one PDF:** `python scripts/molpro_manual_pdf.py --out sources/molpro/<version>/molpro_manual_web.pdf`
-crawls the online manual from its table of contents (in TOC order) and prints it with Chrome/Chromium.
+**Molpro as one PDF:** `rag-drg fetch --manuals` does this for the Molpro source. For another
+folder or another DokuWiki site, `python scripts/molpro_manual_pdf.py --out <file>.pdf [--start URL]`
+crawls from the table of contents (in TOC order) and prints it with Chrome/Chromium.
 
 **3. Save pages from the browser** ("Save page as", *Webpage, Complete* or *HTML only*) into
 the folder. The `<page>_files/` asset folders the browser creates are ignored, and the
