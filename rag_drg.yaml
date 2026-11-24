@@ -133,12 +133,19 @@ sources:
     domain: ess
     software: orca
     version: "5"
+    # The FACCTS site puts the ORCA 5 manual behind its customer login; the Max-Planck-Institut
+    # für Kohlenforschung hosts the 5.0.4 PDF publicly.
+    download:
+      - "https://www.kofo.mpg.de/970316/orca_manual_5_0_4.pdf"
   - name: orca6-manual
     type: local
     path: sources/orca/6
     domain: ess
     software: orca
     version: "6"
+    # `rag-drg fetch --manuals` downloads these from the vendor into the folder (git-ignored).
+    download:
+      - {page: "https://www.faccts.de/docs/orca/6.1/manual/", link: "orca.pdf"}
 
   # Gaussian keyword reference pages. The site documents G16; G09-only differences
   # belong in knowledge/ess/gaussian. (URLs not checked from the build machine.)
@@ -189,6 +196,8 @@ sources:
     domain: ess
     software: gaussian
     version: "09"
+    download:
+      - {url: "https://gaussian.com/g16/g09ur.tgz", creates: g09ur}   # the G09 User's Reference pages
   - name: gaussian16-manual
     type: local
     path: sources/gaussian/16
@@ -213,6 +222,8 @@ sources:
     domain: ess
     software: qchem
     version: "6.1"
+    download:
+      - "https://manual.q-chem.com/6.1/qchem_manual.pdf"
   # Q-Chem online manual. (URL not checked from the build machine; check before relying on it.)
   - name: qchem61-manual-web
     type: url

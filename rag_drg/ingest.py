@@ -93,6 +93,96 @@ def fetch_source(src: SourceConfig, cfg: Config | None = None) -> None:
     raise ValueError(f"Unknown source type '{src.type}'")
 
 
+MAX_DOWNLOAD_BYTES = 400_000_000
+_ARCHIVE_SUFFIXES = (".tgz", ".tar.gz", ".tar")
+
+
+def _open_url(url: str, timeout: int = 120):
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError(f"not an http(s) URL: {url}")
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": USER_AGENT}), timeout=timeout)
+
+
+def _resolve_download(item) -> tuple[str, str | None]:
+    """(url, creates) for a `download:` entry; a {page, link} entry is looked up on the page, so
+    a link whose path changes with every site build (ORCA's manual PDF) keeps working."""
+    from html import unescape
+    from urllib.parse import urljoin
+
+    if isinstance(item, str):
+        return item, None
+    if not isinstance(item, dict):
+        raise ValueError(f"download entry must be a URL or a mapping, got {item!r}")
+    creates = item.get("creates")
+    if item.get("url"):
+        return str(item["url"]), creates
+    page, link = item.get("page"), item.get("link")
+    if not page or not link:
+        raise ValueError(f"download entry needs `url`, or `page` and `link`: {item!r}")
+    with _open_url(page, timeout=60) as resp:
+        html = resp.read(5_000_000).decode("utf-8", errors="replace")
+    for href in _HREF.findall(html):
+        if unescape(href).split("?")[0].endswith(str(link)):
+            return urljoin(page, unescape(href)), creates
+    raise ValueError(f"no link ending in {link!r} on {page}")
+
+
+def download_manuals(src: SourceConfig, progress: Callable[[str], None] = print) -> list[Path]:
+    """Download the files a local source lists under `download:` into its folder (git-ignored).
+
+    For manuals the vendor publishes for anyone to download: each user fetches their own copy
+    from the vendor instead of the group passing a copy around. Existing files are kept (delete
+    one to refresh it). Archives (.tgz/.tar) are unpacked with tarfile's "data" filter, which
+    refuses absolute paths, `..`, links out of the folder and device files."""
+    import shutil
+    import tarfile
+    import tempfile
+    from urllib.parse import urlsplit
+
+    if src.type != "local" or src.path is None or not src.download:
+        return []
+    src.path.mkdir(parents=True, exist_ok=True)
+    got: list[Path] = []
+    for item in src.download:
+        try:
+            url, creates = _resolve_download(item)
+            name = Path(urlsplit(url).path).name
+            if not name or name.startswith("."):
+                raise ValueError(f"cannot take a file name from {url}")
+            target = src.path / (creates or name)
+            if target.exists():
+                progress(f"[{src.name}] {target.name} already there, kept")
+                continue
+            progress(f"[{src.name}] downloading {url}")
+            with tempfile.NamedTemporaryFile(dir=src.path, prefix=".download-", delete=False) as tmp:
+                part = Path(tmp.name)
+                try:
+                    with _open_url(url) as resp:
+                        size = 0
+                        while block := resp.read(1 << 20):
+                            size += len(block)
+                            if size > MAX_DOWNLOAD_BYTES:
+                                raise ValueError(f"larger than {MAX_DOWNLOAD_BYTES // 1_000_000} MB")
+                            tmp.write(block)
+                    tmp.flush()
+                    if name.lower().endswith(_ARCHIVE_SUFFIXES):
+                        if not hasattr(tarfile, "data_filter"):  # Python < 3.10.12 / 3.11.4
+                            raise ValueError("this Python cannot unpack archives safely; unpack it by hand")
+                        with tarfile.open(part) as tar:
+                            tar.extractall(src.path, filter="data")
+                        part.unlink()
+                    else:
+                        shutil.move(str(part), src.path / name)
+                        (src.path / name).chmod(0o644)
+                finally:
+                    part.unlink(missing_ok=True)
+            got.append(target)
+            progress(f"[{src.name}] saved {target.name} ({size / 1e6:.1f} MB)")
+        except Exception as e:  # noqa: BLE001 - one unreachable vendor must not stop the others
+            progress(f"[{src.name}] download failed: {e}")
+    return got
+
+
 _HREF = re.compile(r"""href\s*=\s*["']([^"'#]+)""", re.IGNORECASE)
 _SKIP_EXT = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".css", ".js", ".zip", ".gz", ".tar", ".ico", ".xml")
 

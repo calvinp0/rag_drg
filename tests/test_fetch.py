@@ -63,3 +63,63 @@ def test_crawl_max_depth(tmp_path):
     import json
     fetched = set(json.loads((tmp_path / "cache" / "_urls.json").read_text()).values())
     assert fetched == {f"{base}/keywords.html", f"{base}/opt.html"}
+
+
+def test_fetch_manuals_downloads_vendor_files_into_the_source_folder(tmp_path):
+    """`download:` on a local source: a direct PDF, a link looked up on a page, and an archive.
+    Existing files are kept, and an archive member that points outside the folder is refused."""
+    import io
+    import tarfile
+
+    from rag_drg.cli import main
+
+    site = tmp_path / "site"
+    (site / "manual" / "_static").mkdir(parents=True)
+    (site / "manual" / "qchem_manual.pdf").write_bytes(b"%PDF-1.4 qchem")
+    (site / "manual" / "_static" / "orca.pdf").write_bytes(b"%PDF-1.4 orca")
+    (site / "manual" / "index.html").write_text('<a href="_static/orca.pdf?v=1">Download PDF</a>')
+
+    def tgz(name, members):
+        with tarfile.open(site / name, "w:gz") as tar:
+            for member, data in members:
+                info = tarfile.TarInfo(member)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+
+    tgz("g09ur.tgz", [("g09ur/k_opt.htm", b"<html><body><h1>Opt</h1><p>Opt keyword</p></body></html>")])
+    tgz("evil.tgz", [("../escaped.htm", b"<html></html>")])
+    srv = HTTPServer(("127.0.0.1", 0), functools.partial(_Quiet, directory=str(site)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_port}"
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "rag_drg.yaml").write_text(f"""
+index_path: index/test.sqlite
+sources:
+  - {{name: qchem, type: local, path: sources/qchem, download: ["{base}/manual/qchem_manual.pdf"]}}
+  - name: orca
+    type: local
+    path: sources/orca
+    download: [{{page: "{base}/manual/index.html", link: orca.pdf}}]
+  - name: g09
+    type: local
+    path: sources/g09
+    download: [{{url: "{base}/g09ur.tgz", creates: g09ur}}, "{base}/evil.tgz", "{base}/missing.pdf"]
+""")
+    cfg = str(proj / "rag_drg.yaml")
+    try:
+        assert main(["--config", cfg, "fetch"]) == 0            # a plain fetch downloads no manuals
+        assert not (proj / "sources").exists()
+        assert main(["--config", cfg, "fetch", "--manuals"]) == 0
+        assert (proj / "sources/qchem/qchem_manual.pdf").read_bytes() == b"%PDF-1.4 qchem"
+        assert (proj / "sources/orca/orca.pdf").read_bytes() == b"%PDF-1.4 orca"
+        assert (proj / "sources/g09/g09ur/k_opt.htm").is_file()
+        assert not (proj / "sources/escaped.htm").exists()        # refused, and it did not stop the rest
+        assert not list((proj / "sources").rglob(".download-*"))  # no partial files left behind
+        # a second run keeps what is there (a hand-placed or edited copy is not overwritten)
+        (proj / "sources/qchem/qchem_manual.pdf").write_bytes(b"mine")
+        assert main(["--config", cfg, "fetch", "--source", "qchem"]) == 0
+        assert (proj / "sources/qchem/qchem_manual.pdf").read_bytes() == b"mine"
+    finally:
+        srv.shutdown()
