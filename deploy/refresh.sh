@@ -12,6 +12,11 @@ if [ -f /etc/rag-drg/secrets.env ]; then set -a; . /etc/rag-drg/secrets.env; set
 # Drop local lesson copies already merged upstream, so the pull can't conflict (best effort).
 "$RAG" lessons tidy || echo "lessons tidy failed (see above); continuing"
 git pull --ff-only
+# The private site repository (docs/site.md), when this server has one. A failed pull (no network,
+# expired deploy key) must not stop the refresh: the index is rebuilt from the clone as it is.
+if [ -d site/.git ]; then
+    git -C site pull --ff-only || echo "site pull failed (see above); continuing with the existing site/ clone"
+fi
 # Lint problems are reported, but they must not stop the index from refreshing.
 "$RAG" lint || echo "lint problems (see above); continuing"
 "$RAG" ingest --fetch
