@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("fetch", help="clone/download remote sources into the cache")
     p.add_argument("--source", action="append")
+    p.add_argument("--manuals", action="store_true",
+                   help="download the manuals vendors publish (sources with `download:`) into sources/")
 
     p = sub.add_parser("ingest", help="(re)build the index incrementally")
     p.add_argument("--source", action="append", help="only these sources (repeatable)")
@@ -110,8 +112,16 @@ def main(argv: list[str] | None = None) -> int:
         return int(plugin_handlers[args.cmd](args, cfg) or 0)
 
     if args.cmd == "fetch":
-        from .ingest import fetch_source
+        from .ingest import download_manuals, fetch_source
 
+        # Manual downloads are opt-in (--manuals, or naming the source): a plain `fetch` and the
+        # nightly `ingest --fetch` must not pull vendor PDFs on every run.
+        for src in cfg.sources:
+            if src.download and (args.manuals or (args.source and src.name in args.source)):
+                if not args.source or src.name in args.source:
+                    download_manuals(src, progress=log)
+        if args.manuals and not args.source:
+            return 0
         for src in cfg.sources:
             if src.type == "local" or (args.source and src.name not in args.source):
                 continue

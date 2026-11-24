@@ -58,6 +58,11 @@ class SourceConfig:
     max_pages: int = 200
     max_depth: int | None = None  # link hops from the start urls (None = unlimited within allow_prefix)
     delay: float = 0.5
+    # local sources only: files the vendor publishes for download, fetched into the source folder
+    # by `rag-drg fetch --manuals` (see ingest.download_manuals). Each entry is a URL, or
+    # {page: URL, link: "orca.pdf"} (the link on that page ending in ...), optionally with
+    # `creates: <name>` (file or folder the download produces; skipped when it is already there).
+    download: list = field(default_factory=list)
 
 
 @dataclass
@@ -198,6 +203,7 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
                 max_pages=int(s.get("max_pages", 200)),
                 max_depth=None if s.get("max_depth") is None else int(s.get("max_depth")),
                 delay=float(s.get("delay", 0.5)),
+                download=_as_list(s.get("download")),
             )
         )
 

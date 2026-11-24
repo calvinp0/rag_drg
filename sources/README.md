@@ -16,6 +16,26 @@ changed files are re-processed.
 
 Any folder can mix PDFs, `.html` pages and Markdown. Sub-folders are fine.
 
+## Manuals the vendor offers as a download
+
+```bash
+rag-drg fetch --manuals      # then: rag-drg ingest
+```
+
+downloads every file listed under `download:` in `rag_drg.yaml` into its source folder here:
+
+| Source | What | From |
+|---|---|---|
+| `orca5-manual` | ORCA 5.0.4 manual PDF (about 33 MB) | kofo.mpg.de |
+| `orca6-manual` | ORCA 6.1 manual PDF (about 78 MB) | faccts.de (the PDF link on the manual's front page) |
+| `qchem61-manual` | Q-Chem 6.1 manual PDF (about 5 MB) | manual.q-chem.com |
+| `gaussian09-manual` | Gaussian 09 User's Reference pages (`g09ur/`) | gaussian.com |
+
+Each person downloads their own copy from the vendor; the files stay git-ignored and are never
+committed. A file that is already in the folder is kept, so delete it to get a fresh copy.
+Downloads only happen with `--manuals` (or `rag-drg fetch --source <name>`), never during the
+nightly `ingest --fetch`. Not covered: the manuals that are many HTML pages, below.
+
 ## Manuals that are many HTML pages (ORCA 6, Gaussian keywords, Molpro)
 
 Pick whichever is easiest; all three give one search entry per page section, titled with the
