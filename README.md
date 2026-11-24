@@ -121,6 +121,45 @@ rag-drg search "CASSCF orbital optimisation" --software orca --doc-type theory
 rag-drg level "wb97xd/def2tzvp" --software orca   # is it supported, and how is it written?
 ```
 
+### Add your group's cluster data (the private site repository)
+
+This repository is public, so it holds no cluster details. Login hosts, queues and their access
+lists, node names and install paths live in a second, **private** repository that is cloned into
+`site/` inside this one (`site/` is git-ignored). Skip this and everything still works, just with
+no clusters: `list_servers()` is empty and no submit scripts are rendered.
+
+**Your group already has a site repository** (you need read access to it):
+
+```bash
+cd ~/code/rag_drg
+git clone git@github.com:<your-org>/<your-site-repo>.git site
+rag-drg servers validate             # prints "servers.yaml: ok"
+rag-drg servers list                 # your clusters, queues and installs
+rag-drg ingest                       # indexes site/knowledge as the source `site`
+```
+
+**Starting one for a new group:**
+
+```bash
+cd ~/code/rag_drg
+mkdir -p site/knowledge/hpc/servers && cd site && git init -b main
+cp ../servers.example.yaml servers.yaml       # then replace the example clusters with yours
+cd .. && rag-drg servers validate
+rag-drg servers render-cards         # writes site/knowledge/hpc/servers/generated/<cluster>.md
+rag-drg ingest
+git -C site add -A && git -C site commit -m "Cluster registry"
+gh repo create <your-org>/<your-site-repo> --private --source site --push
+```
+
+Keeping it up to date:
+* `git pull` in this repository does not update `site/`. Run `git -C site pull --ff-only`, then
+  `rag-drg ingest`. On a shared server, add that pull to the nightly job next to
+  `deploy/refresh.sh`, which only pulls this repository.
+* On the shared server only the server needs the clone; members who connect over HTTP get the
+  cluster data through the MCP tools.
+* Never copy hosts, IP addresses, node lists or queue access lists from `site/` into this
+  repository. What goes where, and how each part is read: [docs/site.md](docs/site.md).
+
 ### Connect a local install
 
 Register the absolute path of the command, because MCP clients start the server themselves and
@@ -329,6 +368,7 @@ rag_drg/            python package (chunking, store, search, ingest, lessons, MC
 rag_drg.yaml        source configuration
 knowledge/          curated cards, templates, lessons  (committed, reviewed via PR)
 papers/  sources/   local PDFs/HTML (git-ignored)
+site/               your group's private site repository: servers.yaml, cluster cards (git-ignored)
 integrations/       Claude Code skill + CLAUDE.md snippet, local-model notes
 deploy/             systemd unit and nightly refresh script for a shared server
 tests/              pytest suite
