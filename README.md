@@ -153,8 +153,8 @@ gh repo create <your-org>/<your-site-repo> --private --source site --push
 
 Keeping it up to date:
 * `git pull` in this repository does not update `site/`. Run `git -C site pull --ff-only`, then
-  `rag-drg ingest`. On a shared server, add that pull to the nightly job next to
-  `deploy/refresh.sh`, which only pulls this repository.
+  `rag-drg ingest`. On a shared server the nightly `deploy/refresh.sh` pulls both; the account
+  that runs it needs read access to the site repository (e.g. a read-only deploy key).
 * On the shared server only the server needs the clone; members who connect over HTTP get the
   cluster data through the MCP tools.
 * Never copy hosts, IP addresses, node lists or queue access lists from `site/` into this

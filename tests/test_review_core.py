@@ -75,6 +75,10 @@ def test_refresh_script_does_not_abort_on_lint_or_tidy():
         assert "||" in line, line
     assert lines.index(next(ln for ln in lines if ln.startswith('"$RAG" lint'))) < \
         lines.index(next(ln for ln in lines if ln.startswith('"$RAG" ingest')))
+    # the private site/ clone is pulled only when present, before indexing, and a failed pull is not fatal
+    site = next(ln for ln in lines if ln.startswith("git -C site pull"))
+    assert "||" in site and "if [ -d site/.git ]; then" in lines
+    assert lines.index(site) < lines.index(next(ln for ln in lines if ln.startswith('"$RAG" ingest')))
 
 
 # --------------------------------------------------------------------------- 2. conf.d merging
