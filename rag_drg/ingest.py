@@ -353,8 +353,10 @@ def _warn_if_needs_ocr(source: str, rel: str, chunks: list[Chunk]) -> None:
                     "consider `ocrmypdf --force-ocr`.", source, rel)
 
 
-def embed_missing(cfg: Config, store: Store, progress: Callable[[str], None] = print) -> int:
-    embedder = make_embedder(cfg.embeddings)
+def embed_missing(cfg: Config, store: Store, progress: Callable[[str], None] = print, embedder=None) -> int:
+    """Embed the chunks that have no vector yet. `embedder`: an already loaded model for this
+    config (the server's), so recording a lesson does not load a second copy."""
+    embedder = embedder or make_embedder(cfg.embeddings)
     if embedder is None:
         return 0
     if store.get_meta("embedding_model") != embedder.name:

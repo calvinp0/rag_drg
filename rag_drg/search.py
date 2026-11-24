@@ -9,8 +9,10 @@ a ranking boost because they encode what the group has already verified.
 
 from __future__ import annotations
 
+import logging
 import math
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
@@ -19,6 +21,8 @@ import numpy as np
 from .config import Config
 from .embeddings import Embedder, make_embedder
 from .store import Store, StoredChunk
+
+log = logging.getLogger(__name__)
 
 RRF_K = 60
 CANDIDATES = 60
@@ -116,20 +120,49 @@ class Hit:
 
 
 class Searcher:
-    def __init__(self, cfg: Config, store: Store | None = None, embedder: Embedder | None | bool = True):
+    """`lazy=True` (the MCP server) loads the embedding model on a background thread: the server
+    answers at once and searches are keyword-only until the model is ready (10-20 s for a local
+    sentence-transformers model). The default loads it in the constructor, so the CLI and the eval
+    get the retrieval the config asks for from the first query."""
+
+    def __init__(self, cfg: Config, store: Store | None = None, embedder: Embedder | None | bool = True,
+                 lazy: bool = False):
         self.cfg = cfg
         self.store = store or Store(cfg.index_path, readonly=True)
-        if embedder is True:
-            embedder = None
-            index_model = self.store.get_meta("embedding_model")
-            if index_model and cfg.embeddings.provider.lower() not in ("none", "", "off", "bm25"):
-                try:
-                    embedder = make_embedder(cfg.embeddings)
-                except Exception:  # noqa: BLE001 - fall back to keyword search
-                    embedder = None
-                if embedder is not None and embedder.name != index_model:
-                    embedder = None  # vectors in the index come from another model
-        self.embedder = embedder or None
+        self.embedder: Embedder | None = None
+        self._embedder_thread: threading.Thread | None = None
+        if embedder is not True:
+            self.embedder = embedder or None
+            return
+        # Read on this thread: the store's connection is shared, and callers serialise access to it.
+        index_model = self.store.get_meta("embedding_model")
+        if not index_model or cfg.embeddings.provider.lower() in ("none", "", "off", "bm25"):
+            return
+        if lazy:
+            self._embedder_thread = threading.Thread(
+                target=self._load_embedder, args=(index_model,), name="rag-drg-embedder", daemon=True)
+            self._embedder_thread.start()
+        else:
+            self._load_embedder(index_model)
+
+    def _load_embedder(self, index_model: str) -> None:
+        try:
+            embedder = make_embedder(self.cfg.embeddings)
+        except Exception as e:  # noqa: BLE001 - fall back to keyword search
+            log.warning("embedding model unavailable (%s); keyword search only", e)
+            return
+        if embedder is not None and embedder.name != index_model:
+            log.warning("index vectors come from %s, config asks for %s; keyword search only "
+                        "(run `rag-drg ingest` to re-embed)", index_model, embedder.name)
+            return  # vectors in the index come from another model
+        self.embedder = embedder
+
+    def wait_for_embedder(self, timeout: float | None = None) -> bool:
+        """Block until a `lazy` model load has finished (or `timeout` seconds); True when
+        semantic search is available."""
+        if self._embedder_thread is not None:
+            self._embedder_thread.join(timeout)
+        return self.embedder is not None
 
     def search(
         self,
