@@ -333,3 +333,7 @@ integrations/       Claude Code skill + CLAUDE.md snippet, local-model notes
 deploy/             systemd unit and nightly refresh script for a shared server
 tests/              pytest suite
 ```
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). Vendor manuals fetched into `sources/` keep their own licences and are not part of this repository.
