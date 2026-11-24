@@ -112,20 +112,28 @@ def main(argv: list[str] | None = None) -> int:
         return int(plugin_handlers[args.cmd](args, cfg) or 0)
 
     if args.cmd == "fetch":
-        from .ingest import download_manuals, fetch_source
+        from .ingest import URL_MAP, download_manuals, fetch_source
 
-        # Manual downloads are opt-in (--manuals, or naming the source): a plain `fetch` and the
-        # nightly `ingest --fetch` must not pull vendor PDFs on every run.
+        # Vendor manuals are opt-in (--manuals, or naming the source): a plain `fetch` and the
+        # nightly `ingest --fetch` must not pull PDFs or crawl vendor sites on every run.
+        named = set(args.source or [])
         for src in cfg.sources:
-            if src.download and (args.manuals or (args.source and src.name in args.source)):
-                if not args.source or src.name in args.source:
-                    download_manuals(src, progress=log)
-        if args.manuals and not args.source:
-            return 0
-        for src in cfg.sources:
-            if src.type == "local" or (args.source and src.name not in args.source):
+            if named and src.name not in named:
                 continue
-            if not src.enabled and not args.source:
+            if src.download and (args.manuals or named):
+                download_manuals(src, progress=log)
+            if src.type == "local":
+                continue
+            if src.manual:
+                if not (args.manuals or named):
+                    log(f"[{src.name}] vendor manual, skipping (rag-drg fetch --manuals)")
+                    continue
+                if not named and (src.path / URL_MAP).exists():  # --manuals keeps what is there
+                    log(f"[{src.name}] already fetched, kept (rag-drg fetch --source {src.name} to refresh)")
+                    continue
+            elif args.manuals and not named:
+                continue  # --manuals alone: only the manuals
+            elif not src.enabled and not named:
                 log(f"[{src.name}] disabled, skipping (pass --source {src.name} to force)")
                 continue
             log(f"[{src.name}] fetching {src.url or f'{len(src.urls)} urls'} -> {src.path}")

@@ -123,3 +123,71 @@ sources:
         assert (proj / "sources/qchem/qchem_manual.pdf").read_bytes() == b"mine"
     finally:
         srv.shutdown()
+
+
+def test_fetch_manuals_crawls_manual_sources_and_builds_pdfs(tmp_path, monkeypatch):
+    """--manuals also covers manuals that are many pages: a url source marked `manual: true` is
+    crawled (and kept on later runs), and a `build: dokuwiki-pdf` entry is built. Neither happens
+    on a plain fetch or during `ingest --fetch`, the nightly job."""
+    from rag_drg import dokuwiki_pdf
+    from rag_drg.cli import main
+    from rag_drg.config import load_config
+    from rag_drg.ingest import ingest
+
+    site = tmp_path / "site"
+    (site / "kw").mkdir(parents=True)
+    (site / "kw" / "index.html").write_text('<html><body><h1>Keywords</h1><a href="opt.html">Opt</a></body></html>')
+    (site / "kw" / "opt.html").write_text("<html><body><h1>Opt</h1><p>Opt=CalcFC computes force constants.</p></body></html>")
+    srv = HTTPServer(("127.0.0.1", 0), functools.partial(_Quiet, directory=str(site)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_port}"
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "rag_drg.yaml").write_text(f"""
+index_path: index/test.sqlite
+sources:
+  - name: g16-keywords
+    type: url
+    manual: true
+    crawl: true
+    delay: 0
+    urls: ["{base}/kw/index.html"]
+    allow_prefix: ["{base}/kw/"]
+    software: gaussian
+    version: "16"
+  - name: molpro
+    type: local
+    path: sources/molpro/2026
+    version: "2026"
+    download: [{{build: dokuwiki-pdf, start: "{base}/doku.php?id=toc", creates: manual.pdf}}]
+""")
+    cfg_path = str(proj / "rag_drg.yaml")
+    builds = []
+
+    def fake_build(start, out, cache=None, expect_version=None, log=print, **_):
+        assert cache is not None and cache.is_dir()   # a fresh page cache, not ~/.cache
+        builds.append((start, expect_version))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"%PDF-1.4 molpro")
+        return out
+
+    monkeypatch.setattr(dokuwiki_pdf, "build_pdf", fake_build)
+    cache = proj / "sources_cache" / "g16-keywords"
+    try:
+        assert main(["--config", cfg_path, "fetch"]) == 0
+        ingest(load_config(cfg_path), fetch=True, embed=False, progress=lambda *_: None)
+        assert not cache.exists() and not builds                      # opt-in only
+
+        assert main(["--config", cfg_path, "fetch", "--manuals"]) == 0
+        assert len(list(cache.glob("*.html"))) == 2 and (cache / "_urls.json").exists()
+        assert (proj / "sources/molpro/2026/manual.pdf").exists()
+        assert builds == [(f"{base}/doku.php?id=toc", "2026")]
+
+        (site / "kw" / "index.html").unlink()                          # a second run must not need the site
+        assert main(["--config", cfg_path, "fetch", "--manuals"]) == 0
+        assert len(builds) == 1 and len(list(cache.glob("*.html"))) == 2
+
+        report = ingest(load_config(cfg_path), embed=False, progress=lambda *_: None)
+        assert report["g16-keywords"]["added"] >= 1                    # indexed without naming it
+    finally:
+        srv.shutdown()

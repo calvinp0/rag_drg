@@ -1,11 +1,7 @@
-"""scripts/molpro_manual_pdf.py: DokuWiki crawl order, link rewriting (offline, fake wiki)."""
-import importlib.util
-from pathlib import Path
+"""rag_drg/dokuwiki_pdf.py: DokuWiki crawl order, link rewriting (offline, fake wiki)."""
+import pytest
 
-_spec = importlib.util.spec_from_file_location(
-    "molpro_manual_pdf", Path(__file__).resolve().parents[1] / "scripts" / "molpro_manual_pdf.py")
-mm = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(mm)
+from rag_drg import dokuwiki_pdf as mm
 
 DOKU = "https://www.molpro.net/manual/doku.php"
 START = DOKU + "?id=table_of_contents"
@@ -63,3 +59,19 @@ def test_combine_rewrites_links_to_anchors_and_assets_to_absolute():
     assert 'href="https://other.org/doku.php?id=x"' in doc
     assert "<li><a href=\"#p-intro-running\">Running Molpro</a></li>" in doc
     assert "mathjax" not in doc.lower()
+
+
+def test_build_refuses_a_manual_for_another_release(tmp_path, monkeypatch):
+    """The online manual documents the current release only; it must not land in another year's folder."""
+    wiki = dict(WIKI, table_of_contents=_page("Contents", "/manual/doku.php?id=recent_changes"),
+                recent_changes="<html><body><h1>New features of MOLPRO2027.1</h1>"
+                               "<h1>New features of MOLPRO2026.2</h1></body></html>")
+    monkeypatch.setattr(mm, "WIKI", wiki, raising=False)
+    monkeypatch.setitem(globals(), "WIKI", wiki)          # fake_fetch reads the module-level wiki
+    monkeypatch.setattr(mm, "http_fetch", lambda delay, cache: fake_fetch)
+    assert mm.released_version(wiki["recent_changes"]) == "2027"
+    with pytest.raises(mm.BuildError, match="now documents 2027, not 2026"):
+        mm.build_pdf(START, tmp_path / "2026" / "m.pdf", cache=tmp_path / "c", expect_version="2026")
+    assert not (tmp_path / "2026" / "m.pdf").exists()
+    out = mm.build_pdf(START, tmp_path / "2027" / "m.pdf", cache=tmp_path / "c", expect_version="2027", html_only=True)
+    assert out.suffix == ".html" and "MOLPRO2027.1" in out.read_text()

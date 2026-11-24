@@ -127,6 +127,33 @@ def _resolve_download(item) -> tuple[str, str | None]:
     raise ValueError(f"no link ending in {link!r} on {page}")
 
 
+def _build_manual(src: SourceConfig, item: dict, progress: Callable[[str], None]) -> Path | None:
+    """A `download:` entry that is built rather than downloaded:
+    {build: dokuwiki-pdf, start: <TOC url>, creates: <file>.pdf} crawls a DokuWiki manual (Molpro's)
+    and prints it to one PDF with headless Chrome. The source's `version` must be the release the
+    online manual documents today."""
+    kind = item["build"]
+    if kind != "dokuwiki-pdf":
+        raise ValueError(f"unknown build kind {kind!r} (known: dokuwiki-pdf)")
+    if not item.get("start") or not item.get("creates"):
+        raise ValueError("a dokuwiki-pdf entry needs `start` and `creates`")
+    target = src.path / str(item["creates"])
+    if target.exists():
+        progress(f"[{src.name}] {target.name} already there, kept")
+        return None
+    import tempfile
+
+    from . import dokuwiki_pdf
+
+    version = (src.version or "").split("|")[0] or None
+    # A fresh page cache per build: pages cached from an earlier release would otherwise be
+    # reused, and the version check below would pass on stale text.
+    with tempfile.TemporaryDirectory(prefix="rag-drg-manual-") as cache:
+        dokuwiki_pdf.build_pdf(str(item["start"]), target, cache=Path(cache), expect_version=version,
+                               log=lambda m: progress(f"[{src.name}] {m}"))
+    return target
+
+
 def download_manuals(src: SourceConfig, progress: Callable[[str], None] = print) -> list[Path]:
     """Download the files a local source lists under `download:` into its folder (git-ignored).
 
@@ -145,6 +172,11 @@ def download_manuals(src: SourceConfig, progress: Callable[[str], None] = print)
     got: list[Path] = []
     for item in src.download:
         try:
+            if isinstance(item, dict) and item.get("build"):
+                built = _build_manual(src, item, progress)
+                if built is not None:
+                    got.append(built)
+                continue
             url, creates = _resolve_download(item)
             name = Path(urlsplit(url).path).name
             if not name or name.startswith("."):
@@ -482,15 +514,16 @@ def ingest(
                 continue
             if not src.enabled and not only:
                 continue
-            if fetch:
+            if fetch and not src.manual:   # vendor manuals: only `rag-drg fetch --manuals`
                 progress(f"[{src.name}] fetching ...")
                 try:
                     fetch_source(src, cfg)
                 except Exception as e:  # noqa: BLE001
                     progress(f"[{src.name}] fetch failed: {e}")
             if src.path is None or not src.path.exists():
-                progress(f"[{src.name}] skipped: {src.path} does not exist"
-                         + (" (run `rag-drg fetch`)" if src.type != "local" else ""))
+                hint = "" if src.type == "local" else (
+                    " (run `rag-drg fetch --manuals`)" if src.manual else " (run `rag-drg fetch`)")
+                progress(f"[{src.name}] skipped: {src.path} does not exist{hint}")
                 continue
             chunks = chunks_for_source(cfg, src)
             res = store.sync_source(src.name, chunks)
