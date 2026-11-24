@@ -8,6 +8,8 @@
   `software` for ESS cards). Only write facts you can back with the manual or a calculation;
   new cards start as `status: draft`. Never mark a card `verified` yourself; that's for a human reviewer.
 - `index/`, `sources_cache/`, and PDFs under `sources/` and `papers/` are git-ignored; never commit them.
+- This repository is public. Cluster details (hosts, IPs, node names, queue access lists, install
+  paths) live in the private `site/` clone (docs/site.md, git-ignored); never copy them into tracked files.
 - The MCP server supports both MCP Python SDK 1.x (`FastMCP`) and 2.x (`MCPServer`); keep both paths working.
 - Agent tasks (`eval/tasks.yaml`): every task needs `eval/tasks/<id>/reference/` passing and ideally
   `bad/` variants failing (`bin/rag-drg agent-eval check-graders`). Never edit cards or ranking just to pass a

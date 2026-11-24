@@ -29,6 +29,13 @@ def _ignore_repo_servers_yaml(monkeypatch, tmp_path_factory):
     for mod in (model, servers, compose_arc):  # the latter two import the name directly
         monkeypatch.setattr(mod, "servers_path", servers_path)
 
+    # Same for the private site/ clone (docs/site.md): present on a group machine, absent in CI.
+    import rag_drg.config as config
+
+    real_site = config.site_dir
+    monkeypatch.setattr(config, "site_dir", lambda root: (
+        tmp_path_factory.getbasetemp() / "no-site" if Path(root).resolve() == REPO else real_site(root)))
+
 
 @pytest.fixture
 def project(tmp_path: Path):

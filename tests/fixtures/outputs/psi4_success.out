@@ -35,7 +35,7 @@
     Psi4 started on: Tuesday, 07 January 2025 12:57AM
 
     Process ID: 414528
-    Host:       host.example.org
+    Host:       node173.example.org
     PSIDATADIR: /home/user2/psi4conda/share/psi4
     Memory:     500.0 MiB
     Threads:    30

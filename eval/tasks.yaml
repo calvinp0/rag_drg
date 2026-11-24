@@ -63,6 +63,9 @@ tasks:
       - {type: answer_regex, pattern: "(not (exactly )?the same|not identical|different (functional|parametri[sz]ation|method)|no exact|isn't the same|not available)", flags: i, name: flags-not-identical}
       - {type: answer_not_regex, pattern: '!\s*wB97XD\b', flags: i, name: no-gaussian-spelling-in-orca}
 
+  # ---------------------------------------------------- holdout: group knowledge only (added 2026-09-29)
+  # The first clean run showed orca-maxcore-fix and level-translate-wb97xd-orca are solvable with
+  # general knowledge. These need facts that exist only in the group's cards, servers.yaml and lessons.
   - id: arkane-corrections-disabled
     split: holdout
     tags: [arkane, arc, thermo, aec]

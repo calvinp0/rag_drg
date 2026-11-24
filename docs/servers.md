@@ -1,6 +1,7 @@
 # Cluster registry: `servers.yaml`
 
-One file at the repository root, `servers.yaml`, describes every cluster the group uses
+One file, `servers.yaml`, in the private site repository (`site/servers.yaml`, see
+[site.md](site.md)) or, if you have none, at the repository root, describes every cluster the group uses
 (format: [`servers-spec.md`](servers-spec.md)). From it `rag-drg` generates:
 
 * one searchable **cluster card** per cluster (`knowledge/hpc/servers/generated/<name>.md`),
@@ -46,9 +47,9 @@ Then:
 
 ```bash
 rag-drg servers validate          # or: rag-drg lint (also run in CI)
-rag-drg servers render-cards      # writes knowledge/hpc/servers/generated/<name>.md
+rag-drg servers render-cards      # writes site/knowledge/hpc/servers/generated/<name>.md
 rag-drg ingest                    # index the new cards
-git add servers.yaml knowledge/hpc/servers/generated/ && git commit
+git -C site add servers.yaml knowledge/hpc/servers/generated/ && git -C site commit   # in the site repository
 ```
 
 `rag-drg lint` fails when a generated card is out of date with `servers.yaml`, so re-run
@@ -200,8 +201,8 @@ To fill `servers.yaml` for a PBS cluster such as zeus, save the scheduler's view
 the block:
 
 ```bash
-ssh host.example.org 'qstat -Qf' > qstat_Qf.txt
-ssh host.example.org 'pbsnodes -a' > pbsnodes.txt        # or pbsnodes -aSj
+ssh <login-host> 'qstat -Qf' > qstat_Qf.txt
+ssh <login-host> 'pbsnodes -a' > pbsnodes.txt        # or pbsnodes -aSj
 rag-drg servers discover-pbs --from-file qstat_Qf.txt --pbsnodes pbsnodes.txt
 ```
 

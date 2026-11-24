@@ -31,4 +31,4 @@ Pin the exact version: `wget -qO- https://install.julialang.org | sh -s -- --yes
 
 ## Evidence / source
 
-Reproduced on host.example.org (Rocky 9.8), 2026-11-05: same install_rms.sh block crashed with 1.10.13, ran cleanly with 1.10.10 and 1.10.11 (full install + minimal RMG example passed). Upstream RMG-Py commit 62eb728c0 "Pin Julia and openbabel to unbreak CI" pins 1.10.11 in CI and Dockerfile.
+Reproduced on the aluf cluster (Rocky 9.8), 2026-11-05: same install_rms.sh block crashed with 1.10.13, ran cleanly with 1.10.10 and 1.10.11 (full install + minimal RMG example passed). Upstream RMG-Py commit 62eb728c0 "Pin Julia and openbabel to unbreak CI" pins 1.10.11 in CI and Dockerfile.
