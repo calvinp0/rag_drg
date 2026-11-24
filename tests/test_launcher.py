@@ -76,6 +76,23 @@ def test_named_conda_env_found_from_another_active_env(repo, tmp_path):
     assert _run(repo, env).stdout.startswith("active lint")
 
 
+def test_conda_base_does_not_shadow_the_named_env(repo, tmp_path):
+    """base is active in every shell by default; a copy of rag-drg installed there (often an old
+    one) must not win over the env made for it. Without a named env, base is still used."""
+    base = tmp_path / "miniforge3"
+    _fake(base / "bin" / "rag-drg", "base")
+    env = {"CONDA_EXE": str(base / "bin" / "conda"), "CONDA_PREFIX": str(base)}
+    assert _run(repo, env).stdout.startswith("base lint")
+    _fake(base / "envs" / "rag-drg" / "bin" / "rag-drg", "named")
+    assert _run(repo, env).stdout.startswith("named lint")
+    # also recognised by name when CONDA_EXE is not exported (the env is then found under $HOME)
+    home = tmp_path / "home"
+    _fake(home / "miniforge3" / "bin" / "rag-drg", "base")
+    _fake(home / "miniforge3" / "envs" / "rag-drg" / "bin" / "rag-drg", "named")
+    env = {"HOME": str(home), "CONDA_PREFIX": str(home / "miniforge3"), "CONDA_DEFAULT_ENV": "base"}
+    assert _run(repo, env).stdout.startswith("named lint")
+
+
 def test_named_conda_env_in_default_install_dir_and_custom_name(repo, tmp_path):
     home = tmp_path / "home"
     _fake(home / "miniconda3" / "envs" / "rag_drg" / "bin" / "rag-drg", "underscore")

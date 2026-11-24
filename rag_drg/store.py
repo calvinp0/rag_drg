@@ -352,6 +352,19 @@ class Store:
             return None
         return {r["id"] for r in self.conn.execute(f"SELECT id FROM chunks {where}", args)}
 
+    def manual_versions(self) -> dict[str, list[str]]:
+        """{software: [versions]} that have manual text (reference/theory chunks) in the index.
+        Books are left out: they are tagged for several versions without being that version's manual."""
+        out: dict[str, set[str]] = {}
+        for sw, ver in self.conn.execute(
+            """SELECT DISTINCT software, version FROM chunks
+               WHERE doc_type IN ('reference', 'theory') AND software IS NOT NULL
+                 AND version IS NOT NULL AND version != ''
+                 AND (' ' || COALESCE(tags, '') || ' ') NOT LIKE '% book %'"""
+        ):
+            out.setdefault(sw, set()).update(v for v in ver.split("|") if v)
+        return {sw: sorted(vs) for sw, vs in sorted(out.items())}
+
     def stats(self) -> dict:
         total = self.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         emb = self.conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
